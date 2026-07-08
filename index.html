@@ -185,26 +185,59 @@ const SHARED = true;
 const ADMIN_PIN_LEN = 6;
 const EMP_PIN_LEN = 4;
 
+const SUPABASE_URL = 'https://wujcylwtjwbnpqjupslp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1amN5bHd0andibnBxanVwc2xwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDkyMDAsImV4cCI6MjA5OTA4NTIwMH0.uq8FPREpqeXxZH8oAuDZNeLaP9ZstoFh_KaW-3StTII';
+
+// shared=true  -> общая база Supabase, видно всем сотрудникам и на всех устройствах
+// shared=false -> только это устройство (localStorage), например "кто я" на телефоне сотрудника
 async function storeGet(key, shared){
-  try{ const r = await window.storage.get(key, shared); return r ? JSON.parse(r.value) : null; }catch(e){ return null; }
+  if(shared){
+    try{
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+      });
+      if(!res.ok) return null;
+      const data = await res.json();
+      if(!data || !data.length) return null;
+      return JSON.parse(data[0].value);
+    }catch(e){ console.error('storeGet failed', e); return null; }
+  } else {
+    try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+    catch(e){ return null; }
+  }
 }
 async function storeSet(key, value, shared){
-  try{ await window.storage.set(key, JSON.stringify(value), shared); }catch(e){ console.error(e); }
+  if(shared){
+    try{
+      await fetch(`${SUPABASE_URL}/rest/v1/kv_store?on_conflict=key`, {
+        method: 'POST',
+        headers:{
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify([{ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }])
+      });
+    }catch(e){ console.error('storeSet failed', e); }
+  } else {
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){ console.error(e); }
+  }
 }
 
 const TO_FIELDS = [
-  {key:'orders', label:'Заказы', type:'number', money:false},
-  {key:'completed', label:'Выполнено', type:'number', money:false},
-  {key:'netAmount', label:'Чистая сумма', type:'number', money:true},
-  {key:'avgCheck', label:'Средний чек', type:'number', money:true},
-  {key:'pending', label:'Висит', type:'number', money:true},
-  {key:'completionTime', label:'Время выполн.', type:'text', money:false},
+  {key:'orders', label:'Заказы', type:'number', money:false, match:['заказ'], exclude:['выполн']},
+  {key:'completed', label:'Выполнено', type:'number', money:false, match:['выполн'], exclude:['время']},
+  {key:'netAmount', label:'Чистая сумма', type:'number', money:true, match:['сумма','чист']},
+  {key:'avgCheck', label:'Средний чек', type:'number', money:true, match:['чек']},
+  {key:'pending', label:'Висит', type:'number', money:true, match:['вис']},
+  {key:'completionTime', label:'Время выполн.', type:'text', money:false, match:['время']},
 ];
 
 const OP_FIELDS = [
-  {key:'revenue', label:'Выручка', type:'number', money:true},
-  {key:'deals', label:'Сделки', type:'number', money:false},
-  {key:'plan', label:'План', type:'number', money:true},
+  {key:'revenue', label:'Выручка', type:'number', money:true, match:['выручк','сумма']},
+  {key:'deals', label:'Сделки', type:'number', money:false, match:['сделк','заказ']},
+  {key:'plan', label:'План', type:'number', money:true, match:['план']},
   {key:'avgCheck', label:'Средний чек', type:'number', money:true, computed:true},
 ];
 
@@ -255,6 +288,10 @@ let selectingEmpId = null;   // employee chosen from list, awaiting their PIN
 let empPinInput = '';
 let empPinError = '';
 
+let sheetUrls = {op:'', to:''};
+let syncStatus = {op:'', to:''};
+let syncing = {op:false, to:false};
+
 const SEED_MONTH_DATA = {
   e1: {orders:15, completed:15, netAmount:983979, avgCheck:65599, pending:0, completionTime:''},
   e2: {orders:20, completed:19, netAmount:924700, avgCheck:48668, pending:40000, completionTime:''},
@@ -284,6 +321,9 @@ async function loadAll(){
 
   const storedAdminPin = await storeGet('app:adminPin', SHARED);
   if(storedAdminPin) adminPin = storedAdminPin;
+
+  const storedSheetUrls = await storeGet('app:sheetUrls', SHARED);
+  if(storedSheetUrls) sheetUrls = storedSheetUrls;
 }
 
 function ensureMonth(monthKey){
@@ -358,6 +398,174 @@ async function saveEmployee(emp){
   ensureMonth(editingMonth);
   await storeSet('app:employees', employees, SHARED);
   await storeSet('app:kpiData', kpiData, SHARED);
+}
+
+// ---------- Google Sheets sync ----------
+function parseCSV(text){
+  const rows = []; let row = []; let field=''; let inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else inQuotes=false; }
+      else field+=c;
+    } else {
+      if(c==='"') inQuotes=true;
+      else if(c===','){ row.push(field); field=''; }
+      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c==='\r'){ /* skip */ }
+      else field+=c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=> r.some(c=>c.trim()!==''));
+}
+
+function parseNum(s){
+  if(s===null || s===undefined) return 0;
+  let t = String(s).replace(/[^\d.,\-]/g,'');
+  if(t==='') return 0;
+  if(t.includes(',') && t.includes('.')){
+    if(t.lastIndexOf(',') > t.lastIndexOf('.')){ t = t.replace(/\./g,'').replace(',', '.'); }
+    else { t = t.replace(/,/g,''); }
+  } else if(t.includes(',')){
+    t = t.replace(',', '.');
+  }
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : Math.round(n);
+}
+
+function toCsvUrl(url){
+  // Accept a normal Google Sheets share link and convert to CSV export if possible
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if(m && url.includes('/edit')){
+    const gidMatch = url.match(/gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : '0';
+    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
+  }
+  return url; // assume already a /pub?output=csv link
+}
+
+async function syncFromGoogleSheet(dept, targetMonth, silent){
+  targetMonth = targetMonth || editingMonth;
+  const rawUrl = (sheetUrls[dept]||'').trim();
+  if(!rawUrl){ if(!silent) syncStatus[dept] = 'Сначала вставьте ссылку на таблицу'; return; }
+  if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
+  try{
+    const url = toCsvUrl(rawUrl);
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
+
+    const header = rows[0].map(h=>h.trim());
+    const hl = header.map(h=>h.toLowerCase());
+    const findCol = (patterns)=> hl.findIndex(h=> patterns.some(p=>h.includes(p)));
+
+    const sellerCol = findCol(['кто продал']);
+    const doerCol = findCol(['кто делает']);
+    const statusCol = findCol(['статус']);
+    const grossCol = findCol(['сумма общая','сумма']);
+    const netCol = findCol(['заработок']);
+    const pendingCol = findCol(['остаток']);
+    const dateCol = findCol(['дата оформления','дата']);
+    const isRawLedger = sellerCol>=0 || doerCol>=0;
+
+    ensureMonth(targetMonth);
+    const deptEmployees = employees.filter(e=>e.department===dept);
+    let matched = 0;
+
+    if(isRawLedger){
+      // Сырой журнал сделок — считаем суммы по каждому сотруднику сами
+      const actorCol = dept==='op' ? sellerCol : doerCol;
+      if(actorCol<0) throw new Error('Не нашёл колонку «' + (dept==='op'?'Кто продал':'Кто делает') + '»');
+
+      for(const emp of deptEmployees){
+        const nameLc = emp.name.trim().toLowerCase();
+        let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0;
+        for(let r=1;r<rows.length;r++){
+          const row = rows[r];
+          const actor = (row[actorCol]||'').trim().toLowerCase();
+          if(actor !== nameLc) continue;
+          if(dateCol>=0){
+            const dm = String(row[dateCol]||'').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if(dm){
+              const mk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
+              if(mk !== targetMonth) continue;
+            }
+          }
+          if(dept==='to'){
+            orders++;
+            const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
+            if(statusText.includes('успешно')) completed++;
+            if(netCol>=0) netAmount += parseNum(row[netCol]);
+            if(pendingCol>=0) pending += parseNum(row[pendingCol]);
+          } else {
+            deals++;
+            if(grossCol>=0) revenue += parseNum(row[grossCol]);
+          }
+        }
+        const values = getKpi(emp.id, targetMonth);
+        if(dept==='to'){
+          values.orders = orders; values.completed = completed; values.netAmount = netAmount;
+          values.pending = pending; values.avgCheck = orders>0 ? Math.round(netAmount/orders) : 0;
+        } else {
+          values.deals = deals; values.revenue = revenue;
+        }
+        kpiData[targetMonth][emp.id] = values;
+        if(orders>0 || deals>0) matched++;
+      }
+    } else {
+      // Готовая сводная таблица (по одной строке на сотрудника)
+      const nameIdx = header.findIndex(h=>/имя|name/i.test(h));
+      const idx = nameIdx>=0 ? nameIdx : 0;
+      const fieldCols = {};
+      DEPARTMENTS[dept].fields.filter(f=>!f.computed).forEach(f=>{
+        const colIndex = header.findIndex((h,ci)=>{
+          if(ci===idx) return false;
+          const hlow = h.toLowerCase();
+          const m = f.match.some(mm=>hlow.includes(mm));
+          const ex = (f.exclude||[]).some(mm=>hlow.includes(mm));
+          return m && !ex;
+        });
+        if(colIndex>=0) fieldCols[f.key] = colIndex;
+      });
+      for(let r=1;r<rows.length;r++){
+        const row = rows[r];
+        const name = (row[idx]||'').trim();
+        if(!name) continue;
+        const emp = deptEmployees.find(e=>e.name.trim().toLowerCase()===name.toLowerCase());
+        if(!emp) continue;
+        const values = getKpi(emp.id, targetMonth);
+        Object.keys(fieldCols).forEach(fk=>{
+          const raw = row[fieldCols[fk]];
+          const fieldDef = DEPARTMENTS[dept].fields.find(f=>f.key===fk);
+          values[fk] = fieldDef.type==='number' ? parseNum(raw) : (raw||'').trim();
+        });
+        kpiData[targetMonth][emp.id] = values;
+        matched++;
+      }
+    }
+
+    await storeSet('app:kpiData', kpiData, SHARED);
+    await storeSet('app:sheetUrls', sheetUrls, SHARED);
+    if(!silent){
+      syncStatus[dept] = matched>0
+        ? `Обновлено ${matched} из ${deptEmployees.length} сотрудников`
+        : 'Никто не найден — проверьте, что имена в таблице совпадают с именами в приложении';
+    }
+  } catch(err){
+    if(!silent) syncStatus[dept] = 'Не получилось: ' + err.message + '. Проверьте, что лист опубликован как CSV и ссылка верная.';
+  }
+  if(!silent){ syncing[dept] = false; render(); }
+  else if(mode==='employee'){ render(); }
+}
+
+async function silentAutoSync(){
+  try{
+    if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', activeMonth, true);
+    if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', activeMonth, true);
+  }catch(e){ console.error('auto-sync failed', e); }
 }
 
 // ---------- render ----------
@@ -539,6 +747,28 @@ function renderAdminView(){
     </div>
 
     <div class="card">
+      <h2>Google Таблица</h2>
+      <div class="hint" style="margin-top:0;">Можно вставить ссылку прямо на рабочий лист со сделками («Отчёт по продажам Июль» и т.п.) — приложение само посчитает суммы по каждому сотруднику из колонок «Кто продал» / «Кто делает» / «Статус» / «Заработок» / «Остаток».</div>
+      <div style="margin-top:12px;">
+        <label class="field-label">Лист «ОП»</label>
+        <div class="row">
+          <input type="text" id="sheetUrlOp" value="${sheetUrls.op||''}" placeholder="Ссылка на опубликованный CSV">
+          <button class="btn small ${syncing.op?'secondary':''}" id="syncOpBtn" ${syncing.op?'disabled':''}>${syncing.op?'Обновляю…':'Обновить'}</button>
+        </div>
+        ${syncStatus.op ? `<div class="hint" style="margin-top:0;">${syncStatus.op}</div>` : ''}
+      </div>
+      <div style="margin-top:16px;">
+        <label class="field-label">Лист «ТО»</label>
+        <div class="row">
+          <input type="text" id="sheetUrlTo" value="${sheetUrls.to||''}" placeholder="Ссылка на опубликованный CSV">
+          <button class="btn small ${syncing.to?'secondary':''}" id="syncToBtn" ${syncing.to?'disabled':''}>${syncing.to?'Обновляю…':'Обновить'}</button>
+        </div>
+        ${syncStatus.to ? `<div class="hint" style="margin-top:0;">${syncStatus.to}</div>` : ''}
+      </div>
+      <div class="hint">Кнопка «Обновить» подтягивает цифры в выбранный сейчас месяц (${monthLabel(editingMonth)}). Отдельно, в фоне, каждые 5 минут приложение само подтягивает свежие данные в активный месяц — сотрудники видят их без вашего участия. Задержка от момента правки в таблице обычно 1-5 минут (это на стороне Google).</div>
+    </div>
+
+    <div class="card">
       <h2>KPI сотрудников · ${monthLabel(editingMonth)}</h2>
       ${kpiEditor}
       <button class="btn" id="saveKpiBtn">Сохранить KPI</button>
@@ -546,14 +776,14 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Сотрудники и PIN</h2>
+      <div class="hint" style="margin-top:0;">Имя здесь должно быть написано ТОЧНО так же, как в колонке «Кто продал» / «Кто делает» в Google Таблице — иначе синхронизация не найдёт совпадение.</div>
       ${employees.map(e=>`
-        <div class="row">
-          <div style="width:110px;font-size:13px;flex:none;">${e.name}</div>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" data-nameemp="${e.id}" value="${e.name}" style="flex:2;">
           <input type="text" data-pinemp="${e.id}" value="${e.pin}" maxlength="4" placeholder="PIN">
           <button class="btn secondary small" data-delemp="${e.id}" style="flex:none;color:var(--rust);">Удалить</button>
         </div>`).join('')}
-      <button class="btn secondary small" id="savePinsBtn">Сохранить PIN сотрудников</button>
-      <div class="hint">Личный PIN не даёт другим зайти на страницу сотрудника.</div>
+      <button class="btn secondary small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
     </div>
 
     <div class="card">
@@ -673,8 +903,12 @@ function attachHandlers(){
 
   const savePinsBtn = document.getElementById('savePinsBtn');
   if(savePinsBtn) savePinsBtn.onclick = async ()=>{
-    const inputs = document.querySelectorAll('[data-pinemp]');
-    inputs.forEach(i=>{
+    document.querySelectorAll('[data-nameemp]').forEach(i=>{
+      const emp = employees.find(e=>e.id===i.dataset.nameemp);
+      const val = i.value.trim();
+      if(emp && val) emp.name = val;
+    });
+    document.querySelectorAll('[data-pinemp]').forEach(i=>{
       const emp = employees.find(e=>e.id===i.dataset.pinemp);
       if(emp && /^\d{4}$/.test(i.value.trim())) emp.pin = i.value.trim();
     });
@@ -710,12 +944,27 @@ function attachHandlers(){
     if(new RegExp('^\\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); render(); }
     else { alert('PIN должен состоять из ' + ADMIN_PIN_LEN + ' цифр'); }
   };
+
+  const syncOpBtn = document.getElementById('syncOpBtn');
+  if(syncOpBtn) syncOpBtn.onclick = async ()=>{
+    sheetUrls.op = document.getElementById('sheetUrlOp').value.trim();
+    await syncFromGoogleSheet('op');
+  };
+  const syncToBtn = document.getElementById('syncToBtn');
+  if(syncToBtn) syncToBtn.onclick = async ()=>{
+    sheetUrls.to = document.getElementById('sheetUrlTo').value.trim();
+    await syncFromGoogleSheet('to');
+  };
 }
 
 (async function init(){
   await loadAll();
   render();
   timerHandle = setInterval(()=>{ if(mode==='employee') render(); }, 60000);
+  if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim()){
+    silentAutoSync();
+    setInterval(silentAutoSync, 5*60000);
+  }
 })();
 </script>
 </body>
