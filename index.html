@@ -48,7 +48,7 @@
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px;box-shadow:0 1px 2px rgba(24,34,40,.03);}
   .card h2{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;margin:0 0 14px 0;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
 
-  select, input[type=text], input[type=number]{
+  select, input[type=text], input[type=number], input[type=time]{
     width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--line);
     font-family:'Inter',sans-serif;font-size:14px;background:#fff;color:var(--ink);
   }
@@ -105,6 +105,9 @@
   .log-type{font-weight:600;}
   .log-type.in{color:var(--teal);}
   .log-type.out{color:var(--rust);}
+  .log-tag{font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;text-transform:uppercase;}
+  .log-tag.late{background:var(--rust-tint);color:var(--rust-dark);}
+  .log-tag.ontime{background:var(--teal-tint);color:var(--teal-dark);}
 
   .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
   .row input, .row select{flex:1;}
@@ -155,6 +158,8 @@
   .emp-edit-name{font-size:14px;font-weight:700;margin-bottom:10px;font-family:'Space Grotesk',sans-serif;}
   .emp-edit-block{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--line);}
   .emp-edit-block:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+
+  .logs-container{max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:2px 10px;background:#faf5f8;}
 </style>
 </head>
 <body>
@@ -188,8 +193,6 @@ const EMP_PIN_LEN = 4;
 const SUPABASE_URL = 'https://wujcylwtjwbnpqjupslp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1amN5bHd0andibnBxanVwc2xwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDkyMDAsImV4cCI6MjA5OTA4NTIwMH0.uq8FPREpqeXxZH8oAuDZNeLaP9ZstoFh_KaW-3StTII';
 
-// shared=true  -> общая база Supabase, видно всем сотрудникам и на всех устройствах
-// shared=false -> только это устройство (localStorage), например "кто я" на телефоне сотрудника
 async function storeGet(key, shared){
   if(shared){
     try{
@@ -253,10 +256,10 @@ function zeroKpi(dept){
 }
 
 const SEED_EMPLOYEES = [
-  {id:'e1', name:'Алишер А', department:'to', pin:'1111'},
-  {id:'e2', name:'Алишер С', department:'to', pin:'2222'},
-  {id:'e3', name:'Артём', department:'to', pin:'3333'},
-  {id:'e4', name:'Алихан', department:'to', pin:'4444'},
+  {id:'e1', name:'Алишер А', department:'to', pin:'1111', scheduleIn:'10:00'},
+  {id:'e2', name:'Алишер С', department:'to', pin:'2222', scheduleIn:'10:00'},
+  {id:'e3', name:'Артём', department:'to', pin:'3333', scheduleIn:'10:00'},
+  {id:'e4', name:'Алихан', department:'to', pin:'4444', scheduleIn:'10:00'},
 ];
 
 function currentMonthKey(){
@@ -270,7 +273,7 @@ function monthLabel(key){
 }
 
 let employees = [];
-let kpiData = {};          // { monthKey: { empId: {...fields} } }
+let kpiData = {};          
 let logs = [];
 let activeMonth = currentMonthKey();
 let editingMonth = activeMonth;
@@ -284,7 +287,7 @@ let adminPin = '135790';
 let pinInput = '';
 let pinError = '';
 
-let selectingEmpId = null;   // employee chosen from list, awaiting their PIN
+let selectingEmpId = null;   
 let empPinInput = '';
 let empPinError = '';
 
@@ -302,6 +305,9 @@ const SEED_MONTH_DATA = {
 async function loadAll(){
   employees = await storeGet('app:employees', SHARED);
   if(!employees){ employees = SEED_EMPLOYEES; await storeSet('app:employees', employees, SHARED); }
+
+  // Обеспечим наличие поля scheduleIn у старых записей
+  employees.forEach(e => { if(!e.scheduleIn) e.scheduleIn = '10:00'; });
 
   kpiData = await storeGet('app:kpiData', SHARED);
   if(!kpiData){
@@ -365,7 +371,19 @@ function fmtDuration(ms){
 }
 
 async function punch(empId){
-  logs.push({empId, type: isCheckedIn(empId) ? 'out' : 'in', ts: Date.now()});
+  const emp = employees.find(e=>e.id===empId);
+  const now = new Date();
+  const type = isCheckedIn(empId) ? 'out' : 'in';
+  
+  let isLate = false;
+  if(type === 'in' && emp && emp.scheduleIn){
+    const [schedH, schedM] = emp.scheduleIn.split(':').map(Number);
+    const checkTime = now.getHours() * 60 + now.getMinutes();
+    const schedTime = schedH * 60 + schedM;
+    if(checkTime > schedTime) isLate = true;
+  }
+
+  logs.push({empId, type, ts: now.getTime(), late: isLate});
   await storeSet('attendance:log', logs, SHARED);
   render();
 }
@@ -400,7 +418,6 @@ async function saveEmployee(emp){
   await storeSet('app:kpiData', kpiData, SHARED);
 }
 
-// ---------- Google Sheets sync ----------
 function parseCSV(text){
   const rows = []; let row = []; let field=''; let inQuotes=false;
   for(let i=0;i<text.length;i++){
@@ -411,8 +428,10 @@ function parseCSV(text){
     } else {
       if(c==='"') inQuotes=true;
       else if(c===','){ row.push(field); field=''; }
-      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
-      else if(c==='\r'){ /* skip */ }
+      else if(c==='
+'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c==='
+'){ /* skip */ }
       else field+=c;
     }
   }
@@ -435,14 +454,13 @@ function parseNum(s){
 }
 
 function toCsvUrl(url){
-  // Accept a normal Google Sheets share link and convert to CSV export if possible
   const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if(m && url.includes('/edit')){
     const gidMatch = url.match(/gid=([0-9]+)/);
     const gid = gidMatch ? gidMatch[1] : '0';
     return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
   }
-  return url; // assume already a /pub?output=csv link
+  return url; 
 }
 
 async function syncFromGoogleSheet(dept, targetMonth, silent){
@@ -476,7 +494,6 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     let matched = 0;
 
     if(isRawLedger){
-      // Сырой журнал сделок — считаем суммы по каждому сотруднику сами
       const actorCol = dept==='op' ? sellerCol : doerCol;
       if(actorCol<0) throw new Error('Не нашёл колонку «' + (dept==='op'?'Кто продал':'Кто делает') + '»');
 
@@ -487,6 +504,10 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const row = rows[r];
           const actor = (row[actorCol]||'').trim().toLowerCase();
           if(actor !== nameLc) continue;
+          
+          const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
+          if(statusText.includes('отказ')) continue; 
+
           if(dateCol>=0){
             const dm = String(row[dateCol]||'').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
             if(dm){
@@ -494,29 +515,37 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
               if(mk !== targetMonth) continue;
             }
           }
+          
+          const orderSum = grossCol>=0 ? parseNum(row[grossCol]) : 0;
+
           if(dept==='to'){
             orders++;
-            const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
-            if(statusText.includes('успешно')) completed++;
-            if(netCol>=0) netAmount += parseNum(row[netCol]);
-            if(pendingCol>=0) pending += parseNum(row[pendingCol]);
+            if(statusText.includes('успешно') || statusText.includes('готов')){
+              completed++;
+              netAmount += orderSum;
+            } else {
+              pending += orderSum;
+            }
           } else {
-            deals++;
-            if(grossCol>=0) revenue += parseNum(row[grossCol]);
+            if(statusText.includes('успешно') || statusText.includes('готов')){
+              deals++;
+              revenue += orderSum;
+            } else {
+              pending += orderSum;
+            }
           }
         }
         const values = getKpi(emp.id, targetMonth);
         if(dept==='to'){
           values.orders = orders; values.completed = completed; values.netAmount = netAmount;
-          values.pending = pending; values.avgCheck = orders>0 ? Math.round(netAmount/orders) : 0;
+          values.pending = pending; values.avgCheck = completed>0 ? Math.round(netAmount/completed) : 0;
         } else {
-          values.deals = deals; values.revenue = revenue;
+          values.deals = deals; values.revenue = revenue; values.pending = pending;
         }
         kpiData[targetMonth][emp.id] = values;
         if(orders>0 || deals>0) matched++;
       }
     } else {
-      // Готовая сводная таблица (по одной строке на сотрудника)
       const nameIdx = header.findIndex(h=>/имя|name/i.test(h));
       const idx = nameIdx>=0 ? nameIdx : 0;
       const fieldCols = {};
@@ -568,7 +597,6 @@ async function silentAutoSync(){
   }catch(e){ console.error('auto-sync failed', e); }
 }
 
-// ---------- render ----------
 function render(){
   const main = document.getElementById('main');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
@@ -620,7 +648,7 @@ function renderEmployeeDashboard(){
   const emp = employees.find(e=>e.id===myEmployeeId);
   const dept = DEPARTMENTS[emp.department];
   const checkedIn = isCheckedIn(emp.id);
-  const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
+  const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>b.ts-a.ts);
   const k = getKpi(emp.id, activeMonth);
   const num = Number(k[dept.ratio.num])||0, den = Number(k[dept.ratio.den])||0;
   const ratioPct = den>0 ? Math.min(100, Math.round(num/den*100)) : 0;
@@ -661,7 +689,11 @@ function renderEmployeeDashboard(){
     <div class="card">
       <h2>Мои отметки сегодня</h2>
       ${todays.length===0 ? '<div class="empty">Пока нет отметок</div>' :
-        todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
+        `<div class="logs-container">` + 
+        todays.map(l=>{
+          const tag = (l.type==='in') ? (l.late ? `<span class="log-tag late">Опоздание</span>` : `<span class="log-tag ontime">Вовремя</span>`) : '';
+          return `<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}${tag}</span><span class="mono">${fmtTime(l.ts)}</span></div>`;
+        }).join('') + `</div>`}
     </div>`;
 }
 
@@ -721,10 +753,11 @@ function renderAdminView(){
     });
   });
 
-  const allLogs = logs.slice().sort((a,b)=>b.ts-a.ts).slice(0,30);
+  const allLogs = logs.slice().sort((a,b)=>b.ts-a.ts);
   const logRows = allLogs.map(l=>{
     const emp = employees.find(e=>e.id===l.empId);
-    return `<div class="log-row"><span>${emp?emp.name:'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}</span></span><span class="mono">${fmtDateTime(l.ts)}</span></div>`;
+    const tag = (l.type==='in') ? (l.late ? `<span class="log-tag late">Опоздание</span>` : `<span class="log-tag ontime">Вовремя</span>`) : '';
+    return `<div class="log-row"><span>${emp?emp.name:'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}${tag}</span></span><span class="mono">${fmtDateTime(l.ts)}</span></div>`;
   }).join('');
 
   return `
@@ -775,15 +808,16 @@ function renderAdminView(){
     </div>
 
     <div class="card">
-      <h2>Сотрудники и PIN</h2>
-      <div class="hint" style="margin-top:0;">Имя здесь должно быть написано ТОЧНО так же, как в колонке «Кто продал» / «Кто делает» в Google Таблице — иначе синхронизация не найдёт совпадение.</div>
+      <h2>Сотрудники, График и PIN</h2>
+      <div class="hint" style="margin-top:0;">Укажите время начала смены (например, 10:00). Если сотрудник нажмет START позже этого времени, система зафиксирует опоздание.</div>
       ${employees.map(e=>`
-        <div class="row" style="margin-top:8px;">
-          <input type="text" data-nameemp="${e.id}" value="${e.name}" style="flex:2;">
-          <input type="text" data-pinemp="${e.id}" value="${e.pin}" maxlength="4" placeholder="PIN">
-          <button class="btn secondary small" data-delemp="${e.id}" style="flex:none;color:var(--rust);">Удалить</button>
+        <div class="row" style="margin-top:8px; align-items: center; gap: 4px;">
+          <input type="text" data-nameemp="${e.id}" value="${e.name}" style="flex:2; min-width: 100px;" placeholder="Имя">
+          <input type="time" data-scheduleemp="${e.id}" value="${e.scheduleIn||'10:00'}" style="flex:1.2; padding: 11px 6px;" title="Время начала смены">
+          <input type="text" data-pinemp="${e.id}" value="${e.pin}" maxlength="4" placeholder="PIN" style="width:65px; flex:none; text-align:center;">
+          <button class="btn secondary small" data-delemp="${e.id}" style="flex:none; color:var(--rust); padding:10px 8px;">✕</button>
         </div>`).join('')}
-      <button class="btn secondary small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
+      <button class="btn secondary small" id="savePinsBtn" style="margin-top:6px;">Сохранить изменения</button>
     </div>
 
     <div class="card">
@@ -796,6 +830,7 @@ function renderAdminView(){
         </select>
       </div>
       <div class="row">
+        <input type="time" id="newEmpSchedule" value="10:00" title="Время начала смены">
         <input type="text" id="newEmpPin" placeholder="PIN (4 цифры)" maxlength="4">
         <button class="btn small" id="addEmpBtn">Добавить</button>
       </div>
@@ -803,7 +838,8 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Журнал посещений</h2>
-      ${logRows.length===0? '<div class="empty">Логов пока нет</div>' : logRows}
+      <div class="hint" style="margin-top:-6px; margin-bottom:10px;">Внутри этого блока встроен скролл — вся история сохраняется в базе, а список не растягивает экран.</div>
+      ${logRows.length===0? '<div class="empty">Логов пока нет</div>' : `<div class="logs-container" style="max-height: 400px;">${logRows}</div>`}
     </div>
 
     <div class="card">
@@ -821,19 +857,16 @@ function attachHandlers(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = ()=>{
       mode = t.dataset.mode;
-      if(mode==='admin'){ /* keep adminUnlocked state as-is within session */ }
       render();
     };
   });
 
-  // employee selection list
   document.querySelectorAll('[data-pick]').forEach(btn=>{
     btn.onclick = ()=>{ selectingEmpId = btn.dataset.pick; empPinInput=''; empPinError=''; render(); };
   });
   const backBtn = document.getElementById('backToList');
   if(backBtn) backBtn.onclick = ()=>{ selectingEmpId = null; render(); };
 
-  // employee pin keypad
   document.querySelectorAll('.keypad button[data-empkey]').forEach(btn=>{
     btn.onclick = async ()=>{
       const k = btn.dataset.empkey;
@@ -851,7 +884,6 @@ function attachHandlers(){
     };
   });
 
-  // admin pin keypad
   document.querySelectorAll('.keypad button[data-key]').forEach(btn=>{
     btn.onclick = ()=>{
       const k = btn.dataset.key;
@@ -908,6 +940,10 @@ function attachHandlers(){
       const val = i.value.trim();
       if(emp && val) emp.name = val;
     });
+    document.querySelectorAll('[data-scheduleemp]').forEach(i=>{
+      const emp = employees.find(e=>e.id===i.dataset.scheduleemp);
+      if(emp) emp.scheduleIn = i.value.trim();
+    });
     document.querySelectorAll('[data-pinemp]').forEach(i=>{
       const emp = employees.find(e=>e.id===i.dataset.pinemp);
       if(emp && /^\d{4}$/.test(i.value.trim())) emp.pin = i.value.trim();
@@ -920,19 +956,19 @@ function attachHandlers(){
   if(addEmpBtn) addEmpBtn.onclick = async ()=>{
     const name = document.getElementById('newEmpName').value.trim();
     const dept = document.getElementById('newEmpDept').value;
+    const scheduleIn = document.getElementById('newEmpSchedule').value;
     const pin = document.getElementById('newEmpPin').value.trim();
     if(!name || !/^\d{4}$/.test(pin)){ alert('Укажите имя и 4-значный PIN'); return; }
     const id = 'e' + Date.now();
-    await saveEmployee({id, name, department:dept, pin});
+    await saveEmployee({id, name, department:dept, pin, scheduleIn});
     render();
   };
 
   document.querySelectorAll('[data-delemp]').forEach(btn=>{
     btn.onclick = async ()=>{
-      const emp = employees.find(e=>e.id===btn.dataset.delemp);
-      if(!emp) return;
-      if(!confirm('Удалить сотрудника «' + emp.name + '»? Его KPI и логи посещений останутся в истории, но профиль исчезнет.')) return;
-      employees = employees.filter(e=>e.id!==emp.id);
+      const emp = employees.find(e=>e.id!==btn.dataset.delemp);
+      if(!confirm('Удалить сотрудника? Профиль исчезнет из активных.')) return;
+      employees = employees.filter(e=>e.id!==btn.dataset.delemp);
       await storeSet('app:employees', employees, SHARED);
       render();
     };
@@ -941,7 +977,7 @@ function attachHandlers(){
   const changePinBtn = document.getElementById('changePinBtn');
   if(changePinBtn) changePinBtn.onclick = async ()=>{
     const val = document.getElementById('newAdminPin').value.trim();
-    if(new RegExp('^\\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); render(); }
+    if(new RegExp('^\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); render(); }
     else { alert('PIN должен состоять из ' + ADMIN_PIN_LEN + ' цифр'); }
   };
 
