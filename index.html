@@ -86,6 +86,7 @@
 
   .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .kpi-box{background:var(--paper);border-radius:10px;padding:14px;}
+  .kpi-box.wide{grid-column:1 / -1;}
   .kpi-box .label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;font-weight:600;}
   .kpi-box .value{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.01em;}
 
@@ -543,8 +544,8 @@ function companyFinance(monthKey){
   let netCash = 0, pendingCash = 0, totalPlan = 0;
   employees.forEach(e=>{
     const k = getKpi(e.id, monthKey);
-    totalPlan += Number(k.plan)||0;
     if(e.department==='op'){
+      totalPlan += Number(k.plan)||0; // общий план — строго по плану ОП, план ТО не учитывается
       const gross = Number(k.revenue)||0;
       const actual = Number(k.actualCash)||0;
       netCash += actual;
@@ -816,7 +817,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
       for(const emp of deptEmployees){
         const nameLc = emp.name.trim().toLowerCase();
-        let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0;
+        let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0, actualCash=0;
         for(let r=1;r<rows.length;r++){
           const row = rows[r];
           const actor = (row[actorCol]||'').trim().toLowerCase();
@@ -831,19 +832,21 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
               continue;
             }
           }
+          const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
+          const isDone = statusText.includes('успешно');
+          const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
           if(dept==='to'){
             orders++;
-            const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
-            const isDone = statusText.includes('успешно');
             if(isDone){
               completed++;
-              if(grossCol>=0) netAmount += parseNum(row[grossCol]);
+              netAmount += grossVal; // чистая касса — «Сумма общая» только по успешно завершённым
             } else {
-              if(pendingCol>=0) pending += parseNum(row[pendingCol]);
+              pending += grossVal; // остаток — «Сумма общая» по НЕ завершённым (по статусу)
             }
           } else {
             deals++;
-            if(grossCol>=0) revenue += parseNum(row[grossCol]);
+            revenue += grossVal; // выручка ОП — вся «Сумма общая», без учёта статуса
+            if(isDone) actualCash += grossVal; // касса по факту — только успешно завершённые
           }
         }
         const values = getKpi(emp.id, targetMonth);
@@ -851,7 +854,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           values.orders = orders; values.completed = completed; values.netAmount = netAmount;
           values.pending = pending; values.avgCheck = completed>0 ? Math.round(netAmount/completed) : 0;
         } else {
-          values.deals = deals; values.revenue = revenue;
+          values.deals = deals; values.revenue = revenue; values.actualCash = actualCash;
         }
         kpiData[targetMonth][emp.id] = values;
         if(orders>0 || deals>0) matched++;
@@ -1028,7 +1031,8 @@ function renderEmployeeDashboard(){
       val = (Number(k.deals)>0) ? (Number(k.revenue)/Number(k.deals)) : 0;
     }
     const display = f.type==='number' ? (f.money ? fmtMoney(val) : val) : (escapeHtml(val) || '—');
-    return `<div class="kpi-box"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
+    const wideClass = f.key==='avgCheck' ? ' wide' : '';
+    return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
   }).join('');
 
   return `
