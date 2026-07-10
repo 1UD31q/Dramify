@@ -553,40 +553,47 @@ function companyFinance(monthKey){
   ensureMonth(monthKey);
   const lt = ledgerTotals[monthKey] || {};
   const to = lt.to || null;
-  const hasLedger = !!to;
 
-  // По просьбе: касса компании считается только по ТО. ОП в расчёт не берём.
-  let netCash, pendingCash, grossCash;
-  if(hasLedger){
-    netCash = to.net;         // «Сумма общая» по строкам ТО со статусом «успешно завершено»
-    pendingCash = to.pending; // готовая колонка «Остаток» по ТО
-    grossCash = to.gross;     // «Сумма общая» по всем строкам ТО
-  } else {
-    // Запасной вариант — если таблица ТО ещё не синхронизирована как реестр сделок,
-    // берём то, что сохранено в карточках сотрудников ТО.
-    netCash = 0; pendingCash = 0;
-    employees.forEach(e=>{
-      if(e.department==='to'){
-        const k = getKpi(e.id, monthKey);
-        netCash += Number(k.netAmount)||0;
-        pendingCash += Number(k.pending)||0;
-      }
-    });
+  let netCash, pendingCash, grossCash, totalPlan, source;
+
+  if(trackerData){
+    // Основной источник — трекер тенденции: он уже стабильно синхронизируется
+    // и в нём есть всё нужное, не нужно бороться с отдельным листом сделок.
+    netCash = trackerData.currentSum || 0;        // «Сейчас сумма» — сколько реально собрано
+    totalPlan = trackerData.effectivePlan || 0;    // «Цель месяца»
+    pendingCash = Math.max(0, trackerData.remainingToPlan || 0); // «Сумма» — сколько ещё нужно до цели
     grossCash = netCash + pendingCash;
-  }
-
-  // Общий план — сначала из трекера тенденции (если подключён), иначе сумма планов ТО.
-  let totalPlan = trackerData ? (trackerData.effectivePlan||0) : 0;
-  if(!totalPlan){
+    source = 'tracker';
+  } else if(to){
+    // Запасной вариант — построчный реестр сделок листа «ТО».
+    netCash = to.net;
+    pendingCash = to.pending;
+    grossCash = to.gross;
+    totalPlan = 0;
     employees.forEach(e=>{
       if(e.department==='to'){
         const k = getKpi(e.id, monthKey);
         totalPlan += Number(k.plan)||0;
       }
     });
+    source = 'ledger';
+  } else {
+    // Последний резерв — значения, сохранённые в карточках сотрудников ТО.
+    netCash = 0; pendingCash = 0; totalPlan = 0;
+    employees.forEach(e=>{
+      if(e.department==='to'){
+        const k = getKpi(e.id, monthKey);
+        netCash += Number(k.netAmount)||0;
+        pendingCash += Number(k.pending)||0;
+        totalPlan += Number(k.plan)||0;
+      }
+    });
+    grossCash = netCash + pendingCash;
+    source = 'cards';
   }
+
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct, hasLedger, toBreakdown: to};
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, source, hasLedger: !!to, toBreakdown: to};
 }
 
 function monthEndProjection(monthKey, netCash, totalPlan){
@@ -828,13 +835,24 @@ function parseNum(s){
 }
 
 function toCsvUrl(url){
-  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  if(m && url.includes('/edit')){
-    const gidMatch = url.match(/gid=([0-9]+)/);
-    const gid = gidMatch ? gidMatch[1] : '0';
-    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
+  url = (url||'').trim();
+  const gidMatch = url.match(/gid=([0-9]+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
+
+  // Обычная ссылка на редактирование: .../spreadsheets/d/ID/edit...
+  const editMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)\/edit/);
+  if(editMatch){
+    return `https://docs.google.com/spreadsheets/d/${editMatch[1]}/export?format=csv&gid=${gid}`;
   }
-  return url; 
+
+  // Опубликованная ссылка (Файл → Опубликовать в интернете): .../spreadsheets/d/e/2PACX-.../pubhtml или /pub
+  const pubMatch = url.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+  if(pubMatch){
+    return `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?gid=${gid}&single=true&output=csv`;
+  }
+
+  // Уже готовая прямая ссылка (например, сразу с output=csv) — используем как есть
+  return url;
 }
 
 // Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
@@ -929,7 +947,10 @@ async function syncTracker(silent){
     lastTrackerSyncAt = Date.now();
     if(!silent){ trackerStatus = 'Данные обновлены'; showToast(trackerStatus, 'success'); }
   } catch(err){
-    if(!silent){ trackerStatus = 'Не получилось: ' + err.message; showToast(trackerStatus, 'error'); }
+    const hint = /failed to fetch/i.test(err.message)
+      ? ' — проверьте, что таблица опубликована (Файл → Поделиться → Опубликовать в интернете → формат CSV) и ссылка вставлена целиком'
+      : '';
+    if(!silent){ trackerStatus = 'Не получилось: ' + err.message + hint; showToast(trackerStatus, 'error'); }
   }
   if(!silent){ trackerSyncing = false; render(); }
   else if(mode==='employee'){ render(); }
@@ -1086,7 +1107,10 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       showToast(syncStatus[dept], matched>0 ? 'success' : 'error');
     }
   } catch(err){
-    if(!silent){ syncStatus[dept] = 'Не получилось: ' + err.message; showToast(syncStatus[dept], 'error'); }
+    const hint = /failed to fetch/i.test(err.message)
+      ? ' — проверьте, что таблица опубликована (Файл → Поделиться → Опубликовать в интернете → формат CSV) и ссылка вставлена целиком'
+      : '';
+    if(!silent){ syncStatus[dept] = 'Не получилось: ' + err.message + hint; showToast(syncStatus[dept], 'error'); }
   }
   if(!silent){ syncing[dept] = false; render(); }
   else if(mode==='employee'){ render(); }
@@ -1219,7 +1243,7 @@ function renderEmployeeDashboard(){
       val = (Number(k.deals)>0) ? (Number(k.revenue)/Number(k.deals)) : 0;
     }
     const display = f.type==='number' ? (f.money ? fmtMoney(val) : val) : (escapeHtml(val) || '—');
-    const wideClass = f.key==='avgCheck' ? ' wide' : '';
+    const wideClass = (f.key==='avgCheck' && emp.department==='op') ? ' wide' : '';
     return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
   }).join('');
 
@@ -1363,7 +1387,7 @@ function renderAdminView(){
     <div class="card finance-card">
       <h2 style="display:flex;justify-content:space-between;align-items:center;">
         <span>💰 Касса компании · ${monthLabel(editingMonth)}</span>
-        <span class="sync-indicator ${finance.hasLedger?'live':''}"><span class="sdot"></span>${finance.hasLedger ? 'по таблице ТО' : 'нет данных'}</span>
+        <span class="sync-indicator ${finance.source!=='cards'?'live':''}"><span class="sdot"></span>${finance.source==='tracker' ? 'по трекеру' : finance.source==='ledger' ? 'по таблице ТО' : 'нет данных'}</span>
       </h2>
       <div class="finance-grid">
         <div class="finance-box gross"><div class="fi-icon">📦</div><div class="label">Грязная касса</div><div class="value">${fmtMoney(finance.grossCash)}</div></div>
@@ -1371,11 +1395,13 @@ function renderAdminView(){
         <div class="finance-box warn"><div class="fi-icon">⏳</div><div class="label">Остаток (ещё войдёт)</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
         <div class="finance-box"><div class="fi-icon">🎯</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
       </div>
-      ${finance.hasLedger ? `
+      ${finance.source==='tracker' ? `
+        <div class="hint" style="margin-top:10px;">Цифры взяты из трекера тенденции: «Сейчас сумма» → чистая касса, «Сумма» (сколько ещё нужно до цели) → остаток.</div>` :
+        finance.source==='ledger' ? `
         <div class="hint" style="margin-top:10px;">Посчитано по ${finance.toBreakdown.count} строк(-е) листа «ТО»${finance.toBreakdown.unmatched>0?` · ${finance.toBreakdown.unmatched} из них без сотрудника в приложении (на кассу это не влияет)`:''}.</div>
         ${finance.toBreakdown.diag ? `<div class="hint" style="margin-top:4px;">Колонки: исполнитель — ${finance.toBreakdown.diag.actor}; статус — ${finance.toBreakdown.diag.status}; сумма общая — ${finance.toBreakdown.diag.gross}; остаток — ${finance.toBreakdown.diag.pending}; дата — ${finance.toBreakdown.diag.date}. Всего строк в таблице: ${finance.toBreakdown.diag.totalRowsInSheet}, из них за этот месяц: ${finance.toBreakdown.diag.rowsInMonth}.</div>` : ''}` : `
         <div class="finance-empty-hint">
-          <div>Ещё не подтянул данные с листа «ТО» за ${monthLabel(editingMonth)}. Проверьте ссылку в блоке «Google Таблица» ниже и нажмите «Обновить сейчас» — либо подождите, синхронизация сама пройдёт в течение нескольких минут.</div>
+          <div>Ещё нет данных за ${monthLabel(editingMonth)}. Вставьте ссылку на трекер тенденции ниже (самый надёжный источник) — либо на лист «ТО» — и нажмите «Обновить сейчас».</div>
         </div>`}
       <div class="plan-bar-wrap">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>Выполнение общего плана</span><span>${finance.planPct}%</span></div>
