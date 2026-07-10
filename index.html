@@ -400,7 +400,7 @@ async function pollSharedData(){
   if(isPolling || document.visibilityState==='hidden') return;
   isPolling = true;
   try{
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules] = await Promise.all([
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       storeGet('attendance:log', SHARED),
@@ -408,8 +408,9 @@ async function pollSharedData(){
       storeGet('app:adminPin', SHARED),
       storeGet('app:sheetUrls', SHARED),
       storeGet('app:schedules', SHARED),
+      storeGet('app:ledgerTotals', SHARED),
     ]);
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules});
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger});
     if(snapshot === lastSyncSnapshot) return; // ничего не изменилось — рендер не нужен
     lastSyncSnapshot = snapshot;
 
@@ -420,6 +421,7 @@ async function pollSharedData(){
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = freshSheetUrls;
     if(freshSchedules) schedules = freshSchedules;
+    if(freshLedger) ledgerTotals = freshLedger;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
 
     // если сотрудника, под которым мы сейчас смотрим панель, удалили с другого устройства — выходим на выбор
@@ -541,23 +543,45 @@ function renderCalendarGrid(empId, monthKey, editable){
 // ---------------------------------------------------------------------
 function companyFinance(monthKey){
   ensureMonth(monthKey);
-  let netCash = 0, pendingCash = 0, totalPlan = 0;
+  const lt = ledgerTotals[monthKey] || {};
+  const hasLedger = !!(lt.op || lt.to);
+
+  let netCash, pendingCash, opBreakdown = null, toBreakdown = null;
+  if(hasLedger){
+    // Основной путь: считаем строго по строкам таблицы, а не по сумме карточек сотрудников.
+    // «Успешно завершено» → чистая касса, любой другой статус → остаток.
+    opBreakdown = lt.op || {net:0, pending:0, gross:0, count:0, unmatched:0};
+    toBreakdown = lt.to || {net:0, pending:0, gross:0, count:0, unmatched:0};
+    netCash = opBreakdown.net + toBreakdown.net;
+    pendingCash = opBreakdown.pending + toBreakdown.pending;
+  } else {
+    // Запасной вариант — если таблица не в формате «реестр сделок» (нет статусов по строкам),
+    // считаем по значениям, которые вручную/по колонкам сохранены в карточках сотрудников.
+    netCash = 0; pendingCash = 0;
+    employees.forEach(e=>{
+      const k = getKpi(e.id, monthKey);
+      if(e.department==='op'){
+        const gross = Number(k.revenue)||0;
+        const actual = Number(k.actualCash)||0;
+        netCash += actual;
+        pendingCash += Math.max(0, gross - actual);
+      } else {
+        netCash += Number(k.netAmount)||0;
+        pendingCash += Number(k.pending)||0;
+      }
+    });
+  }
+
+  let totalPlan = 0;
   employees.forEach(e=>{
-    const k = getKpi(e.id, monthKey);
     if(e.department==='op'){
+      const k = getKpi(e.id, monthKey);
       totalPlan += Number(k.plan)||0; // общий план — строго по плану ОП, план ТО не учитывается
-      const gross = Number(k.revenue)||0;
-      const actual = Number(k.actualCash)||0;
-      netCash += actual;
-      pendingCash += Math.max(0, gross - actual); // сколько из выручки ещё не дошло в кассу по факту
-    } else {
-      netCash += Number(k.netAmount)||0;
-      pendingCash += Number(k.pending)||0;
     }
   });
   const grossCash = netCash + pendingCash;
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct};
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, hasLedger, opBreakdown, toBreakdown};
 }
 
 function monthEndProjection(monthKey, netCash, totalPlan){
@@ -576,6 +600,12 @@ let kpiData = {};
 let logs = [];
 let activeMonth = currentMonthKey();
 let editingMonth = activeMonth;
+
+// Итоги, посчитанные напрямую по строкам Google-таблицы (независимо от того,
+// сопоставилась ли строка с конкретным сотрудником) — на них теперь опирается
+// касса компании. ledgerTotals[monthKey][dept] = {net, pending, gross, count, unmatched}
+let ledgerTotals = {};
+let lastSheetSyncAt = {op:null, to:null}; // время последней успешной синхронизации с таблицей
 
 let myEmployeeId = null;
 let mode = 'employee';
@@ -647,6 +677,11 @@ async function loadAll(){
   try {
     const storedSchedules = await storeGet('app:schedules', SHARED);
     if(storedSchedules) schedules = storedSchedules;
+  } catch(e) { console.error(e); }
+
+  try {
+    const storedLedger = await storeGet('app:ledgerTotals', SHARED);
+    if(storedLedger) ledgerTotals = storedLedger;
   } catch(e) { console.error(e); }
 }
 
@@ -781,6 +816,19 @@ function toCsvUrl(url){
   return url; 
 }
 
+// Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
+// Если дата пустая — строка не отбрасывается (так было и раньше).
+function rowInMonth(row, dateCol, targetMonth){
+  if(dateCol<0) return true;
+  const dateRaw = String(row[dateCol]||'').trim();
+  const dm = dateRaw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if(dm){
+    const mk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
+    return mk === targetMonth;
+  }
+  return !dateRaw;
+}
+
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
   const rawUrl = (sheetUrls[dept]||'').trim();
@@ -815,6 +863,24 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       const actorCol = dept==='op' ? sellerCol : doerCol;
       if(actorCol<0) throw new Error('Не нашёл колонку «' + (dept==='op'?'Кто продал':'Кто делает') + '»');
 
+      // Касса компании считается по ВСЕЙ таблице целиком, а не по сумме сотрудников:
+      // «успешно завершено» → чистая касса, любой другой статус → остаток.
+      // Так учитываются и строки, которые не сопоставились ни с одним сотрудником.
+      let ledgerNet = 0, ledgerPending = 0, ledgerCount = 0, ledgerUnmatched = 0;
+      for(let r=1;r<rows.length;r++){
+        const row = rows[r];
+        if(!rowInMonth(row, dateCol, targetMonth)) continue;
+        const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
+        const isDone = statusText.includes('успешно');
+        const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
+        if(isDone) ledgerNet += grossVal; else ledgerPending += grossVal;
+        ledgerCount++;
+        const actor = (row[actorCol]||'').trim().toLowerCase();
+        if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)) ledgerUnmatched++;
+      }
+      if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
+      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerNet+ledgerPending, count: ledgerCount, unmatched: ledgerUnmatched};
+
       for(const emp of deptEmployees){
         const nameLc = emp.name.trim().toLowerCase();
         let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0, actualCash=0;
@@ -822,16 +888,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const row = rows[r];
           const actor = (row[actorCol]||'').trim().toLowerCase();
           if(actor !== nameLc) continue;
-          if(dateCol>=0){
-            const dateRaw = String(row[dateCol]||'').trim();
-            const dm = dateRaw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-            if(dm){
-              const mk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
-              if(mk !== targetMonth) continue;
-            } else if(dateRaw){
-              continue;
-            }
-          }
+          if(!rowInMonth(row, dateCol, targetMonth)) continue;
           const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
           const isDone = statusText.includes('успешно');
           const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
@@ -892,10 +949,14 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
     await storeSet('app:kpiData', kpiData, SHARED);
     await storeSet('app:sheetUrls', sheetUrls, SHARED);
+    await storeSet('app:ledgerTotals', ledgerTotals, SHARED);
+    lastSheetSyncAt[dept] = Date.now();
     if(!silent){
+      const lt = ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept];
+      const unmatchedNote = (lt && lt.unmatched>0) ? ` (${lt.unmatched} строк не сопоставлено с сотрудниками — на кассу компании это не влияет)` : '';
       syncStatus[dept] = matched>0
-        ? `Обновлено ${matched} из ${deptEmployees.length} сотрудников`
-        : 'Никто не найден — проверьте, что имена в таблице совпадают с именами в приложении';
+        ? `Обновлено ${matched} из ${deptEmployees.length} сотрудников${unmatchedNote}`
+        : 'Никто не найден — проверьте, что имена в таблице совпадают с именами в приложении' + unmatchedNote;
       showToast(syncStatus[dept], matched>0 ? 'success' : 'error');
     }
   } catch(err){
@@ -1173,13 +1234,22 @@ function renderAdminView(){
     </div>
 
     <div class="card">
-      <h2>Касса компании · ${monthLabel(editingMonth)}</h2>
+      <h2 style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Касса компании · ${monthLabel(editingMonth)}</span>
+        <span class="sync-indicator ${finance.hasLedger?'live':''}"><span class="sdot"></span>${finance.hasLedger ? 'по таблице' : 'по карточкам'}</span>
+      </h2>
       <div class="finance-grid">
         <div class="finance-box"><div class="label">Грязная касса</div><div class="value">${fmtMoney(finance.grossCash)}</div></div>
         <div class="finance-box accent"><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
         <div class="finance-box warn"><div class="label">Остаток (ещё войдёт)</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
         <div class="finance-box"><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
       </div>
+      ${finance.hasLedger ? `
+        <div class="hint" style="margin-top:10px;">
+          ОП: чистая ${fmtMoney(finance.opBreakdown.net)} · остаток ${fmtMoney(finance.opBreakdown.pending)} (${finance.opBreakdown.count} строк)${finance.opBreakdown.unmatched>0?`, из них ${finance.opBreakdown.unmatched} не сопоставлено с сотрудниками`:''}<br>
+          ТО: чистая ${fmtMoney(finance.toBreakdown.net)} · остаток ${fmtMoney(finance.toBreakdown.pending)} (${finance.toBreakdown.count} строк)${finance.toBreakdown.unmatched>0?`, из них ${finance.toBreakdown.unmatched} не сопоставлено с сотрудниками`:''}
+        </div>` : `
+        <div class="hint" style="margin-top:10px;">Таблица не в формате реестра сделок (нет колонки «Статус» построчно) — считаю по значениям из карточек сотрудников.</div>`}
       <div class="plan-bar-wrap">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>Выполнение общего плана</span><span>${finance.planPct}%</span></div>
         <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${Math.min(100,finance.planPct)}%"></div></div>
@@ -1216,6 +1286,7 @@ function renderAdminView(){
           <button class="btn small ${syncing.op?'secondary':''}" id="syncOpBtn" ${syncing.op?'disabled':''}>${syncing.op?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.op ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.op)}</div>` : ''}
+        ${lastSheetSyncAt.op ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastSheetSyncAt.op)}</div>` : ''}
       </div>
       <div style="margin-top:16px;">
         <label class="field-label">Лист «ТО»</label>
@@ -1224,6 +1295,7 @@ function renderAdminView(){
           <button class="btn small ${syncing.to?'secondary':''}" id="syncToBtn" ${syncing.to?'disabled':''}>${syncing.to?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.to ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.to)}</div>` : ''}
+        ${lastSheetSyncAt.to ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastSheetSyncAt.to)}</div>` : ''}
       </div>
     </div>
 
@@ -1504,7 +1576,7 @@ let sheetSyncTimer = null;
   attachDelegatedHandlers();
   await loadAll();
   render();
-  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules});
+  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного render()
   if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim()){
     silentAutoSync();
