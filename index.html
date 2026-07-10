@@ -238,16 +238,20 @@
   .cal-legend .sw.work{background:var(--paper);border:1px solid var(--line);}
 
   /* ---------- финансовая панель / прогноз ---------- */
+  .finance-card .kpi-boxes, .finance-card h2{position:relative;}
   .finance-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .finance-box{background:var(--paper);border-radius:10px;padding:14px;}
+  .finance-box{background:var(--paper);border-radius:12px;padding:14px;position:relative;overflow:hidden;}
+  .finance-box .fi-icon{position:absolute;top:10px;right:12px;font-size:16px;opacity:.55;}
   .finance-box .label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;font-weight:600;}
-  .finance-box .value{font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.01em;}
-  .finance-box.accent{background:var(--teal-tint);}
+  .finance-box .value{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.01em;}
+  .finance-box.gross{background:linear-gradient(155deg, var(--brass-tint), var(--paper));}
+  .finance-box.accent{background:linear-gradient(155deg, var(--teal-tint), #fff);}
   .finance-box.accent .value{color:var(--teal-dark);}
-  .finance-box.warn{background:var(--rust-tint);}
+  .finance-box.warn{background:linear-gradient(155deg, var(--rust-tint), #fff);}
   .finance-box.warn .value{color:var(--rust-dark);}
+  .finance-empty-hint{margin-top:10px;padding:12px 14px;border-radius:10px;background:var(--brass-tint);font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
   .trend-card{border-radius:12px;background:linear-gradient(135deg, var(--teal-tint), #fff);padding:14px;margin-top:14px;}
-  .trend-card .trend-title{font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:6px;}
+  .trend-card .trend-title{font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:6px;display:flex;align-items:center;}
   .trend-card .trend-text{font-size:13px;color:var(--ink-soft);line-height:1.5;}
   .trend-card.behind{background:linear-gradient(135deg, var(--rust-tint), #fff);}
   .trend-card.behind .trend-title{color:var(--rust-dark);}
@@ -548,30 +552,22 @@ function renderCalendarGrid(empId, monthKey, editable){
 function companyFinance(monthKey){
   ensureMonth(monthKey);
   const lt = ledgerTotals[monthKey] || {};
-  const hasLedger = !!(lt.op || lt.to);
+  const to = lt.to || null;
+  const hasLedger = !!to;
 
-  let netCash, pendingCash, grossCash, opBreakdown = null, toBreakdown = null;
+  // По просьбе: касса компании считается только по ТО. ОП в расчёт не берём.
+  let netCash, pendingCash, grossCash;
   if(hasLedger){
-    // Основной путь: считаем строго по колонкам таблицы, а не по сумме карточек сотрудников.
-    // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
-    // готовая колонка «Остаток» → остаток (ещё войдёт).
-    opBreakdown = lt.op || {net:0, pending:0, gross:0, count:0, unmatched:0};
-    toBreakdown = lt.to || {net:0, pending:0, gross:0, count:0, unmatched:0};
-    netCash = opBreakdown.net + toBreakdown.net;
-    pendingCash = opBreakdown.pending + toBreakdown.pending;
-    grossCash = opBreakdown.gross + toBreakdown.gross;
+    netCash = to.net;         // «Сумма общая» по строкам ТО со статусом «успешно завершено»
+    pendingCash = to.pending; // готовая колонка «Остаток» по ТО
+    grossCash = to.gross;     // «Сумма общая» по всем строкам ТО
   } else {
-    // Запасной вариант — если таблица не в формате «реестр сделок» (нет статусов по строкам),
-    // считаем по значениям, которые вручную/по колонкам сохранены в карточках сотрудников.
+    // Запасной вариант — если таблица ТО ещё не синхронизирована как реестр сделок,
+    // берём то, что сохранено в карточках сотрудников ТО.
     netCash = 0; pendingCash = 0;
     employees.forEach(e=>{
-      const k = getKpi(e.id, monthKey);
-      if(e.department==='op'){
-        const gross = Number(k.revenue)||0;
-        const actual = Number(k.actualCash)||0;
-        netCash += actual;
-        pendingCash += Math.max(0, gross - actual);
-      } else {
+      if(e.department==='to'){
+        const k = getKpi(e.id, monthKey);
         netCash += Number(k.netAmount)||0;
         pendingCash += Number(k.pending)||0;
       }
@@ -579,15 +575,18 @@ function companyFinance(monthKey){
     grossCash = netCash + pendingCash;
   }
 
-  let totalPlan = 0;
-  employees.forEach(e=>{
-    if(e.department==='op'){
-      const k = getKpi(e.id, monthKey);
-      totalPlan += Number(k.plan)||0; // общий план — строго по плану ОП, план ТО не учитывается
-    }
-  });
+  // Общий план — сначала из трекера тенденции (если подключён), иначе сумма планов ТО.
+  let totalPlan = trackerData ? (trackerData.effectivePlan||0) : 0;
+  if(!totalPlan){
+    employees.forEach(e=>{
+      if(e.department==='to'){
+        const k = getKpi(e.id, monthKey);
+        totalPlan += Number(k.plan)||0;
+      }
+    });
+  }
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct, hasLedger, opBreakdown, toBreakdown};
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, hasLedger, toBreakdown: to};
 }
 
 function monthEndProjection(monthKey, netCash, totalPlan){
@@ -1344,30 +1343,29 @@ function renderAdminView(){
       ${editingMonth!==activeMonth ? `<button class="btn teal small" id="activateBtn">Сделать активным для сотрудников</button>` : ''}
     </div>
 
-    <div class="card">
+    <div class="card finance-card">
       <h2 style="display:flex;justify-content:space-between;align-items:center;">
-        <span>Касса компании · ${monthLabel(editingMonth)}</span>
-        <span class="sync-indicator ${finance.hasLedger?'live':''}"><span class="sdot"></span>${finance.hasLedger ? 'по таблице' : 'по карточкам'}</span>
+        <span>💰 Касса компании · ${monthLabel(editingMonth)}</span>
+        <span class="sync-indicator ${finance.hasLedger?'live':''}"><span class="sdot"></span>${finance.hasLedger ? 'по таблице ТО' : 'нет данных'}</span>
       </h2>
       <div class="finance-grid">
-        <div class="finance-box"><div class="label">Грязная касса</div><div class="value">${fmtMoney(finance.grossCash)}</div></div>
-        <div class="finance-box accent"><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
-        <div class="finance-box warn"><div class="label">Остаток (ещё войдёт)</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
-        <div class="finance-box"><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
+        <div class="finance-box gross"><div class="fi-icon">📦</div><div class="label">Грязная касса</div><div class="value">${fmtMoney(finance.grossCash)}</div></div>
+        <div class="finance-box accent"><div class="fi-icon">✅</div><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
+        <div class="finance-box warn"><div class="fi-icon">⏳</div><div class="label">Остаток (ещё войдёт)</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
+        <div class="finance-box"><div class="fi-icon">🎯</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
       </div>
       ${finance.hasLedger ? `
-        <div class="hint" style="margin-top:10px;">
-          ОП: чистая ${fmtMoney(finance.opBreakdown.net)} · остаток ${fmtMoney(finance.opBreakdown.pending)} (${finance.opBreakdown.count} строк)${finance.opBreakdown.unmatched>0?`, из них ${finance.opBreakdown.unmatched} не сопоставлено с сотрудниками`:''}<br>
-          ТО: чистая ${fmtMoney(finance.toBreakdown.net)} · остаток ${fmtMoney(finance.toBreakdown.pending)} (${finance.toBreakdown.count} строк)${finance.toBreakdown.unmatched>0?`, из них ${finance.toBreakdown.unmatched} не сопоставлено с сотрудниками`:''}
-        </div>` : `
-        <div class="hint" style="margin-top:10px;">Таблица не в формате реестра сделок (нет колонки «Статус» построчно) — считаю по значениям из карточек сотрудников.</div>`}
+        <div class="hint" style="margin-top:10px;">Посчитано по ${finance.toBreakdown.count} строк(-е) листа «ТО»${finance.toBreakdown.unmatched>0?` · ${finance.toBreakdown.unmatched} из них без сотрудника в приложении (на кассу это не влияет)`:''}.</div>` : `
+        <div class="finance-empty-hint">
+          <div>Ещё не подтянул данные с листа «ТО» за ${monthLabel(editingMonth)}. Проверьте ссылку в блоке «Google Таблица» ниже и нажмите «Обновить сейчас» — либо подождите, синхронизация сама пройдёт в течение нескольких минут.</div>
+        </div>`}
       <div class="plan-bar-wrap">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>Выполнение общего плана</span><span>${finance.planPct}%</span></div>
         <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${Math.min(100,finance.planPct)}%"></div></div>
       </div>
       ${trackerData ? `
         <div class="trend-card ${trackerData.forecastPct<100?'behind':''}">
-          <div class="trend-title">Прогноз к концу месяца <span class="sync-indicator live" style="margin-left:6px;"><span class="sdot"></span>по трекеру</span></div>
+          <div class="trend-title">📈 Прогноз к концу месяца <span class="sync-indicator live" style="margin-left:6px;"><span class="sdot"></span>по трекеру</span></div>
           <div class="trend-text">
             Сегодня ${trackerData.dayToday}-й день, осталось ${trackerData.daysLeft} дн.${trackerData.workDaysLeft?` (${trackerData.workDaysLeft} рабочих)`:''}.
             Сейчас в кассе ${fmtMoney(trackerData.currentSum)}, должно быть ${fmtMoney(trackerData.shouldBeNow)} — разница ${trackerData.diff>=0?'+':''}${fmtMoney(trackerData.diff)}.
@@ -1376,7 +1374,7 @@ function renderAdminView(){
           </div>
         </div>` : projection ? `
         <div class="trend-card ${projection.projectedPct<100?'behind':''}">
-          <div class="trend-title">Прогноз к концу месяца</div>
+          <div class="trend-title">📈 Прогноз к концу месяца</div>
           <div class="trend-text">Сегодня ${projection.dayOfMonth}-й день из ${projection.total}. Если темп сохранится, к концу месяца касса составит примерно ${fmtMoney(projection.projectedNet)} — это ${projection.projectedPct}% от общего плана.</div>
         </div>` : `
         <div class="hint" style="margin-top:12px;">Прогноз к концу месяца показывается только для текущего активного месяца.</div>`}
