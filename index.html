@@ -965,9 +965,24 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     const deptEmployees = employees.filter(e=>e.department===dept);
     let matched = 0;
 
+    const colLetter = (idx)=> idx<0 ? null : String.fromCharCode(65 + idx);
+    const colInfo = (idx)=> idx<0 ? 'не найдена' : `«${header[idx]}» (кол. ${colLetter(idx)})`;
+
     if(isRawLedger){
       const actorCol = dept==='op' ? sellerCol : doerCol;
       if(actorCol<0) throw new Error('Не нашёл колонку «' + (dept==='op'?'Кто продал':'Кто делает') + '»');
+
+      // Диагностика: какие колонки реально нашлись — чтобы можно было проверить,
+      // не перепутала ли программа колонку, не открывая саму таблицу.
+      const diag = {
+        actorLabel: dept==='op' ? 'исполнитель (Кто продал)' : 'исполнитель (Кто делает)',
+        actor: colInfo(actorCol),
+        status: colInfo(statusCol),
+        gross: colInfo(grossCol),
+        pending: colInfo(pendingCol),
+        date: colInfo(dateCol),
+        totalRowsInSheet: rows.length-1,
+      };
 
       // Касса компании считается напрямую по колонкам таблицы, по всей таблице целиком:
       // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
@@ -977,7 +992,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const row = rows[r];
         if(!rowInMonth(row, dateCol, targetMonth)) continue;
         const actor = (row[actorCol]||'').trim().toLowerCase();
-        if(!actor) continue; // строка вообще не про этот отдел (исполнитель не указан) — не считаем её сюда
+        if(!actor || actor==='-' || actor==='—' || actor==='–' || actor==='n/a') continue; // строка вообще не про этот отдел (исполнитель не указан) — не считаем её сюда
         const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
         const isDone = statusText.includes('успешно');
         const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
@@ -988,8 +1003,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         ledgerCount++;
         if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)) ledgerUnmatched++;
       }
+      diag.rowsInMonth = ledgerCount;
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
-      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched};
+      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched, diag};
 
       for(const emp of deptEmployees){
         const nameLc = emp.name.trim().toLowerCase();
@@ -1356,7 +1372,8 @@ function renderAdminView(){
         <div class="finance-box"><div class="fi-icon">🎯</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
       </div>
       ${finance.hasLedger ? `
-        <div class="hint" style="margin-top:10px;">Посчитано по ${finance.toBreakdown.count} строк(-е) листа «ТО»${finance.toBreakdown.unmatched>0?` · ${finance.toBreakdown.unmatched} из них без сотрудника в приложении (на кассу это не влияет)`:''}.</div>` : `
+        <div class="hint" style="margin-top:10px;">Посчитано по ${finance.toBreakdown.count} строк(-е) листа «ТО»${finance.toBreakdown.unmatched>0?` · ${finance.toBreakdown.unmatched} из них без сотрудника в приложении (на кассу это не влияет)`:''}.</div>
+        ${finance.toBreakdown.diag ? `<div class="hint" style="margin-top:4px;">Колонки: исполнитель — ${finance.toBreakdown.diag.actor}; статус — ${finance.toBreakdown.diag.status}; сумма общая — ${finance.toBreakdown.diag.gross}; остаток — ${finance.toBreakdown.diag.pending}; дата — ${finance.toBreakdown.diag.date}. Всего строк в таблице: ${finance.toBreakdown.diag.totalRowsInSheet}, из них за этот месяц: ${finance.toBreakdown.diag.rowsInMonth}.</div>` : ''}` : `
         <div class="finance-empty-hint">
           <div>Ещё не подтянул данные с листа «ТО» за ${monthLabel(editingMonth)}. Проверьте ссылку в блоке «Google Таблица» ниже и нажмите «Обновить сейчас» — либо подождите, синхронизация сама пройдёт в течение нескольких минут.</div>
         </div>`}
