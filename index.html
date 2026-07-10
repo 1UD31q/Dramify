@@ -546,14 +546,16 @@ function companyFinance(monthKey){
   const lt = ledgerTotals[monthKey] || {};
   const hasLedger = !!(lt.op || lt.to);
 
-  let netCash, pendingCash, opBreakdown = null, toBreakdown = null;
+  let netCash, pendingCash, grossCash, opBreakdown = null, toBreakdown = null;
   if(hasLedger){
-    // Основной путь: считаем строго по строкам таблицы, а не по сумме карточек сотрудников.
-    // «Успешно завершено» → чистая касса, любой другой статус → остаток.
+    // Основной путь: считаем строго по колонкам таблицы, а не по сумме карточек сотрудников.
+    // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
+    // готовая колонка «Остаток» → остаток (ещё войдёт).
     opBreakdown = lt.op || {net:0, pending:0, gross:0, count:0, unmatched:0};
     toBreakdown = lt.to || {net:0, pending:0, gross:0, count:0, unmatched:0};
     netCash = opBreakdown.net + toBreakdown.net;
     pendingCash = opBreakdown.pending + toBreakdown.pending;
+    grossCash = opBreakdown.gross + toBreakdown.gross;
   } else {
     // Запасной вариант — если таблица не в формате «реестр сделок» (нет статусов по строкам),
     // считаем по значениям, которые вручную/по колонкам сохранены в карточках сотрудников.
@@ -570,6 +572,7 @@ function companyFinance(monthKey){
         pendingCash += Number(k.pending)||0;
       }
     });
+    grossCash = netCash + pendingCash;
   }
 
   let totalPlan = 0;
@@ -579,7 +582,6 @@ function companyFinance(monthKey){
       totalPlan += Number(k.plan)||0; // общий план — строго по плану ОП, план ТО не учитывается
     }
   });
-  const grossCash = netCash + pendingCash;
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
   return {netCash, pendingCash, grossCash, totalPlan, planPct, hasLedger, opBreakdown, toBreakdown};
 }
@@ -863,23 +865,26 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       const actorCol = dept==='op' ? sellerCol : doerCol;
       if(actorCol<0) throw new Error('Не нашёл колонку «' + (dept==='op'?'Кто продал':'Кто делает') + '»');
 
-      // Касса компании считается по ВСЕЙ таблице целиком, а не по сумме сотрудников:
-      // «успешно завершено» → чистая касса, любой другой статус → остаток.
-      // Так учитываются и строки, которые не сопоставились ни с одним сотрудником.
-      let ledgerNet = 0, ledgerPending = 0, ledgerCount = 0, ledgerUnmatched = 0;
+      // Касса компании считается напрямую по колонкам таблицы, по всей таблице целиком:
+      // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
+      // готовая колонка «Остаток» → остаток (ещё войдёт). Ничего дополнительно не выводим.
+      let ledgerGross = 0, ledgerNet = 0, ledgerPending = 0, ledgerCount = 0, ledgerUnmatched = 0;
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
         if(!rowInMonth(row, dateCol, targetMonth)) continue;
         const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
         const isDone = statusText.includes('успешно');
         const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
-        if(isDone) ledgerNet += grossVal; else ledgerPending += grossVal;
+        const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]) : 0;
+        ledgerGross += grossVal;
+        if(isDone) ledgerNet += grossVal;
+        ledgerPending += pendingVal;
         ledgerCount++;
         const actor = (row[actorCol]||'').trim().toLowerCase();
         if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)) ledgerUnmatched++;
       }
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
-      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerNet+ledgerPending, count: ledgerCount, unmatched: ledgerUnmatched};
+      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched};
 
       for(const emp of deptEmployees){
         const nameLc = emp.name.trim().toLowerCase();
