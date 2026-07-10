@@ -976,6 +976,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
         if(!rowInMonth(row, dateCol, targetMonth)) continue;
+        const actor = (row[actorCol]||'').trim().toLowerCase();
+        if(!actor) continue; // строка вообще не про этот отдел (исполнитель не указан) — не считаем её сюда
         const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
         const isDone = statusText.includes('успешно');
         const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
@@ -984,7 +986,6 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         if(isDone) ledgerNet += grossVal;
         ledgerPending += pendingVal;
         ledgerCount++;
-        const actor = (row[actorCol]||'').trim().toLowerCase();
         if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)) ledgerUnmatched++;
       }
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
