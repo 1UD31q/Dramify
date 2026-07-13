@@ -249,6 +249,11 @@
   .finance-box.accent .value{color:var(--teal-dark);}
   .finance-box.warn{background:linear-gradient(155deg, var(--rust-tint), #fff);}
   .finance-box.warn .value{color:var(--rust-dark);}
+  .finance-box.wide{grid-column:1 / -1;}
+  .finance-box.trend-box{background:linear-gradient(135deg, var(--ink) 0%, var(--ink-soft) 100%);}
+  .finance-box.trend-box .label{color:rgba(255,255,255,.7);}
+  .finance-box.trend-box .value{color:#fff;}
+  .finance-box.trend-box .fi-icon{opacity:.85;}
   .finance-empty-hint{margin-top:10px;padding:12px 14px;border-radius:10px;background:var(--brass-tint);font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
   .trend-card{border-radius:12px;background:linear-gradient(135deg, var(--teal-tint), #fff);padding:14px;margin-top:14px;}
   .trend-card .trend-title{font-size:12px;font-weight:700;color:var(--teal-dark);margin-bottom:6px;display:flex;align-items:center;}
@@ -272,6 +277,108 @@
   select, input[type=text], input[type=number]{font-size:16px;}
   .keypad button, .btn, .name-btn, .tab{min-height:44px;} /* комфортная зона нажатия */
   body{padding-bottom:env(safe-area-inset-bottom);}
+
+  /* =========================================================================
+     ДИЗАЙН-ПОЛИРОВКА — фактура, свечения, акценты, более живые детали
+     ========================================================================= */
+
+  ::selection{background:var(--brass);color:#fff;}
+
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--brass-tint);border-radius:20px;border:2px solid var(--paper);}
+  ::-webkit-scrollbar-thumb:hover{background:var(--brass);}
+  *{scrollbar-width:thin;scrollbar-color:var(--brass-tint) transparent;}
+
+  :focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+
+  /* лёгкая зерновая текстура поверх фона — добавляет глубину без утяжеления */
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  }
+  .app{position:relative;z-index:1;}
+
+  /* --- шапка: декоративные размытые пятна света + сетка точек --- */
+  .cover{isolation:isolate;}
+  .cover::before{
+    content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;
+    background-image:radial-gradient(rgba(255,255,255,.16) 1px, transparent 1px);
+    background-size:16px 16px;mask-image:linear-gradient(180deg, #000 0%, transparent 75%);
+  }
+  .cover::after{
+    background:
+      radial-gradient(circle at 85% -10%, rgba(184,68,125,.35), transparent 55%),
+      radial-gradient(circle at -10% 60%, rgba(31,111,99,.28), transparent 50%);
+    width:100%;height:100%;top:0;right:0;
+  }
+  .brand-banner{filter:drop-shadow(0 2px 6px rgba(0,0,0,.25));}
+  .tabs{backdrop-filter:blur(6px);}
+  .tab{position:relative;}
+  .tab.active::after{
+    content:'';position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
+    width:4px;height:4px;border-radius:50%;background:var(--brass);
+  }
+
+  /* --- карточки: акцентная полоса при наведении + мягкое свечение --- */
+  .card{position:relative;transition:box-shadow .22s ease, border-color .22s ease, transform .22s ease;}
+  .card::before{
+    content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;
+    background:linear-gradient(180deg, var(--brass), var(--teal));opacity:0;transition:opacity .22s ease;
+  }
+  .card:hover{box-shadow:0 10px 24px -12px rgba(59,34,71,.18);border-color:transparent;transform:translateY(-1px);}
+  .card:hover::before{opacity:1;}
+
+  /* --- кнопки: объём, внутренний блик, приятное нажатие --- */
+  .btn{
+    position:relative;overflow:hidden;background:linear-gradient(155deg, var(--ink-soft), var(--ink));
+    box-shadow:0 6px 14px -6px rgba(59,34,71,.5), inset 0 1px 0 rgba(255,255,255,.12);
+    letter-spacing:.01em;
+  }
+  .btn::after{
+    content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(255,255,255,.18), transparent 60%);
+    opacity:0;transition:opacity .18s ease;
+  }
+  .btn:hover{opacity:1;}
+  .btn:hover::after{opacity:1;}
+  .btn:active{transform:scale(.97) translateY(1px);box-shadow:0 2px 6px -2px rgba(59,34,71,.5);}
+  .btn.teal{background:linear-gradient(155deg, #2A8A78, var(--teal-dark));box-shadow:0 6px 14px -6px rgba(31,111,99,.55), inset 0 1px 0 rgba(255,255,255,.15);}
+  .btn.secondary{box-shadow:none;}
+  .btn.danger{box-shadow:none;}
+
+  /* --- avatar: тонкое градиентное кольцо --- */
+  .avatar{position:relative;box-shadow:0 0 0 2px #fff, 0 0 0 3.5px var(--line);}
+  .name-btn:hover .avatar.op{box-shadow:0 0 0 2px #fff, 0 0 0 3.5px var(--brass);}
+  .name-btn:hover .avatar.to{box-shadow:0 0 0 2px #fff, 0 0 0 3.5px var(--teal);}
+  .name-btn:hover{box-shadow:0 6px 16px -8px rgba(59,34,71,.25);transform:translateY(-1px);}
+
+  /* --- kpi/finance-box: цветной акцент слева, лёгкая текстура --- */
+  .kpi-box, .finance-box{position:relative;overflow:hidden;}
+  .kpi-box::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brass);opacity:.35;}
+  .kpi-box .value, .finance-box .value{font-variant-numeric:tabular-nums;}
+
+  /* --- punch-btn: более сочное свечение и блик --- */
+  .punch-btn{position:relative;}
+  .punch-btn::before{
+    content:'';position:absolute;top:14%;left:22%;width:38%;height:22%;border-radius:50%;
+    background:rgba(255,255,255,.35);filter:blur(6px);pointer-events:none;
+  }
+
+  /* --- бейджи с точкой-индикатором --- */
+  .badge{display:inline-flex;align-items:center;gap:5px;}
+  .badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;}
+
+  /* --- плавный градиентный разделитель между секциями --- */
+  .dept-group-title{position:relative;}
+  .dept-group-title::before{
+    content:'';position:absolute;top:-1px;left:0;width:40px;height:1px;
+    background:linear-gradient(90deg, var(--brass), transparent);
+  }
+
+  /* --- тонкая анимация появления числовых значений при рендере --- */
+  @keyframes valuePop{ from{opacity:0;transform:translateY(2px);} to{opacity:1;transform:translateY(0);} }
+  #main.anim-in .value{animation:valuePop .35s ease both;}
+  @media (prefers-reduced-motion: reduce){ #main.anim-in .value{animation:none;} }
 </style>
 </head>
 <body>
@@ -549,6 +656,16 @@ function renderCalendarGrid(empId, monthKey, editable){
 // ---------------------------------------------------------------------
 // Финансы компании: грязная/чистая касса, остаток, прогноз к концу месяца
 // ---------------------------------------------------------------------
+// План делится поровну между сотрудниками отдела от одной и той же цели трекера:
+// ОП продаёт, ТО делает — по факту это одна и та же сумма, просто у каждого отдела
+// свой список людей, между которыми она делится.
+function planShareFor(deptKey){
+  if(!trackerData || !trackerData.effectivePlan) return null;
+  const count = employees.filter(e=>e.department===deptKey).length;
+  if(count<=0) return null;
+  return Math.round(trackerData.effectivePlan / count);
+}
+
 function companyFinance(monthKey){
   ensureMonth(monthKey);
   const lt = ledgerTotals[monthKey] || {};
@@ -593,7 +710,19 @@ function companyFinance(monthKey){
   }
 
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct, source, hasLedger: !!to, toBreakdown: to};
+  const trendPct = (source==='tracker' && trackerData) ? trackerData.trendPct : planPct;
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to};
+}
+
+// Общий план (цель из трекера) делится ПОРОВНУ между сотрудниками внутри
+// каждого отдела отдельно — у ОП и у ТО берётся одна и та же сумма цели
+// (ОП продаёт, ТО делает — деньги одни и те же), просто делится каждая
+// на свою численность отдела.
+function planShareFor(deptKey){
+  if(!trackerData || !trackerData.effectivePlan) return null;
+  const count = employees.filter(e=>e.department===deptKey).length;
+  if(count<=0) return null;
+  return Math.round(trackerData.effectivePlan / count);
 }
 
 function monthEndProjection(monthKey, netCash, totalPlan){
@@ -934,9 +1063,7 @@ async function syncTracker(silent){
   if(!silent){ trackerSyncing = true; trackerStatus = ''; render(); }
   try{
     const url = toCsvUrl(rawUrl);
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
+    const text = await fetchCsvWithRetry(url);
     const rows = parseCSV(text);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
     const grid = rows.map(r=>r.map(c=>String(c||'').trim()));
@@ -956,6 +1083,27 @@ async function syncTracker(silent){
   else if(mode==='employee'){ render(); }
 }
 
+// Публичный CSV-экспорт гугл-таблиц иногда отвечает ошибкой без видимой причины
+// (не наша ошибка, а особенность самого Google) — поэтому пробуем ещё пару раз
+// с небольшой паузой, прежде чем показать ошибку пользователю.
+async function fetchCsvWithRetry(url, attempts){
+  attempts = attempts || 3;
+  let lastErr;
+  for(let i=0;i<attempts;i++){
+    try{
+      const res = await fetch(url, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if(!text || !text.trim()) throw new Error('Пустой ответ');
+      return text;
+    }catch(err){
+      lastErr = err;
+      if(i<attempts-1) await new Promise(r=>setTimeout(r, 700*(i+1)));
+    }
+  }
+  throw lastErr;
+}
+
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
   const rawUrl = (sheetUrls[dept]||'').trim();
@@ -963,9 +1111,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
   if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
   try{
     const url = toCsvUrl(rawUrl);
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
+    const text = await fetchCsvWithRetry(url);
     const rows = parseCSV(text);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
 
@@ -1009,6 +1155,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
       // готовая колонка «Остаток» → остаток (ещё войдёт). Ничего дополнительно не выводим.
       let ledgerGross = 0, ledgerNet = 0, ledgerPending = 0, ledgerCount = 0, ledgerUnmatched = 0;
+      const unmatchedNames = new Set();
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
         if(!rowInMonth(row, dateCol, targetMonth)) continue;
@@ -1022,9 +1169,13 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         if(isDone) ledgerNet += grossVal;
         ledgerPending += pendingVal;
         ledgerCount++;
-        if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)) ledgerUnmatched++;
+        if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)){
+          ledgerUnmatched++;
+          if(unmatchedNames.size<5) unmatchedNames.add((row[actorCol]||'').trim());
+        }
       }
       diag.rowsInMonth = ledgerCount;
+      diag.unmatchedNames = Array.from(unmatchedNames);
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
       ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched, diag};
 
@@ -1100,7 +1251,10 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     lastSheetSyncAt[dept] = Date.now();
     if(!silent){
       const lt = ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept];
-      const unmatchedNote = (lt && lt.unmatched>0) ? ` (${lt.unmatched} строк не сопоставлено с сотрудниками — на кассу компании это не влияет)` : '';
+      const sampleNames = (lt && lt.diag && lt.diag.unmatchedNames && lt.diag.unmatchedNames.length)
+        ? ` Например: ${lt.diag.unmatchedNames.map(n=>'«'+n+'»').join(', ')}.`
+        : '';
+      const unmatchedNote = (lt && lt.unmatched>0) ? ` (${lt.unmatched} строк не сопоставлено с сотрудниками — на кассу компании это не влияет.${sampleNames})` : '';
       syncStatus[dept] = matched>0
         ? `Обновлено ${matched} из ${deptEmployees.length} сотрудников${unmatchedNote}`
         : 'Никто не найден — проверьте, что имена в таблице совпадают с именами в приложении' + unmatchedNote;
@@ -1234,7 +1388,9 @@ function renderEmployeeDashboard(){
   const checkedIn = isCheckedIn(emp.id);
   const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
   const k = getKpi(emp.id, activeMonth);
-  const num = Number(k[dept.ratio.num])||0, den = Number(k[dept.ratio.den])||0;
+  const autoPlan = planShareFor(emp.department);
+  const num = Number(k[dept.ratio.num])||0;
+  const den = (dept.ratio.den==='plan' && autoPlan!=null) ? autoPlan : (Number(k[dept.ratio.den])||0);
   const ratioPct = den>0 ? Math.min(100, Math.round(num/den*100)) : 0;
 
   const kpiBoxes = dept.fields.map(f=>{
@@ -1242,6 +1398,7 @@ function renderEmployeeDashboard(){
     if(f.computed && f.key==='avgCheck' && emp.department==='op'){
       val = (Number(k.deals)>0) ? (Number(k.revenue)/Number(k.deals)) : 0;
     }
+    if(f.key==='plan' && autoPlan!=null) val = autoPlan;
     const display = f.type==='number' ? (f.money ? fmtMoney(val) : val) : (escapeHtml(val) || '—');
     const wideClass = (f.key==='avgCheck' && emp.department==='op') ? ' wide' : '';
     return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
@@ -1330,15 +1487,24 @@ function renderAdminView(){
     kpiEditor += `<div class="dept-group-title">${DEPARTMENTS[dept].label}</div>`;
     groups[dept].forEach(e=>{
       const k = getKpi(e.id, editingMonth);
+      const autoPlan = planShareFor(dept);
       kpiEditor += `<div class="emp-edit-block">
         <div class="emp-edit-name">${escapeHtml(e.name)}</div>
         <div class="field-grid">
-          ${DEPARTMENTS[dept].fields.filter(f=>!f.computed).map(f=>`
+          ${DEPARTMENTS[dept].fields.filter(f=>!f.computed).map(f=>{
+            if(f.key==='plan' && autoPlan!=null){
+              return `<div class="field-item">
+                <label>${f.label} <span style="font-weight:400;color:var(--muted);">(авто, поровну по трекеру)</span></label>
+                <input type="number" value="${autoPlan}" disabled style="opacity:.65;">
+              </div>`;
+            }
+            return `
             <div class="field-item">
               <label>${f.label}</label>
               <input type="${f.type}" ${f.type==='number'?'min="0" step="any"':''} data-emp="${e.id}" data-field="${f.key}" value="${escapeHtml(k[f.key])}">
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </div>`;
     });
@@ -1390,10 +1556,11 @@ function renderAdminView(){
         <span class="sync-indicator ${finance.source!=='cards'?'live':''}"><span class="sdot"></span>${finance.source==='tracker' ? 'по трекеру' : finance.source==='ledger' ? 'по таблице ТО' : 'нет данных'}</span>
       </h2>
       <div class="finance-grid">
-        <div class="finance-box gross"><div class="fi-icon">📦</div><div class="label">Грязная касса</div><div class="value">${fmtMoney(finance.grossCash)}</div></div>
+        <div class="finance-box accent"><div class="fi-icon">💵</div><div class="label">Сумма</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
         <div class="finance-box accent"><div class="fi-icon">✅</div><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
-        <div class="finance-box warn"><div class="fi-icon">⏳</div><div class="label">Остаток (ещё войдёт)</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
+        <div class="finance-box warn"><div class="fi-icon">⏳</div><div class="label">Остаток до плана</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
         <div class="finance-box"><div class="fi-icon">🎯</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
+        <div class="finance-box trend-box wide"><div class="fi-icon">📈</div><div class="label">Тенденция</div><div class="value">${finance.trendPct}%</div></div>
       </div>
       ${finance.source==='tracker' ? `
         <div class="hint" style="margin-top:10px;">Цифры взяты из трекера тенденции: «Сейчас сумма» → чистая касса, «Сумма» (сколько ещё нужно до цели) → остаток.</div>` :
