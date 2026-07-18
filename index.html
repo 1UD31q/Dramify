@@ -1962,6 +1962,166 @@ window.addEventListener('pagehide', ()=>{
   if(sheetSyncTimer) clearInterval(sheetSyncTimer);
   stopBackgroundSync();
 });
+
+// =====================================================================
+// PUSH-УВЕДОМЛЕНИЯ О СМЕНАХ (локальные, через Service Worker)
+// =====================================================================
+
+// Время начала и конца смены — настройте под себя
+const SHIFT_START = { hour: 11, minute: 0 }; // 11:00
+const SHIFT_END   = { hour: 20, minute: 0 }; // 20:00
+
+// Инициализация SW и запрос разрешения на уведомления
+async function initNotifications() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+    console.log('[Dramify] Уведомления не поддерживаются браузером');
+    return;
+  }
+
+  // Регистрируем Service Worker
+  let swReg;
+  try {
+    swReg = await navigator.serviceWorker.register('./sw.js');
+    await navigator.serviceWorker.ready;
+  } catch(e) {
+    console.warn('[Dramify] Не удалось зарегистрировать SW:', e);
+    return;
+  }
+
+  // Спрашиваем разрешение только если его ещё нет
+  if (Notification.permission === 'default') {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+  }
+  if (Notification.permission !== 'granted') return;
+
+  // Планируем уведомления для текущего сотрудника
+  await scheduleShiftNotifications(swReg);
+}
+
+// Строим список уведомлений на сегодня и завтра и передаём в SW
+async function scheduleShiftNotifications(swReg) {
+  if (!myEmployeeId) return; // сотрудник ещё не авторизован
+
+  const sw = swReg.active || (await navigator.serviceWorker.ready).active;
+  if (!sw) return;
+
+  const notifications = [];
+  const now = new Date();
+
+  // Планируем на сегодня и завтра (чтобы SW успел получить задачи)
+  for (let offsetDays = 0; offsetDays <= 1; offsetDays++) {
+    const target = new Date(now);
+    target.setDate(target.getDate() + offsetDays);
+
+    const monthKey = target.getFullYear() + '-' + String(target.getMonth()+1).padStart(2,'0');
+    const day = target.getDate();
+
+    // Если это выходной — пропускаем
+    if (isOffDay(myEmployeeId, monthKey, day)) continue;
+
+    const emp = employees.find(e => e.id === myEmployeeId);
+    const name = emp ? emp.name.split(' ')[0] : 'Сотрудник';
+
+    // Уведомление о начале смены
+    const startTime = new Date(target);
+    startTime.setHours(SHIFT_START.hour, SHIFT_START.minute, 0, 0);
+    if (startTime > now) {
+      notifications.push({
+        fireAt: startTime.getTime(),
+        title: '🟢 Начало смены',
+        body: `${name}, смена началась! Не забудьте отметиться в Dramify.`,
+        tag: `shift-start-${monthKey}-${day}`
+      });
+    }
+
+    // Уведомление о конце смены
+    const endTime = new Date(target);
+    endTime.setHours(SHIFT_END.hour, SHIFT_END.minute, 0, 0);
+    if (endTime > now) {
+      notifications.push({
+        fireAt: endTime.getTime(),
+        title: '🔴 Конец смены',
+        body: `${name}, смена закончилась. Хорошего отдыха!`,
+        tag: `shift-end-${monthKey}-${day}`
+      });
+    }
+  }
+
+  sw.postMessage({ type: 'SCHEDULE_NOTIFICATIONS', notifications });
+  console.log(`[Dramify] Запланировано уведомлений: ${notifications.length}`);
+}
+
+// Кнопка "Включить уведомления" — вызывается из интерфейса
+async function enableNotifications() {
+  await initNotifications();
+  // Перерисовываем кнопку
+  const btn = document.getElementById('notifBtn');
+  if (btn) updateNotifButton(btn);
+}
+
+function updateNotifButton(btn) {
+  if (!('Notification' in window)) {
+    btn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    btn.textContent = '🔔 Уведомления включены';
+    btn.style.opacity = '0.6';
+    btn.style.cursor = 'default';
+    btn.onclick = null;
+  } else if (Notification.permission === 'denied') {
+    btn.textContent = '🔕 Уведомления заблокированы';
+    btn.style.opacity = '0.5';
+    btn.title = 'Разрешите уведомления в настройках браузера';
+  } else {
+    btn.textContent = '🔔 Включить уведомления о смене';
+    btn.onclick = enableNotifications;
+  }
+}
+
+// Добавляем кнопку на страницу после загрузки
+window.addEventListener('DOMContentLoaded', () => {
+  // Вставляем кнопку в шапку приложения
+  const brand = document.querySelector('.brand');
+  if (brand && 'Notification' in window && 'serviceWorker' in navigator) {
+    const btn = document.createElement('button');
+    btn.id = 'notifBtn';
+    btn.style.cssText = `
+      margin-top: 8px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    `;
+    updateNotifButton(btn);
+    brand.appendChild(btn);
+  }
+
+  // Если разрешение уже выдано — сразу планируем уведомления
+  if (Notification.permission === 'granted') {
+    // Ждём загрузки данных (myEmployeeId и schedules)
+    setTimeout(async () => {
+      if (myEmployeeId) {
+        await initNotifications();
+      }
+    }, 2000);
+  }
+});
+
+// Перепланируем уведомления когда сотрудник авторизовался
+const _origStoreSet = storeSet;
+// Перехватываем сохранение myEmployeeId и переплинируем уведомления
+const _notifObserver = setInterval(() => {
+  if (myEmployeeId && Notification.permission === 'granted') {
+    clearInterval(_notifObserver);
+    initNotifications();
+  }
+}, 3000);
 </script>
 </body>
 </html>
