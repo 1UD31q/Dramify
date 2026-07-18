@@ -384,6 +384,78 @@
   @keyframes valuePop{ from{opacity:0;transform:translateY(2px);} to{opacity:1;transform:translateY(0);} }
   #main.anim-in .value{animation:valuePop .35s ease both;}
   @media (prefers-reduced-motion: reduce){ #main.anim-in .value{animation:none;} }
+
+  /* =========================================================================
+     БЛОК «ТЕКУЩИЕ ЗАКАЗЫ» — встроен в карточку сотрудника
+     ========================================================================= */
+
+  /* Сводка статусов сверху карточки */
+  .order-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+  .order-stat{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:12.5px;font-weight:600;background:var(--paper);}
+  .order-stat.work{background:#E4F1EE;color:var(--teal-dark);}
+  .order-stat.paused{background:#FFF3CD;color:#7A5C0B;}
+  .order-stat.pay{background:var(--brass-tint);color:var(--brass);}
+
+  /* Карточка одного заказа */
+  .order-item{border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:10px;background:var(--paper);transition:border-color .18s, box-shadow .18s;}
+  .order-item:last-child{margin-bottom:0;}
+  .order-item.overdue{border-color:#E0633F;background:#FFF5F2;box-shadow:0 0 0 3px rgba(224,99,63,.10);}
+  .order-item.paused-item{border-color:#E6C940;background:#FFFCF0;}
+
+  /* Верхняя строка заказа: номер + имя + таймер */
+  .order-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .order-num{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;flex:none;}
+  .order-client{font-size:14px;font-weight:600;flex:1;color:var(--ink);}
+  .order-timer{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--teal-dark);background:var(--teal-tint);border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
+  .order-timer.warn{background:#FFF3CD;color:#7A5C0B;}
+  .order-timer.overdue{background:#FDEAE4;color:var(--rust);}
+
+  /* Статус заказа */
+  .order-status-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .order-status-badge{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;background:#fff;border:1px solid var(--line);color:var(--ink-soft);}
+  .order-pause-reason{font-size:11.5px;color:#7A5C0B;background:#FFF3CD;border-radius:6px;padding:3px 9px;display:inline-flex;align-items:center;gap:4px;}
+
+  /* Кнопки действий заказа */
+  .order-actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;}
+  .order-btn{padding:7px 13px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink);font-family:'Inter',sans-serif;transition:background .12s, border-color .12s;min-height:38px;}
+  .order-btn:hover{background:var(--paper);border-color:var(--teal);}
+  .order-btn.pause-btn{border-color:#E6C940;color:#7A5C0B;background:#FFFCF0;}
+  .order-btn.pause-btn:hover{background:#FFF3CD;}
+  .order-btn.resume-btn{border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint);}
+  .order-btn.status-btn{border-color:var(--brass);color:var(--brass);background:var(--brass-tint);}
+
+  /* Поле комментария */
+  .order-comment-wrap{margin-top:8px;}
+  .order-comment-wrap textarea{width:100%;min-height:52px;resize:vertical;padding:9px 11px;border-radius:8px;border:1px solid var(--line);font-family:'Inter',sans-serif;font-size:13px;background:#fff;color:var(--ink);line-height:1.45;}
+  .order-comment-wrap textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-tint);}
+  .order-comment-saved{font-size:11px;color:var(--teal);margin-top:3px;height:16px;opacity:0;transition:opacity .3s;}
+  .order-comment-saved.show{opacity:1;}
+
+  /* Модалка выбора причины паузы */
+  .pause-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-end;justify-content:center;}
+  .pause-modal-backdrop{position:absolute;inset:0;background:rgba(24,10,32,.4);backdrop-filter:blur(3px);}
+  .pause-modal-sheet{position:relative;background:#fff;border-radius:18px 18px 0 0;padding:22px 20px 36px 20px;width:100%;max-width:640px;box-shadow:0 -12px 34px rgba(24,10,32,.18);animation:sheetUp .22s ease both;}
+  @keyframes sheetUp{from{transform:translateY(100%);opacity:0;} to{transform:none;opacity:1;}}
+  .pause-modal-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;margin-bottom:16px;}
+  .pause-reasons{display:flex;flex-direction:column;gap:7px;margin-bottom:14px;}
+  .pause-reason-btn{padding:11px 14px;border-radius:9px;border:1px solid var(--line);background:var(--paper);font-size:13.5px;font-weight:500;cursor:pointer;text-align:left;font-family:'Inter',sans-serif;color:var(--ink);transition:background .12s,border-color .12s;}
+  .pause-reason-btn:hover{background:#FFF3CD;border-color:#E6C940;}
+  .pause-reason-btn.selected{background:#FFF3CD;border-color:#E6C940;font-weight:700;}
+  .pause-other-input{display:none;margin-top:4px;}
+  .pause-other-input textarea{width:100%;min-height:56px;resize:none;padding:9px 11px;border-radius:8px;border:1px solid var(--line);font-family:'Inter',sans-serif;font-size:13px;background:#fff;color:var(--ink);}
+  .pause-other-input textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-tint);}
+  .pause-modal-actions{display:flex;gap:8px;margin-top:12px;}
+
+  /* Модалка смены статуса */
+  .status-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-end;justify-content:center;}
+  .status-modal-sheet{position:relative;background:#fff;border-radius:18px 18px 0 0;padding:22px 20px 36px 20px;width:100%;max-width:640px;box-shadow:0 -12px 34px rgba(24,10,32,.18);animation:sheetUp .22s ease both;}
+  .status-choices{display:flex;flex-direction:column;gap:7px;margin-top:14px;}
+  .status-choice-btn{padding:11px 14px;border-radius:9px;border:1px solid var(--line);background:var(--paper);font-size:13.5px;font-weight:500;cursor:pointer;text-align:left;font-family:'Inter',sans-serif;color:var(--ink);transition:background .12s,border-color .12s;}
+  .status-choice-btn:hover{background:var(--brass-tint);border-color:var(--brass);}
+  .status-choice-btn.current{font-weight:700;background:var(--brass-tint);border-color:var(--brass);}
+
+  /* пустой блок заказов */
+  .orders-empty{text-align:center;padding:18px 0;color:var(--muted);font-size:13px;}
 </style>
 </head>
 <body>
@@ -746,6 +818,261 @@ let kpiData = {};
 let logs = [];
 let activeMonth = currentMonthKey();
 let editingMonth = activeMonth;
+
+// =========================================================================
+// ДАННЫЕ ЗАКАЗОВ
+// ordersData — объект вида { empId: [ {id, client, status, statusSince, paused, pauseReason, comment}, ... ] }
+// Статус «statusSince» — метка времени (ms), когда заказ попал в текущий статус.
+// =========================================================================
+let ordersData = {}; // загружается из Supabase
+
+// Список возможных статусов заказа (берётся из Google Sheets / вводится вручную)
+// Пустой массив — нет ограничений, статус вводится произвольно.
+// Можно задать своё: ['Новый','В работе','Ждёт оплату','Выполнен']
+const ORDER_STATUSES = ['Новый','В работе','Проверка','Ждёт оплату','Ждёт материалы','Выполнен'];
+
+const PAUSE_REASONS = ['Жду клиента','Жду ОС','Нужны новые материалы','Техническая проблема','Другое'];
+
+// Порог «зависшего» заказа — 8 часов
+const ORDER_OVERDUE_MS = 8 * 60 * 60 * 1000;
+
+const SEED_ORDERS = {
+  e1: [
+    {id:'001', client:'Иванова Марина', status:'В работе', statusSince: Date.now() - 3*3600000, paused:false, pauseReason:'', pausedAt:null, comment:''},
+    {id:'002', client:'Петров Сергей', status:'Ждёт оплату', statusSince: Date.now() - 1*3600000, paused:false, pauseReason:'', pausedAt:null, comment:'Клиент обещал оплатить до вечера'},
+  ],
+  e2: [
+    {id:'003', client:'Асанова Гульнара', status:'Проверка', statusSince: Date.now() - 9*3600000, paused:false, pauseReason:'', pausedAt:null, comment:''},
+    {id:'004', client:'Ким Алексей', status:'В работе', statusSince: Date.now() - 2*3600000, paused:true, pauseReason:'Жду клиента', pausedAt: Date.now() - 30*60000, comment:'Не берёт трубку'},
+  ],
+  e3: [
+    {id:'005', client:'Нурсеит Дамир', status:'Новый', statusSince: Date.now() - 20*60000, paused:false, pauseReason:'', pausedAt:null, comment:''},
+  ],
+  e4: [],
+};
+
+async function loadOrders(){
+  try{
+    const saved = await storeGet('app:ordersData', SHARED);
+    if(saved){ ordersData = saved; }
+    else {
+      ordersData = SEED_ORDERS;
+      await saveOrders();
+    }
+  }catch(e){ console.error('loadOrders failed', e); }
+}
+
+async function saveOrders(){
+  try{ await storeSet('app:ordersData', ordersData, SHARED); }
+  catch(e){ console.error('saveOrders failed', e); }
+}
+
+function getOrdersForEmp(empId){
+  return (ordersData[empId] || []).filter(o => o.status !== 'Выполнен' || (Date.now() - (o.statusSince||0)) < 3600000);
+}
+
+function orderElapsed(order){
+  const since = order.paused ? (order.pausedAt||Date.now()) : (order.statusSince||Date.now());
+  // если на паузе — время замораживаем (показываем сколько было до паузы)
+  if(order.paused){
+    return (order.pausedAt||Date.now()) - (order.statusSince||Date.now());
+  }
+  return Date.now() - (order.statusSince||Date.now());
+}
+
+function fmtOrderTime(ms){
+  if(ms < 0) ms = 0;
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+}
+
+// Краткий класс таймера по степени «зависания»
+function timerClass(ms){
+  if(ms >= ORDER_OVERDUE_MS) return 'overdue';
+  if(ms >= ORDER_OVERDUE_MS * 0.6) return 'warn';
+  return '';
+}
+
+// Рендер блока «Текущие заказы» для одного сотрудника
+function renderOrdersBlock(empId){
+  const orders = getOrdersForEmp(empId);
+
+  // Сводка по статусам
+  const working = orders.filter(o => !o.paused && o.status !== 'Ждёт оплату' && o.status !== 'Выполнен').length;
+  const paused  = orders.filter(o => o.paused).length;
+  const pay     = orders.filter(o => o.status === 'Ждёт оплату' && !o.paused).length;
+
+  let summaryHtml = '';
+  if(orders.length > 0){
+    summaryHtml = `<div class="order-summary">
+      ${working>0 ? `<span class="order-stat work">🟢 В работе — ${working}</span>` : ''}
+      ${paused >0 ? `<span class="order-stat paused">⏸️ На паузе — ${paused}</span>` : ''}
+      ${pay    >0 ? `<span class="order-stat pay">💰 Ждёт оплату — ${pay}</span>` : ''}
+    </div>` ;
+  }
+
+  const orderCards = orders.map(o => {
+    const elapsed = orderElapsed(o);
+    const tc = o.paused ? 'warn' : timerClass(elapsed);
+    const isOverdue = !o.paused && elapsed >= ORDER_OVERDUE_MS;
+    const timerLabel = o.paused ? `⏸ ${fmtOrderTime(elapsed)}` : fmtOrderTime(elapsed);
+
+    let pauseInfo = '';
+    if(o.paused && o.pauseReason){
+      pauseInfo = `<span class="order-pause-reason">⏸️ ${escapeHtml(o.pauseReason)}</span>`;
+    }
+
+    const pauseOrResume = o.paused
+      ? `<button class="order-btn resume-btn" data-order-resume="${o.id}" data-emp-id="${empId}">▶ Возобновить</button>`
+      : `<button class="order-btn pause-btn" data-order-pause="${o.id}" data-emp-id="${empId}">⏸ Пауза</button>`;
+
+    const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
+
+    return `<div class="order-item${isOverdue?' overdue':''}${o.paused?' paused-item':''}" data-order-id="${o.id}">
+      <div class="order-header">
+        <span class="order-num">#${escapeHtml(o.id)}</span>
+        <span class="order-client">${escapeHtml(o.client)}</span>
+        <span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>
+      </div>
+      <div class="order-status-row">
+        <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
+        ${pauseInfo}
+        ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8 часов</span>' : ''}
+      </div>
+      <div class="order-actions">
+        <button class="order-btn status-btn" data-order-status="${o.id}" data-emp-id="${empId}">Сменить статус</button>
+        ${pauseOrResume}
+      </div>
+      <div class="order-comment-wrap">
+        <textarea placeholder="Комментарий по заказу…" data-order-comment="${o.id}" data-emp-id="${empId}" rows="2">${escapeHtml(o.comment||'')}</textarea>
+        ${commentSaved}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="card" id="orders-card-${empId}">
+      <h2>Текущие заказы</h2>
+      ${summaryHtml}
+      ${orders.length === 0
+        ? '<div class="orders-empty">Нет активных заказов</div>'
+        : orderCards
+      }
+    </div>`;
+}
+
+// Обновить только таймеры в блоке заказов (без полного рендера)
+function tickOrderTimers(){
+  document.querySelectorAll('[data-order-timer]').forEach(el => {
+    const paused = el.dataset.paused === '1';
+    const start = parseInt(el.dataset.timerStart) || Date.now();
+    const pausedAt = el.dataset.pausedAt ? parseInt(el.dataset.pausedAt) : null;
+    const elapsed = paused ? (pausedAt ? pausedAt - start : 0) : (Date.now() - start);
+    if(elapsed < 0) return;
+    const h = Math.floor(elapsed / 3600000);
+    const m = Math.floor((elapsed % 3600000) / 60000);
+    const txt = (h > 0 ? `${h}ч ${m}м` : `${m}м`);
+    el.textContent = paused ? `⏸ ${txt}` : txt;
+    el.className = 'order-timer ' + (paused ? 'warn' : timerClass(elapsed));
+    // подсветка карточки при превышении порога
+    const card = el.closest('.order-item');
+    if(card && !paused){
+      if(elapsed >= ORDER_OVERDUE_MS){
+        card.classList.add('overdue');
+        // показываем предупреждение, если ещё нет
+        const row = card.querySelector('.order-status-row');
+        if(row && !row.querySelector('.overdue-warn')){
+          const sp = document.createElement('span');
+          sp.className = 'order-pause-reason overdue-warn';
+          sp.style.cssText = 'background:#FDEAE4;color:var(--rust);';
+          sp.textContent = '⚠️ Завис более 8 часов';
+          row.appendChild(sp);
+        }
+      }
+    }
+  });
+}
+
+// Модалка «Пауза» — выбор причины
+function showPauseModal(empId, orderId){
+  return new Promise(resolve => {
+    const host = document.getElementById('modalHost');
+    if(!host){ resolve(null); return; }
+    let selected = '';
+    const renderModal = () => {
+      host.innerHTML = `
+        <div class="pause-modal">
+          <div class="pause-modal-backdrop" id="pauseBackdrop"></div>
+          <div class="pause-modal-sheet">
+            <div class="pause-modal-title">⏸ Причина паузы</div>
+            <div class="pause-reasons">
+              ${PAUSE_REASONS.map(r => `<button class="pause-reason-btn${selected===r?' selected':''}" data-reason="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')}
+            </div>
+            <div class="pause-other-input" id="pauseOtherWrap" style="${selected==='Другое'?'display:block':'display:none'}">
+              <textarea id="pauseOtherText" placeholder="Опишите причину…" rows="2"></textarea>
+            </div>
+            <div class="pause-modal-actions">
+              <button class="btn secondary small" id="pauseCancelBtn">Отмена</button>
+              <button class="btn small" id="pauseConfirmBtn">Поставить на паузу</button>
+            </div>
+          </div>
+        </div>`;
+      host.querySelectorAll('.pause-reason-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selected = btn.dataset.reason;
+          renderModal();
+          if(selected === 'Другое'){
+            setTimeout(()=>{ const t = document.getElementById('pauseOtherText'); if(t) t.focus(); }, 50);
+          }
+        });
+      });
+      document.getElementById('pauseBackdrop').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+      document.getElementById('pauseCancelBtn').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+      document.getElementById('pauseConfirmBtn').addEventListener('click', () => {
+        if(!selected){ showToast('Выберите причину паузы', 'error'); return; }
+        let reason = selected;
+        if(selected === 'Другое'){
+          const txt = (document.getElementById('pauseOtherText')||{}).value||'';
+          if(!txt.trim()){ showToast('Опишите причину в поле «Другое»', 'error'); return; }
+          reason = txt.trim();
+        }
+        host.innerHTML = '';
+        resolve(reason);
+      });
+    };
+    renderModal();
+  });
+}
+
+// Модалка смены статуса
+function showStatusModal(currentStatus){
+  return new Promise(resolve => {
+    const host = document.getElementById('modalHost');
+    if(!host){ resolve(null); return; }
+    const choices = ORDER_STATUSES.length > 0
+      ? ORDER_STATUSES
+      : ['Новый','В работе','Проверка','Ждёт оплату','Выполнен'];
+    host.innerHTML = `
+      <div class="status-modal">
+        <div class="pause-modal-backdrop" id="statusBackdrop"></div>
+        <div class="status-modal-sheet">
+          <div class="pause-modal-title">Сменить статус заказа</div>
+          <div class="status-choices">
+            ${choices.map(s => `<button class="status-choice-btn${s===currentStatus?' current':''}" data-newstatus="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn secondary small" id="statusCancelBtn">Отмена</button>
+          </div>
+        </div>
+      </div>`;
+    host.querySelector('#statusBackdrop').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+    host.querySelector('#statusCancelBtn').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+    host.querySelectorAll('.status-choice-btn').forEach(btn => {
+      btn.addEventListener('click', () => { host.innerHTML=''; resolve(btn.dataset.newstatus); });
+    });
+  });
+}
 
 // Итоги, посчитанные напрямую по строкам Google-таблицы (независимо от того,
 // сопоставилась ли строка с конкретным сотрудником) — на них теперь опирается
@@ -1456,6 +1783,8 @@ function renderEmployeeDashboard(){
         todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
     </div>
 
+    ${renderOrdersBlock(emp.id)}
+
     <div class="card">
       <h2>Мой график · ${monthLabel(activeMonth)}</h2>
       ${renderCalendarGrid(emp.id, activeMonth, false)}
@@ -1894,11 +2223,93 @@ function attachDelegatedHandlers(){
       await syncTracker();
       return;
     }
+
+    // ---- Заказы: поставить на паузу ----
+    const pauseBtn = el.closest('[data-order-pause]');
+    if(pauseBtn){
+      const orderId = pauseBtn.dataset.orderPause;
+      const empId   = pauseBtn.dataset.empId;
+      const reason  = await showPauseModal(empId, orderId);
+      if(!reason) return;
+      const list = ordersData[empId] || [];
+      const ord  = list.find(o => o.id === orderId);
+      if(ord){
+        ord.paused     = true;
+        ord.pauseReason = reason;
+        ord.pausedAt   = Date.now();
+        await saveOrders();
+        render();
+        showToast('Заказ на паузе: ' + reason, 'success');
+      }
+      return;
+    }
+
+    // ---- Заказы: возобновить ----
+    const resumeBtn = el.closest('[data-order-resume]');
+    if(resumeBtn){
+      const orderId = resumeBtn.dataset.orderResume;
+      const empId   = resumeBtn.dataset.empId;
+      const list    = ordersData[empId] || [];
+      const ord     = list.find(o => o.id === orderId);
+      if(ord){
+        // При возобновлении сбрасываем statusSince, чтобы таймер считал заново
+        const pausedDuration = ord.pausedAt ? (ord.pausedAt - (ord.statusSince||ord.pausedAt)) : 0;
+        ord.paused      = false;
+        ord.pauseReason = '';
+        ord.pausedAt    = null;
+        ord.statusSince = Date.now() - pausedDuration; // сохраняем накопленное время
+        await saveOrders();
+        render();
+        showToast('Заказ возобновлён', 'success');
+      }
+      return;
+    }
+
+    // ---- Заказы: сменить статус ----
+    const statusBtn = el.closest('[data-order-status]');
+    if(statusBtn){
+      const orderId = statusBtn.dataset.orderStatus;
+      const empId   = statusBtn.dataset.empId;
+      const list    = ordersData[empId] || [];
+      const ord     = list.find(o => o.id === orderId);
+      if(!ord) return;
+      const newStatus = await showStatusModal(ord.status);
+      if(!newStatus || newStatus === ord.status) return;
+      ord.status      = newStatus;
+      ord.statusSince = Date.now();
+      ord.paused      = false;
+      ord.pauseReason = '';
+      ord.pausedAt    = null;
+      await saveOrders();
+      render();
+      showToast('Статус: ' + newStatus, 'success');
+      return;
+    }
   });
 
   document.addEventListener('change', (ev)=>{
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; render(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; render(); }
+  });
+
+  // Автосохранение комментариев к заказам (debounce 800ms)
+  const commentSaveTimers = {};
+  document.addEventListener('input', (ev)=>{
+    const ta = ev.target.closest('[data-order-comment]');
+    if(!ta) return;
+    const orderId = ta.dataset.orderComment;
+    const empId   = ta.dataset.empId;
+    clearTimeout(commentSaveTimers[orderId]);
+    commentSaveTimers[orderId] = setTimeout(async ()=>{
+      const list = ordersData[empId] || [];
+      const ord  = list.find(o => o.id === orderId);
+      if(ord){
+        ord.comment = ta.value;
+        await saveOrders();
+        const saved = document.getElementById('saved-' + orderId);
+        if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
+      }
+    }, 800);
   });
 
   // Поддержка ввода PIN с физической клавиатуры (удобно на десктопе)
@@ -1940,12 +2351,16 @@ function attachDelegatedHandlers(){
 
 let sheetSyncTimer = null;
 
+let orderTimerHandle = null;
+
 (async function init(){
   attachDelegatedHandlers();
   await loadAll();
+  await loadOrders();
   render();
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного render()
+  orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
   if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
@@ -1960,168 +2375,9 @@ let sheetSyncTimer = null;
 window.addEventListener('pagehide', ()=>{
   if(timerHandle) clearInterval(timerHandle);
   if(sheetSyncTimer) clearInterval(sheetSyncTimer);
+  if(orderTimerHandle) clearInterval(orderTimerHandle);
   stopBackgroundSync();
 });
-
-// =====================================================================
-// PUSH-УВЕДОМЛЕНИЯ О СМЕНАХ (локальные, через Service Worker)
-// =====================================================================
-
-// Время начала и конца смены — настройте под себя
-const SHIFT_START = { hour: 11, minute: 0 }; // 11:00
-const SHIFT_END   = { hour: 20, minute: 0 }; // 20:00
-
-// Инициализация SW и запрос разрешения на уведомления
-async function initNotifications() {
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-    console.log('[Dramify] Уведомления не поддерживаются браузером');
-    return;
-  }
-
-  // Регистрируем Service Worker
-  let swReg;
-  try {
-    swReg = await navigator.serviceWorker.register('./sw.js');
-    await navigator.serviceWorker.ready;
-  } catch(e) {
-    console.warn('[Dramify] Не удалось зарегистрировать SW:', e);
-    return;
-  }
-
-  // Спрашиваем разрешение только если его ещё нет
-  if (Notification.permission === 'default') {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-  }
-  if (Notification.permission !== 'granted') return;
-
-  // Планируем уведомления для текущего сотрудника
-  await scheduleShiftNotifications(swReg);
-}
-
-// Строим список уведомлений на сегодня и завтра и передаём в SW
-async function scheduleShiftNotifications(swReg) {
-  if (!myEmployeeId) return; // сотрудник ещё не авторизован
-
-  const sw = swReg.active || (await navigator.serviceWorker.ready).active;
-  if (!sw) return;
-
-  const notifications = [];
-  const now = new Date();
-
-  // Планируем на сегодня и завтра (чтобы SW успел получить задачи)
-  for (let offsetDays = 0; offsetDays <= 1; offsetDays++) {
-    const target = new Date(now);
-    target.setDate(target.getDate() + offsetDays);
-
-    const monthKey = target.getFullYear() + '-' + String(target.getMonth()+1).padStart(2,'0');
-    const day = target.getDate();
-
-    // Если это выходной — пропускаем
-    if (isOffDay(myEmployeeId, monthKey, day)) continue;
-
-    const emp = employees.find(e => e.id === myEmployeeId);
-    const name = emp ? emp.name.split(' ')[0] : 'Сотрудник';
-
-    // Уведомление о начале смены
-    const startTime = new Date(target);
-    startTime.setHours(SHIFT_START.hour, SHIFT_START.minute, 0, 0);
-    if (startTime > now) {
-      notifications.push({
-        fireAt: startTime.getTime(),
-        title: '🟢 Начало смены',
-        body: `${name}, смена началась! Не забудьте отметиться в Dramify.`,
-        tag: `shift-start-${monthKey}-${day}`
-      });
-    }
-
-    // Уведомление о конце смены
-    const endTime = new Date(target);
-    endTime.setHours(SHIFT_END.hour, SHIFT_END.minute, 0, 0);
-    if (endTime > now) {
-      notifications.push({
-        fireAt: endTime.getTime(),
-        title: '🔴 Конец смены',
-        body: `${name}, смена закончилась. Хорошего отдыха!`,
-        tag: `shift-end-${monthKey}-${day}`
-      });
-    }
-  }
-
-  sw.postMessage({ type: 'SCHEDULE_NOTIFICATIONS', notifications });
-  console.log(`[Dramify] Запланировано уведомлений: ${notifications.length}`);
-}
-
-// Кнопка "Включить уведомления" — вызывается из интерфейса
-async function enableNotifications() {
-  await initNotifications();
-  // Перерисовываем кнопку
-  const btn = document.getElementById('notifBtn');
-  if (btn) updateNotifButton(btn);
-}
-
-function updateNotifButton(btn) {
-  if (!('Notification' in window)) {
-    btn.style.display = 'none';
-    return;
-  }
-  if (Notification.permission === 'granted') {
-    btn.textContent = '🔔 Уведомления включены';
-    btn.style.opacity = '0.6';
-    btn.style.cursor = 'default';
-    btn.onclick = null;
-  } else if (Notification.permission === 'denied') {
-    btn.textContent = '🔕 Уведомления заблокированы';
-    btn.style.opacity = '0.5';
-    btn.title = 'Разрешите уведомления в настройках браузера';
-  } else {
-    btn.textContent = '🔔 Включить уведомления о смене';
-    btn.onclick = enableNotifications;
-  }
-}
-
-// Добавляем кнопку на страницу после загрузки
-window.addEventListener('DOMContentLoaded', () => {
-  // Вставляем кнопку в шапку приложения
-  const brand = document.querySelector('.brand');
-  if (brand && 'Notification' in window && 'serviceWorker' in navigator) {
-    const btn = document.createElement('button');
-    btn.id = 'notifBtn';
-    btn.style.cssText = `
-      margin-top: 8px;
-      padding: 7px 14px;
-      border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.3);
-      background: rgba(255,255,255,0.12);
-      color: #fff;
-      font-size: 13px;
-      cursor: pointer;
-      font-family: 'Inter', sans-serif;
-    `;
-    updateNotifButton(btn);
-    brand.appendChild(btn);
-  }
-
-  // Если разрешение уже выдано — сразу планируем уведомления
-  if (Notification.permission === 'granted') {
-    // Ждём загрузки данных (myEmployeeId и schedules)
-    setTimeout(async () => {
-      if (myEmployeeId) {
-        await initNotifications();
-      }
-    }, 2000);
-  }
-});
-
-// Перепланируем уведомления когда сотрудник авторизовался
-const _origStoreSet = storeSet;
-// Перехватываем сохранение myEmployeeId и переплинируем уведомления
-const _notifObserver = setInterval(() => {
-  if (myEmployeeId && Notification.permission === 'granted') {
-    clearInterval(_notifObserver);
-    initNotifications();
-  }
-}, 3000);
 </script>
 </body>
 </html>
