@@ -455,7 +455,13 @@
   .status-choice-btn.current{font-weight:700;background:var(--brass-tint);border-color:var(--brass);}
 
   /* Мета-строка заказа (сумма, метод оплаты, даты) */
-  .order-meta{font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5;}
+  .order-meta{font-size:11.5px;color:var(--muted);margin-bottom:6px;line-height:1.5;}
+
+  /* Место общения + примечания */
+  .order-contact-line{font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;line-height:1.5;}
+
+  /* Телефон / ссылка */
+  .order-phone-line{font-size:12px;color:var(--ink-soft);margin-bottom:8px;line-height:1.5;}
 
   /* пустой блок заказов */
   .orders-empty{text-align:center;padding:18px 0;color:var(--muted);font-size:13px;}
@@ -496,11 +502,7 @@
   .order-item.done-item{opacity:.88;background:#F6FBF7;border-color:#B8DEC2;}
   .order-item.done-item .order-client{color:var(--teal-dark);}
 
-  /* Pause button — visual only, non-clickable */
-  .order-btn.pause-btn-disabled{
-    border-color:var(--line);color:var(--muted);background:#fff;
-    opacity:.45;cursor:default;pointer-events:none;
-  }
+
 </style>
 </head>
 <body>
@@ -989,7 +991,7 @@ function renderOrderCard(o, empId, showTimer){
   // Пауза — отображается, но некликабельна (pointer-events:none)
   const pauseOrResume = o.paused
     ? `<button class="order-btn resume-btn" data-order-resume="${o.id}" data-emp-id="${empId}">▶ Возобновить</button>`
-    : `<button class="order-btn pause-btn-disabled" tabindex="-1">⏸ Пауза</button>`;
+    : `<button class="order-btn pause-btn" data-order-pause="${o.id}" data-emp-id="${empId}">⏸ Пауза</button>`;
 
   const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
 
@@ -999,6 +1001,35 @@ function renderOrderCard(o, empId, showTimer){
     o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}`   : '',
     o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
   ].filter(Boolean).join('  ·  ');
+
+  // Строка «Место общения + примечания»
+  function renderContactLine(o){
+    const parts = [];
+    if(o.contactPlace) parts.push(`📍 ${escapeHtml(o.contactPlace)}`);
+    if(o.notes) parts.push(`📝 ${escapeHtml(o.notes)}`);
+    return parts.length ? parts.join('  ·  ') : '';
+  }
+
+  // Телефон / ссылка — если выглядит как URL, делаем кликабельной
+  function renderPhone(raw){
+    if(!raw) return '';
+    const isUrl = /^https?:\/\//i.test(raw) || /^(wa\.me|t\.me|vk\.com|instagram\.com|tiktok\.com)/i.test(raw);
+    const fullUrl = isUrl ? raw : null;
+    if(fullUrl){
+      // Сокращённый текст: домен без протокола
+      const short = fullUrl.replace(/^https?:\/\//i,'').split('/')[0].replace(/^www\./,'');
+      return `📞 <a href="${fullUrl}" target="_blank" rel="noopener" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${short}</a>`;
+    }
+    // Просто номер телефона
+    const tel = raw.replace(/[^+\d]/g,'');
+    if(tel.length >= 7){
+      return `📞 <a href="tel:${tel}" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(raw)}</a>`;
+    }
+    return `📞 ${escapeHtml(raw)}`;
+  }
+
+  const contactLine = renderContactLine(o);
+  const phoneHtml   = renderPhone(o.phone||'');
 
   const timerHtml = showTimer
     ? `<span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>`
@@ -1010,6 +1041,8 @@ function renderOrderCard(o, empId, showTimer){
       ${timerHtml}
     </div>
     ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
+    ${contactLine ? `<div class="order-contact-line">${contactLine}</div>` : ''}
+    ${phoneHtml ? `<div class="order-phone-line">${phoneHtml}</div>` : ''}
     <div class="order-status-row">
       <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
       ${pauseInfo}
@@ -1049,7 +1082,7 @@ function renderOrdersBlock(empId){
   // Разбиваем по колонкам
   // 1. В работе — не пауза, не успешно, не ждёт оплату, не новый (распределён)
   const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
-  const isPayWait = o => o.status === 'Ждёт оплату';
+  const isPayWait = o => o.status.toLowerCase().includes('оплат');
   const isNew = o => o.status === 'Новый';
 
   const working  = allOrders.filter(o => !isSuccessful(o) && !isPayWait(o) && !isNew(o));
@@ -1667,6 +1700,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const deadlineCol = findCol(['дата сдачи','дедлайн','срок']);
         const payMethodCol= findCol(['метод оплаты','способ оплаты','оплата']);
         const prepayCol   = findCol(['предоплат']);
+        const contactPlaceCol = findCol(['место общения','мессенджер','канал связи','платформа']);
+        const notesCol    = findCol(['примечани','заметк']);
+        const phoneCol    = findCol(['телефон','номер телефона','phone','номер для связи']);
 
         const newOrdersData = {};
         for(const emp of deptEmployees){
@@ -1687,6 +1723,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
             const payMethod  = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
             const dateCreated= dateCol>=0 ? (row[dateCol]||'').trim() : '';
+            const contactPlace = contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
+            const notes      = notesCol>=0 ? (row[notesCol]||'').trim() : '';
+            const phone      = phoneCol>=0 ? (row[phoneCol]||'').trim() : '';
 
             // Уникальный ID заказа: строка в таблице (r) + имя клиента
             const orderId = `r${r}-${emp.id}`;
@@ -1710,6 +1749,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
               deadline: deadlineStr,
               dateCreated,
               isDone,
+              contactPlace,
+              notes,
+              phone,
             });
           }
           newOrdersData[emp.id] = empOrders;
