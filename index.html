@@ -459,6 +459,48 @@
 
   /* пустой блок заказов */
   .orders-empty{text-align:center;padding:18px 0;color:var(--muted);font-size:13px;}
+
+  /* ---- Колонки заказов ---- */
+  .orders-section{margin-bottom:4px;}
+  .orders-section-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-radius:10px;cursor:pointer;
+    font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;
+    margin-bottom:6px;user-select:none;
+  }
+  .orders-section-header .sec-title{display:flex;align-items:center;gap:7px;}
+  .orders-section-header .sec-count{
+    font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;
+  }
+  .orders-section-header .sec-chevron{font-size:11px;color:var(--muted);transition:transform .2s;}
+  .orders-section-header.collapsed .sec-chevron{transform:rotate(-90deg);}
+  .orders-section-body{overflow:hidden;}
+
+  /* In-progress column */
+  .sec-working .orders-section-header{background:var(--teal-tint);color:var(--teal-dark);}
+  .sec-working .sec-count{background:var(--teal-dark);color:#fff;}
+
+  /* Take-to-work column */
+  .sec-new .orders-section-header{background:var(--paper);color:var(--ink);border:1px solid var(--line);}
+  .sec-new .sec-count{background:var(--ink);color:#fff;}
+
+  /* Waiting-for-pay column */
+  .sec-pay .orders-section-header{background:var(--brass-tint);color:var(--brass);}
+  .sec-pay .sec-count{background:var(--brass);color:#fff;}
+
+  /* Successful column */
+  .sec-done .orders-section-header{background:#EEF7F0;color:#1A6632;}
+  .sec-done .sec-count{background:#1A6632;color:#fff;}
+
+  /* Successful orders: no timer shown, slightly muted */
+  .order-item.done-item{opacity:.88;background:#F6FBF7;border-color:#B8DEC2;}
+  .order-item.done-item .order-client{color:var(--teal-dark);}
+
+  /* Pause button — visual only, non-clickable */
+  .order-btn.pause-btn-disabled{
+    border-color:var(--line);color:var(--muted);background:#fff;
+    opacity:.45;cursor:default;pointer-events:none;
+  }
 </style>
 </head>
 <body>
@@ -838,7 +880,7 @@ let ordersData = {}; // загружается из Supabase
 // Можно задать своё: ['Новый','В работе','Ждёт оплату','Выполнен']
 const ORDER_STATUSES = ['Новый','В работе','Проверка','Ждёт оплату','Ждёт материалы','Выполнен'];
 
-const PAUSE_REASONS = ['Жду клиента','Жду ОС','Нужны новые материалы','Техническая проблема','Другое'];
+const PAUSE_REASONS = ['Жду ОС от клиента','Нужны новые материалы','Техническая проблема','Другое'];
 
 // Порог «зависшего» заказа — 8 часов
 const ORDER_OVERDUE_MS = 8 * 60 * 60 * 1000;
@@ -863,6 +905,9 @@ const SEED_ORDERS = {
 // ordersOverlay — ручные данные (пауза, комментарий), хранятся в Supabase:
 //   { orderId: {paused, pauseReason, pausedAt, comment} }
 let ordersOverlay = {};
+
+// Состояние сворачивания секций заказов: { sectionId: true/false }
+let ordersCollapsed = {};
 
 async function loadOrders(){
   try{
@@ -894,9 +939,7 @@ function getOrdersForEmp(empId){
     // Статус: если сотрудник менял вручную — берём из overlay, иначе из CSV
     const status      = ov.status      || o.status      || '';
     const statusSince = ov.statusSince || o.statusSince || Date.now();
-    const isDone = status.toLowerCase().includes('успешно');
-    // Скрываем «Успешно завершено» через час
-    if(isDone && (Date.now() - statusSince) >= 3600000) return null;
+    // Успешные заказы теперь отображаются в колонке «Успешные» — не скрываем
     return Object.assign({}, o, {
       status,
       statusSince,
@@ -931,78 +974,103 @@ function timerClass(ms){
   return '';
 }
 
-// Рендер блока «Текущие заказы» для одного сотрудника
-function renderOrdersBlock(empId){
-  const orders = getOrdersForEmp(empId);
+// Рендер одной карточки заказа
+function renderOrderCard(o, empId, showTimer){
+  const elapsed = orderElapsed(o);
+  const tc = o.paused ? 'warn' : timerClass(elapsed);
+  const isOverdue = !o.paused && elapsed >= ORDER_OVERDUE_MS;
+  const timerLabel = o.paused ? `⏸ ${fmtOrderTime(elapsed)}` : fmtOrderTime(elapsed);
 
-  // Сводка по статусам
-  const working = orders.filter(o => !o.paused && o.status !== 'Ждёт оплату' && o.status !== 'Выполнен').length;
-  const paused  = orders.filter(o => o.paused).length;
-  const pay     = orders.filter(o => o.status === 'Ждёт оплату' && !o.paused).length;
-
-  let summaryHtml = '';
-  if(orders.length > 0){
-    summaryHtml = `<div class="order-summary">
-      ${working>0 ? `<span class="order-stat work">🟢 В работе — ${working}</span>` : ''}
-      ${paused >0 ? `<span class="order-stat paused">⏸️ На паузе — ${paused}</span>` : ''}
-      ${pay    >0 ? `<span class="order-stat pay">💰 Ждёт оплату — ${pay}</span>` : ''}
-    </div>` ;
+  let pauseInfo = '';
+  if(o.paused && o.pauseReason){
+    pauseInfo = `<span class="order-pause-reason">⏸️ ${escapeHtml(o.pauseReason)}</span>`;
   }
 
-  const orderCards = orders.map(o => {
-    const elapsed = orderElapsed(o);
-    const tc = o.paused ? 'warn' : timerClass(elapsed);
-    const isOverdue = !o.paused && elapsed >= ORDER_OVERDUE_MS;
-    const timerLabel = o.paused ? `⏸ ${fmtOrderTime(elapsed)}` : fmtOrderTime(elapsed);
+  // Пауза — отображается, но некликабельна (pointer-events:none)
+  const pauseOrResume = o.paused
+    ? `<button class="order-btn resume-btn" data-order-resume="${o.id}" data-emp-id="${empId}">▶ Возобновить</button>`
+    : `<button class="order-btn pause-btn-disabled" tabindex="-1">⏸ Пауза</button>`;
 
-    let pauseInfo = '';
-    if(o.paused && o.pauseReason){
-      pauseInfo = `<span class="order-pause-reason">⏸️ ${escapeHtml(o.pauseReason)}</span>`;
-    }
+  const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
 
-    const pauseOrResume = o.paused
-      ? `<button class="order-btn resume-btn" data-order-resume="${o.id}" data-emp-id="${empId}">▶ Возобновить</button>`
-      : `<button class="order-btn pause-btn" data-order-pause="${o.id}" data-emp-id="${empId}">⏸ Пауза</button>`;
+  const metaLine = [
+    o.gross     ? `💰 ${fmtMoney(o.gross)}`              : '',
+    o.payMethod ? `${escapeHtml(o.payMethod)}`             : '',
+    o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}`   : '',
+    o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
+  ].filter(Boolean).join('  ·  ');
 
-    const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
+  const timerHtml = showTimer
+    ? `<span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>`
+    : '';
 
-    const metaLine = [
-      o.gross     ? `💰 ${fmtMoney(o.gross)}`        : '',
-      o.payMethod ? `${escapeHtml(o.payMethod)}`       : '',
-      o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}` : '',
-      o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
-    ].filter(Boolean).join('  ·  ');
+  return `<div class="order-item${isOverdue?' overdue':''}${o.paused?' paused-item':''}${!showTimer?' done-item':''}" data-order-id="${o.id}">
+    <div class="order-header">
+      <span class="order-client">${escapeHtml(o.client||'—')}</span>
+      ${timerHtml}
+    </div>
+    ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
+    <div class="order-status-row">
+      <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
+      ${pauseInfo}
+      ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
+    </div>
+    ${showTimer ? `<div class="order-actions">${pauseOrResume}</div>` : ''}
+    <div class="order-comment-wrap">
+      <textarea placeholder="Комментарий по заказу…" data-order-comment="${o.id}" data-emp-id="${empId}" rows="2">${escapeHtml(o.comment||'')}</textarea>
+      ${commentSaved}
+    </div>
+  </div>`;
+}
 
-    return `<div class="order-item${isOverdue?' overdue':''}${o.paused?' paused-item':''}" data-order-id="${o.id}">
-      <div class="order-header">
-        <span class="order-client">${escapeHtml(o.client||'—')}</span>
-        <span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>
-      </div>
-      ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
-      <div class="order-status-row">
-        <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
-        ${pauseInfo}
-        ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
-      </div>
-      <div class="order-actions">
-        <button class="order-btn status-btn" data-order-status="${o.id}" data-emp-id="${empId}">Сменить статус</button>
-        ${pauseOrResume}
-      </div>
-      <div class="order-comment-wrap">
-        <textarea placeholder="Комментарий по заказу…" data-order-comment="${o.id}" data-emp-id="${empId}" rows="2">${escapeHtml(o.comment||'')}</textarea>
-        ${commentSaved}
-      </div>
+// Рендер сворачиваемой секции заказов
+function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTimer, defaultCollapsed){
+  const count = items.length;
+  const collapsed = ordersCollapsed[id] !== undefined ? ordersCollapsed[id] : defaultCollapsed;
+  const bodyId = 'orders-sec-body-' + id;
+  return `<div class="orders-section ${sectionClass}">
+    <div class="orders-section-header${collapsed?' collapsed':''}" data-orders-toggle="${id}">
+      <span class="sec-title">${icon} ${title} <span class="sec-count">${count}</span></span>
+      <span class="sec-chevron">▼</span>
+    </div>
+    <div class="orders-section-body" id="${bodyId}" style="${collapsed?'display:none':''}">
+      ${count === 0
+        ? '<div class="orders-empty">Нет заказов</div>'
+        : items.map(o => renderOrderCard(o, empId, showTimer)).join('')
+      }
+    </div>
+  </div>`;
+}
+
+// Рендер блока «Текущие заказы» для одного сотрудника
+function renderOrdersBlock(empId){
+  const allOrders = getOrdersForEmp(empId);
+
+  // Разбиваем по колонкам
+  // 1. В работе — не пауза, не успешно, не ждёт оплату, не новый (распределён)
+  const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
+  const isPayWait = o => o.status === 'Ждёт оплату';
+  const isNew = o => o.status === 'Новый';
+
+  const working  = allOrders.filter(o => !isSuccessful(o) && !isPayWait(o) && !isNew(o));
+  const newOrds  = allOrders.filter(o => isNew(o));
+  const paying   = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
+  const done     = allOrders.filter(o => isSuccessful(o));
+
+  if(allOrders.length === 0){
+    return `<div class="card" id="orders-card-${empId}">
+      <h2>Текущие заказы</h2>
+      <div class="orders-empty">Нет активных заказов</div>
     </div>`;
-  }).join('');
+  }
 
   return `
     <div class="card" id="orders-card-${empId}">
       <h2>Текущие заказы</h2>
-      ${summaryHtml}
-      ${orders.length === 0
-        ? '<div class="orders-empty">Нет активных заказов</div>'
-        : orderCards
-      }
+      ${renderOrdersSection('working-'+empId, 'sec-working', '🟢', 'В работе', working, empId, true, false)}
+      ${renderOrdersSection('new-'+empId,     'sec-new',     '📋', 'Взять в работу', newOrds, empId, false, false)}
+      ${renderOrdersSection('pay-'+empId,     'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
+      ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешные', done, empId, false, true)}
     </div>`;
 }
 
@@ -2325,6 +2393,18 @@ function attachDelegatedHandlers(){
       trackerUrl = document.getElementById('trackerUrlInput').value.trim();
       await storeSet('app:trackerUrl', trackerUrl, SHARED);
       await syncTracker();
+      return;
+    }
+
+    // ---- Заказы: сворачивание/разворачивание секции ----
+    const toggleSec = el.closest('[data-orders-toggle]');
+    if(toggleSec){
+      const secId = toggleSec.dataset.ordersToggle;
+      ordersCollapsed[secId] = !ordersCollapsed[secId];
+      // Мгновенно обновляем DOM без полного рендера
+      toggleSec.classList.toggle('collapsed', ordersCollapsed[secId]);
+      const body = document.getElementById('orders-sec-body-' + secId);
+      if(body) body.style.display = ordersCollapsed[secId] ? 'none' : '';
       return;
     }
 
