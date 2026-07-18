@@ -454,6 +454,9 @@
   .status-choice-btn:hover{background:var(--brass-tint);border-color:var(--brass);}
   .status-choice-btn.current{font-weight:700;background:var(--brass-tint);border-color:var(--brass);}
 
+  /* Мета-строка заказа (сумма, метод оплаты, даты) */
+  .order-meta{font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5;}
+
   /* пустой блок заказов */
   .orders-empty{text-align:center;padding:18px 0;color:var(--muted);font-size:13px;}
 </style>
@@ -588,7 +591,7 @@ async function pollSharedData(){
   if(isPolling || document.visibilityState==='hidden') return;
   isPolling = true;
   try{
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrders] = await Promise.all([
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       storeGet('attendance:log', SHARED),
@@ -600,8 +603,9 @@ async function pollSharedData(){
       storeGet('app:trackerUrl', SHARED),
       storeGet('app:trackerData', SHARED),
       storeGet('app:ordersData', SHARED),
+      storeGet('app:ordersOverlay', SHARED),
     ]);
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrders});
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv});
     if(snapshot === lastSyncSnapshot) return; // ничего не изменилось — рендер не нужен
     lastSyncSnapshot = snapshot;
 
@@ -615,7 +619,8 @@ async function pollSharedData(){
     if(freshLedger) ledgerTotals = freshLedger;
     if(freshTrackerUrl) trackerUrl = freshTrackerUrl;
     if(freshTrackerData) trackerData = freshTrackerData;
-    if(freshOrders) ordersData = freshOrders;
+    if(freshOrdersCsv) ordersData = freshOrdersCsv;
+    if(freshOrdersOv) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
 
     // если сотрудника, под которым мы сейчас смотрим панель, удалили с другого устройства — выходим на выбор
@@ -853,24 +858,54 @@ const SEED_ORDERS = {
   e4: [],
 };
 
+// ordersData — данные из CSV (обновляются при каждом синке ТО):
+//   { empId: [{id, client, status, statusSince, gross, pending, payMethod, deadline, dateCreated}, ...] }
+// ordersOverlay — ручные данные (пауза, комментарий), хранятся в Supabase:
+//   { orderId: {paused, pauseReason, pausedAt, comment} }
+let ordersOverlay = {};
+
 async function loadOrders(){
   try{
-    const saved = await storeGet('app:ordersData', SHARED);
-    if(saved){ ordersData = saved; }
-    else {
-      ordersData = SEED_ORDERS;
-      await saveOrders();
-    }
+    const savedOverlay = await storeGet('app:ordersOverlay', SHARED);
+    if(savedOverlay){ ordersOverlay = savedOverlay; }
+    const savedCsv = await storeGet('app:ordersData', SHARED);
+    if(savedCsv){ ordersData = savedCsv; }
   }catch(e){ console.error('loadOrders failed', e); }
 }
 
 async function saveOrders(){
-  try{ await storeSet('app:ordersData', ordersData, SHARED); }
+  try{
+    await storeSet('app:ordersData', ordersData, SHARED);
+    await storeSet('app:ordersOverlay', ordersOverlay, SHARED);
+  }
   catch(e){ console.error('saveOrders failed', e); }
 }
 
+async function saveOverlay(){
+  try{ await storeSet('app:ordersOverlay', ordersOverlay, SHARED); }
+  catch(e){ console.error('saveOverlay failed', e); }
+}
+
+// Возвращает заказы сотрудника с наложенным overlay (пауза, комментарий, ручной статус)
 function getOrdersForEmp(empId){
-  return (ordersData[empId] || []).filter(o => o.status !== 'Выполнен' || (Date.now() - (o.statusSince||0)) < 3600000);
+  const list = ordersData[empId] || [];
+  return list.map(o => {
+    const ov = ordersOverlay[o.id] || {};
+    // Статус: если сотрудник менял вручную — берём из overlay, иначе из CSV
+    const status      = ov.status      || o.status      || '';
+    const statusSince = ov.statusSince || o.statusSince || Date.now();
+    const isDone = status.toLowerCase().includes('успешно');
+    // Скрываем «Успешно завершено» через час
+    if(isDone && (Date.now() - statusSince) >= 3600000) return null;
+    return Object.assign({}, o, {
+      status,
+      statusSince,
+      paused:      ov.paused      || false,
+      pauseReason: ov.pauseReason || '',
+      pausedAt:    ov.pausedAt    || null,
+      comment:     ov.comment     || '',
+    });
+  }).filter(Boolean);
 }
 
 function orderElapsed(order){
@@ -931,16 +966,23 @@ function renderOrdersBlock(empId){
 
     const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
 
+    const metaLine = [
+      o.gross     ? `💰 ${fmtMoney(o.gross)}`        : '',
+      o.payMethod ? `${escapeHtml(o.payMethod)}`       : '',
+      o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}` : '',
+      o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
+    ].filter(Boolean).join('  ·  ');
+
     return `<div class="order-item${isOverdue?' overdue':''}${o.paused?' paused-item':''}" data-order-id="${o.id}">
       <div class="order-header">
-        <span class="order-num">#${escapeHtml(o.id)}</span>
-        <span class="order-client">${escapeHtml(o.client)}</span>
+        <span class="order-client">${escapeHtml(o.client||'—')}</span>
         <span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>
       </div>
+      ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
       <div class="order-status-row">
         <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
         ${pauseInfo}
-        ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8 часов</span>' : ''}
+        ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
       </div>
       <div class="order-actions">
         <button class="order-btn status-btn" data-order-status="${o.id}" data-emp-id="${empId}">Сменить статус</button>
@@ -1548,6 +1590,66 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         kpiData[targetMonth][emp.id] = values;
         if(orders>0 || deals>0) matched++;
       }
+
+      // ---- Парсим активные заказы для блока «Текущие заказы» (только ТО) ----
+      if(dept === 'to'){
+        // Дополнительные колонки из таблицы
+        const nameCol     = findCol(['имя','name']);
+        const clientCol   = nameCol >= 0 ? nameCol : 0; // Имя клиента — первая колонка
+        const deadlineCol = findCol(['дата сдачи','дедлайн','срок']);
+        const payMethodCol= findCol(['метод оплаты','способ оплаты','оплата']);
+        const prepayCol   = findCol(['предоплат']);
+
+        const newOrdersData = {};
+        for(const emp of deptEmployees){
+          const nameLc = emp.name.trim().toLowerCase();
+          const empOrders = [];
+          for(let r=1;r<rows.length;r++){
+            const row = rows[r];
+            const actor = (row[actorCol]||'').trim().toLowerCase();
+            if(actor !== nameLc) continue;
+            // Берём все строки этого месяца
+            if(!rowInMonth(row, dateCol, targetMonth)) continue;
+            const statusRaw = statusCol>=0 ? (row[statusCol]||'').trim() : '';
+            const isDone = statusRaw.toLowerCase().includes('успешно');
+            const clientName = clientCol>=0 ? (row[clientCol]||'').trim() : '';
+            const grossVal   = grossCol>=0  ? parseNum(row[grossCol])  : 0;
+            const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]): 0;
+            const prepayVal  = prepayCol>=0  ? parseNum(row[prepayCol]) : 0;
+            const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
+            const payMethod  = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
+            const dateCreated= dateCol>=0 ? (row[dateCol]||'').trim() : '';
+
+            // Уникальный ID заказа: строка в таблице (r) + имя клиента
+            const orderId = `r${r}-${emp.id}`;
+
+            // statusSince: берём из существующего ordersData если статус не изменился,
+            // иначе — сейчас (точное время неизвестно из CSV)
+            const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
+            const statusSince = (existing && existing.status === statusRaw)
+              ? existing.statusSince
+              : Date.now();
+
+            empOrders.push({
+              id: orderId,
+              client: clientName,
+              status: statusRaw,
+              statusSince,
+              gross: grossVal,
+              pending: pendingVal,
+              prepay: prepayVal,
+              payMethod,
+              deadline: deadlineStr,
+              dateCreated,
+              isDone,
+            });
+          }
+          newOrdersData[emp.id] = empOrders;
+        }
+        // Мёрджим: обновляем ordersData данными из CSV
+        Object.assign(ordersData, newOrdersData);
+        await storeSet('app:ordersData', ordersData, SHARED);
+      }
     } else {
       const nameIdx = header.findIndex(h=>/имя|name/i.test(h));
       const idx = nameIdx>=0 ? nameIdx : 0;
@@ -1785,7 +1887,7 @@ function renderEmployeeDashboard(){
         todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
     </div>
 
-    ${renderOrdersBlock(emp.id)}
+    ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
 
     <div class="card">
       <h2>Мой график · ${monthLabel(activeMonth)}</h2>
@@ -2233,16 +2335,17 @@ function attachDelegatedHandlers(){
       const empId   = pauseBtn.dataset.empId;
       const reason  = await showPauseModal(empId, orderId);
       if(!reason) return;
-      const list = ordersData[empId] || [];
-      const ord  = list.find(o => o.id === orderId);
-      if(ord){
-        ord.paused     = true;
-        ord.pauseReason = reason;
-        ord.pausedAt   = Date.now();
-        await saveOrders();
-        render();
-        showToast('Заказ на паузе: ' + reason, 'success');
-      }
+      if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
+      ordersOverlay[orderId].paused      = true;
+      ordersOverlay[orderId].pauseReason = reason;
+      ordersOverlay[orderId].pausedAt    = Date.now();
+      // сохраняем statusSince для корректного таймера
+      const empListP = ordersData[empId] || [];
+      const ordP = empListP.find(o => o.id === orderId);
+      if(ordP && !ordersOverlay[orderId].statusSince) ordersOverlay[orderId].statusSince = ordP.statusSince;
+      await saveOverlay();
+      render();
+      showToast('Заказ на паузе: ' + reason, 'success');
       return;
     }
 
@@ -2251,19 +2354,20 @@ function attachDelegatedHandlers(){
     if(resumeBtn){
       const orderId = resumeBtn.dataset.orderResume;
       const empId   = resumeBtn.dataset.empId;
-      const list    = ordersData[empId] || [];
-      const ord     = list.find(o => o.id === orderId);
-      if(ord){
-        // При возобновлении сбрасываем statusSince, чтобы таймер считал заново
-        const pausedDuration = ord.pausedAt ? (ord.pausedAt - (ord.statusSince||ord.pausedAt)) : 0;
-        ord.paused      = false;
-        ord.pauseReason = '';
-        ord.pausedAt    = null;
-        ord.statusSince = Date.now() - pausedDuration; // сохраняем накопленное время
-        await saveOrders();
-        render();
-        showToast('Заказ возобновлён', 'success');
-      }
+      const ov = ordersOverlay[orderId] || {};
+      const empListR = ordersData[empId] || [];
+      const ordR = empListR.find(o => o.id === orderId);
+      const baseSince = ordR ? (ordR.statusSince||Date.now()) : Date.now();
+      const pausedDuration = ov.pausedAt ? (ov.pausedAt - baseSince) : 0;
+      ordersOverlay[orderId] = Object.assign(ov, {
+        paused: false,
+        pauseReason: '',
+        pausedAt: null,
+        statusSince: Date.now() - pausedDuration,
+      });
+      await saveOverlay();
+      render();
+      showToast('Заказ возобновлён', 'success');
       return;
     }
 
@@ -2272,17 +2376,18 @@ function attachDelegatedHandlers(){
     if(statusBtn){
       const orderId = statusBtn.dataset.orderStatus;
       const empId   = statusBtn.dataset.empId;
-      const list    = ordersData[empId] || [];
-      const ord     = list.find(o => o.id === orderId);
-      if(!ord) return;
-      const newStatus = await showStatusModal(ord.status);
-      if(!newStatus || newStatus === ord.status) return;
-      ord.status      = newStatus;
-      ord.statusSince = Date.now();
-      ord.paused      = false;
-      ord.pauseReason = '';
-      ord.pausedAt    = null;
-      await saveOrders();
+      const empListS = ordersData[empId] || [];
+      const ordS = empListS.find(o => o.id === orderId);
+      const curStatus = (ordersOverlay[orderId]||{}).status || (ordS||{}).status || '';
+      const newStatus = await showStatusModal(curStatus);
+      if(!newStatus || newStatus === curStatus) return;
+      if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
+      ordersOverlay[orderId].status      = newStatus;
+      ordersOverlay[orderId].statusSince = Date.now();
+      ordersOverlay[orderId].paused      = false;
+      ordersOverlay[orderId].pauseReason = '';
+      ordersOverlay[orderId].pausedAt    = null;
+      await saveOverlay();
       render();
       showToast('Статус: ' + newStatus, 'success');
       return;
@@ -2303,14 +2408,11 @@ function attachDelegatedHandlers(){
     const empId   = ta.dataset.empId;
     clearTimeout(commentSaveTimers[orderId]);
     commentSaveTimers[orderId] = setTimeout(async ()=>{
-      const list = ordersData[empId] || [];
-      const ord  = list.find(o => o.id === orderId);
-      if(ord){
-        ord.comment = ta.value;
-        await saveOrders();
-        const saved = document.getElementById('saved-' + orderId);
-        if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
-      }
+      if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
+      ordersOverlay[orderId].comment = ta.value;
+      await saveOverlay();
+      const saved = document.getElementById('saved-' + orderId);
+      if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
     }, 800);
   });
 
@@ -2360,7 +2462,7 @@ let orderTimerHandle = null;
   await loadAll();
   await loadOrders();
   render();
-  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData});
+  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного render()
   orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
   if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
