@@ -998,6 +998,7 @@ function renderOrderCard(o, empId, showTimer){
   const metaLine = [
     o.gross     ? `💰 ${fmtMoney(o.gross)}`              : '',
     o.payMethod ? `${escapeHtml(o.payMethod)}`             : '',
+    o.duration  ? `⏱ ${escapeHtml(o.duration)}`               : '',
     o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}`   : '',
     o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
   ].filter(Boolean).join('  ·  ');
@@ -1714,6 +1715,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const contactPlaceCol = findCol(['место общения','мессенджер','канал связи','платформа']);
         const notesCol    = findCol(['примечани','заметк']);
         const phoneCol    = findCol(['телефон','номер телефона','phone','номер для связи']);
+        const durationCol = findCol(['\u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442']);
 
         const newOrdersData = {};
         for(const emp of deptEmployees){
@@ -1737,6 +1739,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const contactPlace = contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
             const notes      = notesCol>=0 ? (row[notesCol]||'').trim() : '';
             const phone      = phoneCol>=0 ? (row[phoneCol]||'').trim() : '';
+            const duration   = durationCol>=0 ? (row[durationCol]||'').trim() : '';
 
             // Уникальный ID заказа: строка в таблице (r) + имя клиента
             const orderId = `r${r}-${emp.id}`;
@@ -1763,6 +1766,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
               contactPlace,
               notes,
               phone,
+              duration,
             });
           }
           newOrdersData[emp.id] = empOrders;
