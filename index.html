@@ -1145,6 +1145,11 @@ function showPauseModal(empId, orderId){
     const host = document.getElementById('modalHost');
     if(!host){ resolve(null); return; }
     let selected = '';
+    const closeModal = (result) => {
+      host.classList.remove('open');
+      setTimeout(() => { host.innerHTML = ''; }, 260);
+      resolve(result);
+    };
     const renderModal = () => {
       host.innerHTML = `
         <div class="pause-modal">
@@ -1163,6 +1168,7 @@ function showPauseModal(empId, orderId){
             </div>
           </div>
         </div>`;
+      requestAnimationFrame(() => host.classList.add('open'));
       host.querySelectorAll('.pause-reason-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           selected = btn.dataset.reason;
@@ -1172,8 +1178,8 @@ function showPauseModal(empId, orderId){
           }
         });
       });
-      document.getElementById('pauseBackdrop').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
-      document.getElementById('pauseCancelBtn').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+      document.getElementById('pauseBackdrop').addEventListener('click', () => closeModal(null));
+      document.getElementById('pauseCancelBtn').addEventListener('click', () => closeModal(null));
       document.getElementById('pauseConfirmBtn').addEventListener('click', () => {
         if(!selected){ showToast('Выберите причину паузы', 'error'); return; }
         let reason = selected;
@@ -1182,8 +1188,7 @@ function showPauseModal(empId, orderId){
           if(!txt.trim()){ showToast('Опишите причину в поле «Другое»', 'error'); return; }
           reason = txt.trim();
         }
-        host.innerHTML = '';
-        resolve(reason);
+        closeModal(reason);
       });
     };
     renderModal();
@@ -1198,6 +1203,11 @@ function showStatusModal(currentStatus){
     const choices = ORDER_STATUSES.length > 0
       ? ORDER_STATUSES
       : ['Новый','В работе','Проверка','Ждёт оплату','Выполнен'];
+    const closeStatus = (result) => {
+      host.classList.remove('open');
+      setTimeout(() => { host.innerHTML = ''; }, 260);
+      resolve(result);
+    };
     host.innerHTML = `
       <div class="status-modal">
         <div class="pause-modal-backdrop" id="statusBackdrop"></div>
@@ -1211,10 +1221,11 @@ function showStatusModal(currentStatus){
           </div>
         </div>
       </div>`;
-    host.querySelector('#statusBackdrop').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
-    host.querySelector('#statusCancelBtn').addEventListener('click', () => { host.innerHTML=''; resolve(null); });
+    requestAnimationFrame(() => host.classList.add('open'));
+    host.querySelector('#statusBackdrop').addEventListener('click', () => closeStatus(null));
+    host.querySelector('#statusCancelBtn').addEventListener('click', () => closeStatus(null));
     host.querySelectorAll('.status-choice-btn').forEach(btn => {
-      btn.addEventListener('click', () => { host.innerHTML=''; resolve(btn.dataset.newstatus); });
+      btn.addEventListener('click', () => closeStatus(btn.dataset.newstatus));
     });
   });
 }
