@@ -640,8 +640,8 @@
       <div class="tab active" data-mode="employee">Сотрудник</div>
       <div class="tab" id="salesTab" data-mode="sales" style="display:none;">Продажа</div>
       <div class="tab" data-mode="admin">Админ</div>
-      <button class="theme-btn" id="themeBtn" title="Сменить тему">☀️</button>
     </div>
+    <button class="theme-btn" id="themeBtn" title="Сменить тему" style="position:absolute;top:12px;right:12px;">☀️</button>
   </header>
   <main id="main"></main>
 </div>
@@ -1235,7 +1235,35 @@ function renderOrdersBlock(empId){
     </div>`;
 }
 
-// Обновить только таймеры в блоке заказов (без полного рендера)
+// Рендер блока заказов для сотрудников ТО (без таймеров, 3 секции)
+function renderOrdersBlockTO(empId){
+  const allOrders = getOrdersForEmp(empId);
+
+  const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
+  const isPayWait    = o => o.status.toLowerCase().includes('оплат');
+
+  // Висит — всё что не успешно и не ждём оплату
+  const hanging = allOrders.filter(o => !isSuccessful(o) && !isPayWait(o));
+  const paying  = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
+  const done    = allOrders.filter(o => isSuccessful(o));
+
+  if(allOrders.length === 0){
+    return `<div class="card" id="orders-card-${empId}">
+      <h2>Текущие заказы</h2>
+      <div class="orders-empty">Нет активных заказов</div>
+    </div>`;
+  }
+
+  return `
+    <div class="card" id="orders-card-${empId}">
+      <h2>Текущие заказы</h2>
+      ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false)}
+      ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
+      ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true)}
+    </div>`;
+}
+
+
 function tickOrderTimers(){
   document.querySelectorAll('[data-order-timer]').forEach(el => {
     const paused = el.dataset.paused === '1';
@@ -2152,7 +2180,7 @@ function renderEmployeeDashboard(){
         todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
     </div>
 
-    ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
+    ${emp.department === 'to' ? renderOrdersBlockTO(emp.id) : ''}
 
     <div class="card">
       <h2>Мой график · ${monthLabel(activeMonth)}</h2>
@@ -2203,6 +2231,7 @@ let salesForm = {
   total: '',
   prepayment: '',
   duration: '',
+  addon: '',
   payMethod: '',
   earnings: '',
   deliveryDate: '',
@@ -2219,7 +2248,8 @@ const TARGET_OPTIONS = ['Беларусь','Грузия','Азербайджа�
 const PAY_METHODS = ['Lava top','Halyk Gani','Halyk Mars','FREEDOM GANI','Kaspi gani','СБЕР НИКИТА Л','DM GANI вестерн юнион','Другое'];
 
 // Длительности
-const DURATION_OPTIONS = ['1-1,5 мин','1,5 минуты','2 минуты','2 мин ЛЮКС','2-2,5 минут','2,5 мин','3 минуты','3 мин ЛЮКС','3-3,5мин','3 минуты + диктор','4 минуты','4 мин ЛЮКС','4-5 минут','4-5 минут + диктор','5 минут','6 минут','Другое'];
+const DURATION_OPTIONS = ['1,5 мин','2 мин','2,5 мин','3 мин','3,5 мин','4 мин','4,5 мин','5 мин','6 мин','Другое'];
+const ADDON_OPTIONS = ['', '+Диктор', '+ЛЮКС', 'Другое'];
 
 function salesEmpName(){
   if(!myEmployeeId) return '';
@@ -2239,7 +2269,9 @@ function renderSalesView(){
   const payOpts = PAY_METHODS.map(m=>
     `<option value="${m}" ${salesForm.payMethod===m?'selected':''}>${m}</option>`).join('');
   const durOpts = DURATION_OPTIONS.map(d=>
-    `<option value="${d}" ${salesForm.duration===d?'selected':''}>${d}</option>`).join('');
+    `<option value="${d}" ${salesForm.duration===d?'selected':''}>${d||'—'}</option>`).join('');
+  const addonOpts = ADDON_OPTIONS.map(a=>
+    `<option value="${a}" ${salesForm.addon===a?'selected':''}>${a||'— нет —'}</option>`).join('');
   const monthOpts = MONTHS_RU.map(m=>
     `<option value="${m}" ${salesForm.sheetMonth===m?'selected':''}>${m}</option>`).join('');
 
@@ -2303,10 +2335,6 @@ function renderSalesView(){
           <label class="field-label">Метод оплаты</label>
           <select id="sf_payMethod">${payOpts}</select>
         </div>
-        <div class="field-item">
-          <label class="field-label">Заработок (₸)</label>
-          <input type="number" id="sf_earnings" value="${escapeHtml(salesForm.earnings)}" placeholder="0">
-        </div>
       </div>
     </div>
 
@@ -2315,13 +2343,27 @@ function renderSalesView(){
       <div class="field-grid" style="gap:10px 12px;">
         <div class="field-item">
           <label class="field-label">Длительность</label>
-          <select id="sf_duration">${durOpts}</select>
+          <select id="sf_duration" onchange="(function(){const v=document.getElementById('sf_duration').value;const c=document.getElementById('sf_duration_custom_wrap');if(c)c.style.display=v==='Другое'?'block':'none';})()">
+            ${durOpts}
+          </select>
+          <div id="sf_duration_custom_wrap" style="display:${salesForm.duration==='Другое'?'block':'none'};margin-top:6px;">
+            <input type="text" id="sf_duration_custom" value="${escapeHtml(salesForm.durationCustom||'')}" placeholder="Введите длительность">
+          </div>
+        </div>
+        <div class="field-item">
+          <label class="field-label">Доп. услуга</label>
+          <select id="sf_addon" onchange="(function(){const v=document.getElementById('sf_addon').value;const c=document.getElementById('sf_addon_custom_wrap');if(c)c.style.display=v==='Другое'?'block':'none';})()">
+            ${addonOpts}
+          </select>
+          <div id="sf_addon_custom_wrap" style="display:${salesForm.addon==='Другое'?'block':'none'};margin-top:6px;">
+            <input type="text" id="sf_addon_custom" value="${escapeHtml(salesForm.addonCustom||'')}" placeholder="Введите доп. услугу">
+          </div>
         </div>
         <div class="field-item">
           <label class="field-label">Дата сдачи</label>
           <input type="text" id="sf_deliveryDate" value="${escapeHtml(salesForm.deliveryDate)}" placeholder="дд.мм.гггг">
         </div>
-        <div class="field-item" style="grid-column:1/-1;">
+        <div class="field-item">
           <label class="field-label">Месяц отчёта (лист таблицы) *</label>
           <select id="sf_sheetMonth" style="border:2px solid var(--p5);">${monthOpts}</select>
         </div>
@@ -2359,10 +2401,24 @@ async function submitSalesForm(){
   salesForm.total        = get('sf_total');
   salesForm.prepayment   = get('sf_prepayment');
   salesForm.duration     = get('sf_duration');
+  salesForm.durationCustom = get('sf_duration_custom');
+  salesForm.addon        = get('sf_addon');
+  salesForm.addonCustom  = get('sf_addon_custom');
   salesForm.payMethod    = get('sf_payMethod');
   salesForm.earnings     = get('sf_earnings');
   salesForm.deliveryDate = get('sf_deliveryDate');
   salesForm.sheetMonth   = get('sf_sheetMonth');
+
+  // Финальная длительность: если "Другое" — берём кастомное значение
+  const durationFinal = salesForm.duration === 'Другое'
+    ? (salesForm.durationCustom || 'Другое')
+    : salesForm.duration;
+  // Доп. услуга
+  const addonFinal = salesForm.addon === 'Другое'
+    ? (salesForm.addonCustom || '')
+    : salesForm.addon;
+  // Склеиваем: "2,5 мин+Диктор" или просто "2,5 мин"
+  const durationFull = addonFinal ? durationFinal + addonFinal : durationFinal;
 
   if(!salesForm.clientName){ showToast('Введите имя клиента','error'); return; }
   if(!salesForm.total){ showToast('Введите сумму','error'); return; }
@@ -2383,7 +2439,7 @@ async function submitSalesForm(){
     remainder:    remain,
     whoSold:      empName,
     status:       'Взять в работу',
-    duration:     salesForm.duration,
+    duration:     durationFull,
     payMethod:    salesForm.payMethod,
     earnings:     parseFloat(salesForm.earnings)||0,
     deliveryDate: salesForm.deliveryDate,
@@ -2398,7 +2454,7 @@ async function submitSalesForm(){
     const resp = await fetch(url, {
       method:'POST',
       body: JSON.stringify(payload),
-      // Content-Type намеренно не указан: GAS блокирует preflight CORS для application/json
+      headers:{'Content-Type':'application/json'},
     });
     const text = await resp.text();
     // GAS Web App может вернуть JSON или просто 'ok'
@@ -2411,8 +2467,10 @@ async function submitSalesForm(){
       salesForm = {
         clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
         target: salesForm.target, source:'', phone:'', total:'', prepayment:'',
-        duration: salesForm.duration, payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
-        sheetMonth: salesForm.sheetMonth, // месяц сохраняем между отправками
+        duration: salesForm.duration, durationCustom:'',
+        addon:'', addonCustom:'',
+        payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
+        sheetMonth: salesForm.sheetMonth,
       };
     } else {
       salesResult = 'err';
