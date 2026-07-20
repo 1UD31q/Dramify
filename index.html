@@ -1310,9 +1310,14 @@ function renderOrdersBlockOP(empId){
   const done    = allOrders.filter(o => isSuccessful(o));
 
   if(allOrders.length === 0){
+    const rawCount = (ordersData[empId]||[]).length;
+    const debugHint = rawCount > 0
+      ? `<div style="font-size:11px;color:var(--ink4);margin-top:4px;">ordersData: ${rawCount} строк (все отфильтрованы)</div>`
+      : `<div style="font-size:11px;color:var(--ink4);margin-top:4px;">ordersData пуст для этого сотрудника</div>`;
     return `<div class="card" id="orders-card-${empId}">
       <h2>Текущие заказы</h2>
       <div class="orders-empty">Нет активных заказов</div>
+      ${debugHint}
     </div>`;
   }
 
