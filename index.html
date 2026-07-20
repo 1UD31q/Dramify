@@ -2067,66 +2067,54 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     }
 
     // ---- Парсим активные заказы для блока «Текущие заказы» (ОП) ----
-    // Логика: берём колонку «Кто продал» (I), сравниваем с именем сотрудника,
-    // и все строки этого месяца где совпало — кладём в ordersData[emp.id]
+    // Логика идентична ТО: перебираем сотрудников ОП, для каждого ищем строки
+    // где «Кто продал» (sellerCol) совпадает с именем сотрудника
     if(dept === 'op'){
-      // Колонки по заголовкам таблицы
-      const clientCol       = findCol(['имя','name']);                               // A
-      const dateCreatedCol  = findCol(['дата оформления','дата']);                   // B
-      const contactPlaceCol = findCol(['место общения','примечани','платформа','мессенджер','канал']); // D (место общения+примечания)
-      const phoneCol        = findCol(['номер для связи','телефон','номер телефона','phone']); // E
-      const grossCol2       = findCol(['сумма общая','сумма']);                      // F
-      const prepayCol2      = findCol(['предоплат']);                                // G
-      const pendingCol2     = findCol(['остаток']);                                  // H
-      const sellerCol2      = findCol(['кто продал']);                               // I — главный ключ
-      const toWorkerCol     = findCol(['кто делает']);                               // J
-      const statusCol2      = findCol(['статус']);                                   // K
-      const durationCol     = findCol(['длительност']);                              // L
-      const payMethodCol    = findCol(['метод оплаты','способ оплаты','оплата']);    // M
-      const earningCol      = findCol(['заработок']);                                // N
-      const deadlineCol     = findCol(['дата сдачи','дедлайн','срок']);              // O
+      // sellerCol уже объявлен выше: findCol(['кто продал'])
+      // Дополнительные колонки
+      const opClientCol      = findCol(['имя','name']);
+      const opClientColFinal = opClientCol >= 0 ? opClientCol : 0;
+      const opContactCol     = findCol(['место общения','примечани','платформа','мессенджер','канал']);
+      const opPhoneCol       = findCol(['номер для связи','телефон','номер телефона','phone']);
+      const opPrepayCol      = findCol(['предоплат']);
+      const opToWorkerCol    = findCol(['кто делает']);
+      const opDurationCol    = findCol(['длительност']);
+      const opPayMethodCol   = findCol(['метод оплаты','способ оплаты','оплата']);
+      const opEarningCol     = findCol(['заработок']);
+      const opDeadlineCol    = findCol(['дата сдачи','дедлайн','срок']);
 
-      // sellerCol2 обязателен — без него не знаем кому заказ
-      if(sellerCol2 < 0){
-        console.warn('[ОП заказы] Не найдена колонка «Кто продал» — заказы не загружены');
-      } else {
-        const newOrdersData = {};
-        // Инициализируем пустой массив для каждого сотрудника ОП
-        for(const emp of deptEmployees) newOrdersData[emp.id] = [];
-
+      const newOrdersData = {};
+      for(const emp of deptEmployees){
+        const nameLc = emp.name.trim().toLowerCase();
+        const empOrders = [];
         for(let r=1; r<rows.length; r++){
           const row = rows[r];
-          // Фильтр по месяцу через дату оформления (колонка B)
-          if(!rowInMonth(row, dateCreatedCol >= 0 ? dateCreatedCol : dateCol, targetMonth)) continue;
-          // Кто продал
-          const sellerRaw = (row[sellerCol2]||'').trim().replace(/\.+$/, '');
-          if(!sellerRaw || sellerRaw==='-' || sellerRaw==='—') continue;
-          const sellerLc = sellerRaw.toLowerCase();
-          // Ищем совпадение с сотрудником ОП
-          const emp = deptEmployees.find(e => e.name.trim().toLowerCase() === sellerLc);
-          if(!emp) continue;
+          // Фильтр по колонке «Кто продал» — точно как ТО делает по «Кто делает»
+          const actor = (row[sellerCol]||'').trim().replace(/\.+$/, '').toLowerCase();
+          if(actor !== nameLc) continue;
+          // Фильтр по месяцу (dateCol = «Дата оформления», объявлен выше)
+          if(!rowInMonth(row, dateCol, targetMonth)) continue;
 
-          const statusRaw   = statusCol2>=0   ? (row[statusCol2]||'').trim()   : '';
-          const clientName  = clientCol>=0    ? (row[clientCol]||'').trim()    : '';
-          const grossVal    = grossCol2>=0    ? parseNum(row[grossCol2])        : 0;
-          const prepayVal   = prepayCol2>=0   ? parseNum(row[prepayCol2])       : 0;
-          const pendingVal  = pendingCol2>=0  ? parseNum(row[pendingCol2])      : 0;
-          const toWorker    = toWorkerCol>=0  ? (row[toWorkerCol]||'').trim()  : '';
-          const duration    = durationCol>=0  ? (row[durationCol]||'').trim()  : '';
-          const payMethod   = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
-          const deadlineStr = deadlineCol>=0  ? (row[deadlineCol]||'').trim()  : '';
-          const earning     = earningCol>=0   ? parseNum(row[earningCol])       : 0;
-          const contactPlace= contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
-          const phone       = phoneCol>=0     ? (row[phoneCol]||'').trim()     : '';
-          const dateCreated = dateCreatedCol>=0 ? (row[dateCreatedCol]||'').trim()
-                            : (dateCol>=0 ? (row[dateCol]||'').trim() : '');
+          const statusRaw   = statusCol>=0      ? (row[statusCol]||'').trim()         : '';
+          const clientName  =                     (row[opClientColFinal]||'').trim();
+          const grossVal    = grossCol>=0       ? parseNum(row[grossCol])               : 0;
+          const prepayVal   = opPrepayCol>=0    ? parseNum(row[opPrepayCol])            : 0;
+          const pendingVal  = pendingCol>=0     ? parseNum(row[pendingCol])             : 0;
+          const toWorker    = opToWorkerCol>=0  ? (row[opToWorkerCol]||'').trim()      : '';
+          const duration    = opDurationCol>=0  ? (row[opDurationCol]||'').trim()      : '';
+          const payMethod   = opPayMethodCol>=0 ? (row[opPayMethodCol]||'').trim()     : '';
+          const deadlineStr = opDeadlineCol>=0  ? (row[opDeadlineCol]||'').trim()      : '';
+          const earning     = opEarningCol>=0   ? parseNum(row[opEarningCol])           : 0;
+          const contactPlace= opContactCol>=0   ? (row[opContactCol]||'').trim()       : '';
+          const phone       = opPhoneCol>=0     ? (row[opPhoneCol]||'').trim()         : '';
+          const dateCreated = dateCol>=0        ? (row[dateCol]||'').trim()            : '';
 
-          const orderId = `r${r}-op`;
+          const orderId = `r${r}-${emp.id}`;
           const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
           const statusSince = (existing && existing.status === statusRaw)
             ? existing.statusSince : Date.now();
 
-          newOrdersData[emp.id].push({
+          empOrders.push({
             id: orderId,
             client: clientName,
             status: statusRaw,
@@ -2145,9 +2133,10 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             isDone: statusRaw.toLowerCase().includes('успешно'),
           });
         }
-        Object.assign(ordersData, newOrdersData);
-        await storeSet('app:ordersData', ordersData, SHARED);
+        newOrdersData[emp.id] = empOrders;
       }
+      Object.assign(ordersData, newOrdersData);
+      await storeSet('app:ordersData', ordersData, SHARED);
     }
 
     await storeSet('app:kpiData', kpiData, SHARED);
