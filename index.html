@@ -792,8 +792,8 @@ async function pollSharedData(){
     if(freshLedger) ledgerTotals = freshLedger;
     if(freshTrackerUrl) trackerUrl = freshTrackerUrl;
     if(freshTrackerData) trackerData = freshTrackerData;
-    if(freshOrdersCsv) ordersData = freshOrdersCsv;
-    if(freshOrdersOv) ordersOverlay = freshOrdersOv;
+    if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
+    if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
 
     // если сотрудника, под которым мы сейчас смотрим панель, удалили с другого устройства — выходим на выбор
