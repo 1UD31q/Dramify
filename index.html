@@ -638,6 +638,7 @@
     </div>
     <div class="tabs" style="position:relative;">
       <div class="tab active" data-mode="employee">Сотрудник</div>
+      <div class="tab" id="salesTab" data-mode="sales" style="display:none;">Продажа</div>
       <div class="tab" data-mode="admin">Админ</div>
       <button class="theme-btn" id="themeBtn" title="Сменить тему">☀️</button>
     </div>
@@ -784,6 +785,7 @@ async function pollSharedData(){
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = freshSheetUrls;
+    // salesScriptUrl not polled (admin sets it explicitly)
     if(freshSchedules) schedules = freshSchedules;
     if(freshLedger) ledgerTotals = freshLedger;
     if(freshTrackerUrl) trackerUrl = freshTrackerUrl;
@@ -1439,6 +1441,11 @@ async function loadAll(){
   } catch(e) { console.error(e); }
 
   try {
+    const storedSalesScriptUrl = await storeGet('app:salesScriptUrl', SHARED);
+    if(storedSalesScriptUrl) salesScriptUrl = storedSalesScriptUrl;
+  } catch(e) { console.error(e); }
+
+  try {
     const storedSchedules = await storeGet('app:schedules', SHARED);
     if(storedSchedules) schedules = storedSchedules;
   } catch(e) { console.error(e); }
@@ -2011,7 +2018,15 @@ function render(){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
   main.classList.remove('anim-in'); // сначала снимаем класс — иначе только что вставленные карточки
                                      // унаследуют его и будут переигрывать анимацию на каждый рендер
-  main.innerHTML = mode==='employee' ? renderEmployeeArea() : renderAdminView();
+  // Показываем вкладку «Продажа» только для сотрудников ОП
+  const salesTabEl = document.getElementById('salesTab');
+  if(salesTabEl){
+    const emp = employees.find(e=>e.id===myEmployeeId);
+    salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
+  }
+  if(mode==='employee')       main.innerHTML = renderEmployeeArea();
+  else if(mode==='sales')     main.innerHTML = renderSalesView();
+  else                         main.innerHTML = renderAdminView();
   // анимацию «появления» включаем только когда реально сменился экран, а не на каждый рендер
   // (иначе ввод PIN или KPI подёргивался бы при каждой цифре/символе)
   const viewKey = currentViewKey();
@@ -2163,6 +2178,252 @@ function renderPinGate(){
         <div class="pin-error">${pinError}</div>
       </div>
     </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ПРОДАЖА — форма добавления записи в Google-таблицу отчёта по продажам
+// ─────────────────────────────────────────────────────────────────────────
+
+// Ключ Google Apps Script Web App, принимающего POST и пишущего в таблицу.
+// Администратор вводит URL через раздел Настройки → Ссылка на скрипт отчёта.
+// Хранится в storeGet('app:salesScriptUrl', SHARED)
+let salesScriptUrl = '';
+
+// Состояние формы
+// Названия месяцев для выбора листа таблицы
+const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь',
+                   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+let salesForm = {
+  clientName: '',
+  date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
+  target: 'Беларусь',
+  source: '',
+  phone: '',
+  total: '',
+  prepayment: '',
+  duration: '',
+  payMethod: '',
+  earnings: '',
+  deliveryDate: '',
+  sheetMonth: MONTHS_RU[new Date().getMonth()], // текущий месяц по умолчанию
+};
+let salesSubmitting = false;
+let salesResult = '';   // '' | 'ok' | 'err'
+let salesResultMsg = '';
+
+// Список стран для «Таргет»
+const TARGET_OPTIONS = ['Беларусь','Грузия','Азербайджан','Армения','Казахстан','Россия','Другое'];
+
+// Методы оплаты (берём из реальных значений в таблице)
+const PAY_METHODS = ['Lava top','Halyk Gani','Halyk Mars','FREEDOM GANI','Kaspi gani','СБЕР НИКИТА Л','DM GANI вестерн юнион','Другое'];
+
+// Длительности
+const DURATION_OPTIONS = ['1-1,5 мин','1,5 минуты','2 минуты','2 мин ЛЮКС','2-2,5 минут','2,5 мин','3 минуты','3 мин ЛЮКС','3-3,5мин','3 минуты + диктор','4 минуты','4 мин ЛЮКС','4-5 минут','4-5 минут + диктор','5 минут','6 минут','Другое'];
+
+function salesEmpName(){
+  if(!myEmployeeId) return '';
+  const e = employees.find(e=>e.id===myEmployeeId);
+  return e ? e.name : '';
+}
+
+function renderSalesView(){
+  const empName = salesEmpName();
+  // Автовычисление остатка
+  const total = parseFloat(salesForm.total)||0;
+  const prep  = parseFloat(salesForm.prepayment)||0;
+  const remainder = total > 0 ? Math.max(0, total - prep) : 0;
+
+  const targetOpts = TARGET_OPTIONS.map(t=>
+    `<option value="${t}" ${salesForm.target===t?'selected':''}>${t}</option>`).join('');
+  const payOpts = PAY_METHODS.map(m=>
+    `<option value="${m}" ${salesForm.payMethod===m?'selected':''}>${m}</option>`).join('');
+  const durOpts = DURATION_OPTIONS.map(d=>
+    `<option value="${d}" ${salesForm.duration===d?'selected':''}>${d}</option>`).join('');
+  const monthOpts = MONTHS_RU.map(m=>
+    `<option value="${m}" ${salesForm.sheetMonth===m?'selected':''}>${m}</option>`).join('');
+
+  const resultBanner = salesResult==='ok'
+    ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:rgba(29,185,84,.12);color:#15803d;font-weight:600;font-size:13px;margin-bottom:12px;">✅ ${escapeHtml(salesResultMsg)}</div>`
+    : salesResult==='err'
+    ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:var(--rust-tint);color:var(--rust-dark);font-weight:600;font-size:13px;margin-bottom:12px;">❌ ${escapeHtml(salesResultMsg)}</div>`
+    : '';
+
+  const noScript = !salesScriptUrl.trim()
+    ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:var(--p1);font-size:12.5px;color:var(--ink2);margin-bottom:12px;">
+        ⚙️ Администратор ещё не указал ссылку на скрипт отчёта. Настройте её в разделе <b>Админ → Отчёт продаж</b>.
+       </div>` : '';
+
+  return `
+    ${resultBanner}
+    ${noScript}
+
+    <div class="card">
+      <h2>Данные клиента</h2>
+      <div class="field-grid" style="gap:10px 12px;margin-bottom:4px;">
+        <div class="field-item">
+          <label class="field-label">Имя клиента *</label>
+          <input type="text" id="sf_clientName" value="${escapeHtml(salesForm.clientName)}" placeholder="Имя">
+        </div>
+        <div class="field-item">
+          <label class="field-label">Дата обращения</label>
+          <input type="text" id="sf_date" value="${escapeHtml(salesForm.date)}" placeholder="дд.мм.гггг">
+        </div>
+        <div class="field-item">
+          <label class="field-label">Таргет (страна)</label>
+          <select id="sf_target">${targetOpts}</select>
+        </div>
+        <div class="field-item">
+          <label class="field-label">Номер для связи</label>
+          <input type="text" id="sf_phone" value="${escapeHtml(salesForm.phone)}" placeholder="+375 29 ...">
+        </div>
+      </div>
+      <div class="field-item" style="margin-top:10px;">
+        <label class="field-label">Место общения / ссылка Instagram / примечания</label>
+        <input type="text" id="sf_source" value="${escapeHtml(salesForm.source)}" placeholder="https://instagram.com/... или Ватсап">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Финансы</h2>
+      <div class="field-grid" style="gap:10px 12px;">
+        <div class="field-item">
+          <label class="field-label">Сумма общая (₸) *</label>
+          <input type="number" id="sf_total" value="${escapeHtml(salesForm.total)}" placeholder="0">
+        </div>
+        <div class="field-item">
+          <label class="field-label">Предоплата (₸)</label>
+          <input type="number" id="sf_prepayment" value="${escapeHtml(salesForm.prepayment)}" placeholder="0">
+        </div>
+        <div class="field-item">
+          <label class="field-label">Остаток (авто)</label>
+          <input type="text" id="sf_remainder_display" value="₸${remainder.toLocaleString('ru-RU')}" disabled style="opacity:.6;background:var(--bg2);">
+        </div>
+        <div class="field-item">
+          <label class="field-label">Метод оплаты</label>
+          <select id="sf_payMethod">${payOpts}</select>
+        </div>
+        <div class="field-item">
+          <label class="field-label">Заработок (₸)</label>
+          <input type="number" id="sf_earnings" value="${escapeHtml(salesForm.earnings)}" placeholder="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Параметры заказа</h2>
+      <div class="field-grid" style="gap:10px 12px;">
+        <div class="field-item">
+          <label class="field-label">Длительность</label>
+          <select id="sf_duration">${durOpts}</select>
+        </div>
+        <div class="field-item">
+          <label class="field-label">Дата сдачи</label>
+          <input type="text" id="sf_deliveryDate" value="${escapeHtml(salesForm.deliveryDate)}" placeholder="дд.мм.гггг">
+        </div>
+        <div class="field-item" style="grid-column:1/-1;">
+          <label class="field-label">Месяц отчёта (лист таблицы) *</label>
+          <select id="sf_sheetMonth" style="border:2px solid var(--p5);">${monthOpts}</select>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:12px 14px;border-radius:var(--radius-md);background:var(--bg1);border:1px solid var(--bg2);font-size:13px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <span style="color:var(--ink3);">Кто продал:</span><b>${escapeHtml(empName||'—')}</b>
+          <span style="color:var(--ink3);margin-left:8px;">Статус:</span><b style="color:var(--green);">Взять в работу</b>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn" id="salesSubmitBtn" style="width:100%;margin-top:4px;font-size:15px;padding:14px;" ${salesSubmitting||!salesScriptUrl.trim()?'disabled':''}>
+      ${salesSubmitting ? 'Отправляю…' : '📤 Добавить в отчёт'}
+    </button>
+    <p class="hint" style="text-align:center;margin-top:10px;">Данные запишутся в Google-таблицу отчёта по продажам</p>
+  `;
+}
+
+async function submitSalesForm(){
+  if(salesSubmitting) return;
+  const url = salesScriptUrl.trim();
+  if(!url){ showToast('Не указан URL скрипта отчёта (Админ → Отчёт продаж)','error'); return; }
+
+  // Читаем поля формы
+  const get = id => {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  };
+  salesForm.clientName   = get('sf_clientName');
+  salesForm.date         = get('sf_date');
+  salesForm.target       = get('sf_target');
+  salesForm.source       = get('sf_source');
+  salesForm.phone        = get('sf_phone');
+  salesForm.total        = get('sf_total');
+  salesForm.prepayment   = get('sf_prepayment');
+  salesForm.duration     = get('sf_duration');
+  salesForm.payMethod    = get('sf_payMethod');
+  salesForm.earnings     = get('sf_earnings');
+  salesForm.deliveryDate = get('sf_deliveryDate');
+  salesForm.sheetMonth   = get('sf_sheetMonth');
+
+  if(!salesForm.clientName){ showToast('Введите имя клиента','error'); return; }
+  if(!salesForm.total){ showToast('Введите сумму','error'); return; }
+
+  const total  = parseFloat(salesForm.total)||0;
+  const prep   = parseFloat(salesForm.prepayment)||0;
+  const remain = Math.max(0, total - prep);
+  const empName = salesEmpName();
+
+  const payload = {
+    clientName:   salesForm.clientName,
+    date:         salesForm.date,
+    target:       salesForm.target,
+    source:       salesForm.source,
+    phone:        salesForm.phone,
+    total:        total,
+    prepayment:   prep,
+    remainder:    remain,
+    whoSold:      empName,
+    status:       'Взять в работу',
+    duration:     salesForm.duration,
+    payMethod:    salesForm.payMethod,
+    earnings:     parseFloat(salesForm.earnings)||0,
+    deliveryDate: salesForm.deliveryDate,
+    sheetMonth:   salesForm.sheetMonth,
+  };
+
+  salesSubmitting = true;
+  salesResult = '';
+  render();
+
+  try{
+    const resp = await fetch(url, {
+      method:'POST',
+      body: JSON.stringify(payload),
+      headers:{'Content-Type':'application/json'},
+    });
+    const text = await resp.text();
+    // GAS Web App может вернуть JSON или просто 'ok'
+    let ok = resp.ok;
+    try{ const j = JSON.parse(text); if(j && j.status) ok = j.status==='ok'; } catch(e){}
+    if(ok){
+      salesResult = 'ok';
+      salesResultMsg = 'Запись добавлена в отчёт!';
+      // Сброс формы (кроме таргета и метода оплаты)
+      salesForm = {
+        clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
+        target: salesForm.target, source:'', phone:'', total:'', prepayment:'',
+        duration: salesForm.duration, payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
+        sheetMonth: salesForm.sheetMonth, // месяц сохраняем между отправками
+      };
+    } else {
+      salesResult = 'err';
+      salesResultMsg = 'Ошибка: ' + (text||resp.statusText||'неизвестная ошибка');
+    }
+  } catch(e){
+    salesResult = 'err';
+    salesResultMsg = 'Не удалось отправить: ' + e.message;
+  }
+  salesSubmitting = false;
+  render();
 }
 
 function renderAdminView(){
@@ -2342,6 +2603,16 @@ function renderAdminView(){
       </div>
       ${trackerStatus ? `<div class="hint" style="margin-top:8px;">${escapeHtml(trackerStatus)}</div>` : ''}
       ${lastTrackerSyncAt ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastTrackerSyncAt)}</div>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>Отчёт продаж (форма ОП)</h2>
+      <div class="hint" style="margin-top:0;">Сотрудники ОП заполняют форму прямо в приложении — данные отправляются в Google-таблицу через Apps Script. Вставьте ссылку на задеплоенный Web App (Выполнить как: я; Доступ: все).</div>
+      <div class="row" style="margin-top:12px;">
+        <input type="text" id="salesScriptUrlInput" value="${escapeHtml(salesScriptUrl||'')}" placeholder="https://script.google.com/macros/s/…/exec">
+        <button class="btn small" id="saveSalesScriptBtn">Сохранить</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">После деплоя Google Apps Script вставьте сюда URL вида <span class="mono" style="font-size:11px;">https://script.google.com/macros/s/…/exec</span></div>
     </div>
 
     <div class="card">
@@ -2578,6 +2849,16 @@ function attachDelegatedHandlers(){
       return;
     }
 
+    // ---- Отчёт продаж: сохранить URL скрипта ----
+    if(el.closest('#saveSalesScriptBtn')){
+      const inp = document.getElementById('salesScriptUrlInput');
+      if(inp){ salesScriptUrl = inp.value.trim(); await storeSet('app:salesScriptUrl', salesScriptUrl, SHARED); showToast('URL скрипта сохранён','success'); render(); }
+      return;
+    }
+
+    // ---- Форма продажи: отправить ----
+    if(el.closest('#salesSubmitBtn')){ await submitSalesForm(); return; }
+
     // ---- Заказы: сворачивание/разворачивание секции ----
     const toggleSec = el.closest('[data-orders-toggle]');
     if(toggleSec){
@@ -2664,6 +2945,15 @@ function attachDelegatedHandlers(){
   // Автосохранение комментариев к заказам (debounce 800ms)
   const commentSaveTimers = {};
   document.addEventListener('input', (ev)=>{
+    // Живое обновление «Остаток» в форме продажи
+    if(mode==='sales' && (ev.target.id==='sf_total' || ev.target.id==='sf_prepayment')){
+      salesForm.total      = (document.getElementById('sf_total')||{}).value||'';
+      salesForm.prepayment = (document.getElementById('sf_prepayment')||{}).value||'';
+      const total = parseFloat(salesForm.total)||0;
+      const prep  = parseFloat(salesForm.prepayment)||0;
+      const rem = document.getElementById('sf_remainder_display');
+      if(rem) rem.value = '₸' + Math.max(0,total-prep).toLocaleString('ru-RU');
+    }
     const ta = ev.target.closest('[data-order-comment]');
     if(!ta) return;
     const orderId = ta.dataset.orderComment;
