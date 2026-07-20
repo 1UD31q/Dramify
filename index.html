@@ -2755,9 +2755,8 @@ function renderAdminView(){
       </h2>
       <div class="finance-grid">
         <div class="finance-box accent"><div class="fi-icon">${icon('cash')}</div><div class="label">Сумма</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
-        <div class="finance-box accent"><div class="fi-icon">${icon('check')}</div><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
         <div class="finance-box warn"><div class="fi-icon">${icon('hourglass')}</div><div class="label">Остаток до плана</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
-        <div class="finance-box"><div class="fi-icon">${icon('target')}</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
+        <div class="finance-box" style="grid-column:1/-1"><div class="fi-icon">${icon('target')}</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
         <div class="finance-box trend-box wide"><div class="fi-icon">${icon('trend')}</div><div class="label">Тенденция</div><div class="value">${finance.trendPct}%</div></div>
       </div>
       ${finance.source==='tracker' ? `
@@ -2859,9 +2858,9 @@ function renderAdminView(){
         <div class="row" style="margin-top:8px;">
           <input type="text" data-nameemp="${e.id}" value="${escapeHtml(e.name)}" style="flex:2;">
           <input type="text" data-pinemp="${e.id}" value="${escapeHtml(e.pin)}" maxlength="4" placeholder="PIN">
-          <button class="btn secondary small" data-delemp="${e.id}" style="flex:none;color:var(--rust);">Удалить</button>
+          <button class="btn danger small" data-delemp="${e.id}" style="flex:none;">Удалить</button>
         </div>`).join('')}
-      <button class="btn secondary small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
+      <button class="btn small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
     </div>
 
     <div class="card">
@@ -2896,7 +2895,7 @@ function renderAdminView(){
       <h2>PIN администратора</h2>
       <div class="row">
         <input type="text" id="newAdminPin" placeholder="Новый PIN (${ADMIN_PIN_LEN} цифр)" maxlength="${ADMIN_PIN_LEN}">
-        <button class="btn secondary small" id="changePinBtn">Изменить</button>
+        <button class="btn small" id="changePinBtn">Изменить</button>
       </div>
     </div>
   `;
