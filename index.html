@@ -2398,7 +2398,7 @@ async function submitSalesForm(){
     const resp = await fetch(url, {
       method:'POST',
       body: JSON.stringify(payload),
-      headers:{'Content-Type':'application/json'},
+      // Content-Type намеренно не указан: GAS блокирует preflight CORS для application/json
     });
     const text = await resp.text();
     // GAS Web App может вернуть JSON или просто 'ok'
