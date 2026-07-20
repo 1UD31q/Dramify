@@ -629,6 +629,361 @@
   .order-item.done-item .order-client{color:var(--teal-dark);}
 
 
+
+  /* =========================================================================
+     DESKTOP PREMIUM REDESIGN — wide layout, sidebar nav, elevated feel
+     ========================================================================= */
+
+  @media (min-width: 900px) {
+    /* ── Reset mobile-only constraints ── */
+    body {
+      background: var(--bg1);
+      min-height: 100vh;
+    }
+
+    /* ── App shell: full-screen two-column layout ── */
+    .app {
+      max-width: 100%;
+      min-height: 100vh;
+      flex-direction: row;
+      background: transparent;
+      margin: 0;
+    }
+
+    /* ── LEFT SIDEBAR ── */
+    header.cover {
+      width: 260px;
+      min-width: 260px;
+      min-height: 100vh;
+      margin: 0;
+      border-radius: 0;
+      padding: 32px 24px 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      box-shadow: 2px 0 20px rgba(20, 0, 50, 0.18);
+      /* richer gradient for desktop sidebar */
+      background: linear-gradient(160deg, #1a0a2e 0%, #2d1854 40%, #3d2070 100%);
+    }
+
+    /* Decorative orbs in sidebar */
+    .cover::after {
+      background:
+        radial-gradient(circle at 110% -5%, rgba(184,68,125,.4), transparent 55%),
+        radial-gradient(circle at -20% 75%, rgba(31,111,99,.3), transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(124,82,200,.12), transparent 70%);
+      width: 100%; height: 100%; top: 0; right: 0;
+    }
+
+    /* ── Brand in sidebar ── */
+    .brand {
+      margin-bottom: 36px;
+    }
+    .brand-banner {
+      height: 44px;
+    }
+    .brand .subtitle {
+      font-size: 10px;
+      letter-spacing: .12em;
+      color: rgba(255,255,255,.35);
+      margin-top: 4px;
+    }
+
+    /* ── Tabs → vertical nav pills ── */
+    .tabs {
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 16px;
+      padding: 6px;
+      backdrop-filter: blur(12px);
+    }
+    .tab {
+      text-align: left;
+      padding: 11px 16px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: rgba(255,255,255,.5);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all .18s ease;
+      letter-spacing: -.01em;
+      min-height: unset;
+    }
+    .tab::before {
+      content: '';
+      display: block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
+      flex: none;
+      transition: opacity .18s, transform .18s;
+    }
+    .tab.active {
+      background: rgba(255,255,255,.13);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    .tab.active::before {
+      background: var(--p3);
+      opacity: 1;
+      box-shadow: 0 0 6px rgba(191,163,240,.8);
+    }
+    .tab:hover:not(.active) {
+      background: rgba(255,255,255,.08);
+      color: rgba(255,255,255,.8);
+    }
+
+    /* Theme toggle — bottom of sidebar */
+    #themeBtn {
+      position: static !important;
+      margin-top: auto;
+      align-self: flex-start;
+      background: rgba(255,255,255,.09);
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+    }
+
+    /* Sync / version tag at very bottom */
+    .cover::before {
+      background-image: radial-gradient(rgba(255,255,255,.1) 1px, transparent 1px);
+      background-size: 18px 18px;
+      mask-image: linear-gradient(180deg, #000 0%, transparent 60%);
+    }
+
+    /* ── MAIN CONTENT AREA ── */
+    main#main {
+      flex: 1;
+      padding: 32px 36px 48px 36px;
+      background: var(--bg1);
+      min-height: 100vh;
+      max-width: calc(100% - 260px);
+      overflow-y: auto;
+    }
+
+    /* ── Cards: wider, more spacious ── */
+    .card {
+      padding: 24px 28px;
+      margin-bottom: 18px;
+      border-radius: 20px;
+      border: 1px solid var(--bg2);
+      box-shadow: 0 1px 4px rgba(0,0,0,.04), 0 4px 20px rgba(0,0,0,.04);
+    }
+    .card:hover {
+      box-shadow: 0 8px 32px rgba(59,34,71,.10);
+      transform: translateY(-2px);
+    }
+    .card h2 {
+      font-size: 10px;
+      letter-spacing: .1em;
+      margin-bottom: 18px;
+    }
+
+    /* ── KPI grid: 4 columns on desktop ── */
+    .kpi-grid {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 14px;
+    }
+    .kpi-box {
+      padding: 18px 16px;
+      border-radius: 14px;
+    }
+    .kpi-box .value {
+      font-size: 26px;
+    }
+    .kpi-box.wide {
+      grid-column: 1 / -1;
+    }
+
+    /* ── Finance grid: 4 cols ── */
+    .finance-grid {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 14px;
+    }
+    .finance-box {
+      padding: 18px 16px;
+      border-radius: 14px;
+    }
+    .finance-box.wide {
+      grid-column: 1 / -1;
+    }
+
+    /* ── Punch button: slightly bigger ── */
+    .punch-ring {
+      width: 196px;
+      height: 196px;
+    }
+    .punch-btn {
+      width: 180px;
+      height: 180px;
+      font-size: 24px;
+    }
+    .elapsed {
+      font-size: 26px;
+    }
+
+    /* ── Employee name list: two columns ── */
+    .name-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* ── Table: more breathing room ── */
+    th, td {
+      padding: 13px 12px;
+    }
+
+    /* ── Inputs & selects ── */
+    select, input[type=text], input[type=number] {
+      font-size: 14px;
+      padding: 11px 14px;
+    }
+
+    /* ── Field grid: 3 cols on desktop ── */
+    .field-grid {
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px 16px;
+    }
+
+    /* ── Log rows: more spacious ── */
+    .log-row {
+      padding: 13px 0;
+    }
+
+    /* ── Toast: position away from sidebar ── */
+    #toastHost {
+      left: 260px;
+      bottom: 24px;
+    }
+
+    /* ── Modal: center + fixed width ── */
+    #modalHost {
+      left: 260px;
+    }
+    .modal-sheet {
+      max-width: 520px;
+    }
+    .pause-modal-sheet,
+    .status-modal-sheet {
+      max-width: 520px;
+      border-radius: 24px;
+    }
+
+    /* ── Premium header strip above each section ── */
+    .card h2::after {
+      content: '';
+      display: block;
+      width: 28px;
+      height: 2px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--p5), transparent);
+      margin-top: 8px;
+    }
+
+    /* ── Page-level grid: two-pane layout for admin tab ── */
+    #main > .card:first-child {
+      /* highlight the first card slightly */
+    }
+
+    /* ── Dept group title ── */
+    .dept-group-title {
+      font-size: 10px;
+      letter-spacing: .1em;
+      margin: 22px 0 10px 0;
+    }
+
+    /* ── Order items: side-by-side ── */
+    .order-actions {
+      gap: 8px;
+    }
+
+    /* ── Keypad: larger keys ── */
+    .keypad {
+      grid-template-columns: repeat(3, 64px);
+      gap: 12px;
+    }
+    .keypad button {
+      width: 64px;
+      height: 64px;
+      font-size: 20px;
+    }
+
+    /* ── Subtle sidebar divider ── */
+    .tabs::after {
+      content: '';
+      display: block;
+      height: 1px;
+      background: rgba(255,255,255,.07);
+      margin-top: 8px;
+    }
+
+    /* ── Avatar ring slightly bigger ── */
+    .avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    /* ── Premium scrollbar for sidebar ── */
+    header.cover::-webkit-scrollbar {
+      width: 4px;
+    }
+    header.cover::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.2);
+      border-radius: 4px;
+      border: none;
+    }
+
+    /* ── Wider pin wrap ── */
+    .pin-wrap {
+      padding: 24px 0 8px 0;
+    }
+    .pin-dots {
+      max-width: 280px;
+    }
+
+    /* ── Button sizing on desktop ── */
+    .btn {
+      padding: 11px 20px;
+      font-size: 13.5px;
+      min-height: unset;
+    }
+    .tab, .keypad button, .name-btn {
+      min-height: unset;
+    }
+  }
+
+  /* ── Extra wide: content max-width cap ── */
+  @media (min-width: 1400px) {
+    header.cover {
+      width: 280px;
+      min-width: 280px;
+    }
+    main#main {
+      max-width: 1100px;
+      padding: 36px 48px 60px 48px;
+    }
+    .kpi-grid {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+    }
+    .finance-grid {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+    }
+  }
+
 </style>
 </head>
 <body>
