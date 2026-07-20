@@ -1982,7 +1982,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const empOrders = [];
           for(let r=1;r<rows.length;r++){
             const row = rows[r];
-            const actor = (row[actorCol]||'').trim().toLowerCase();
+            const actor = (row[actorCol]||'').trim().replace(/\.+$/, '').toLowerCase();
             if(actor !== nameLc) continue;
             if(!rowInMonth(row, dateCol, targetMonth)) continue;
             const statusRaw  = statusCol>=0 ? (row[statusCol]||'').trim() : '';
