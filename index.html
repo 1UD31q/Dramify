@@ -2085,7 +2085,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
       const newOrdersData = {};
       for(const emp of deptEmployees){
-        const nameLc = emp.name.trim().toLowerCase();
+        const nameLc = emp.name.trim().replace(/\.+$/, '').toLowerCase();
         const empOrders = [];
         for(let r=1; r<rows.length; r++){
           const row = rows[r];
