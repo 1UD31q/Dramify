@@ -586,6 +586,8 @@
 
   /* Телефон / ссылка */
   .order-phone-line{font-size:12px;color:var(--ink-soft);margin-bottom:8px;line-height:1.5;}
+  .order-to-worker{font-size:12px;margin-bottom:6px;color:var(--ink3);background:rgba(124,80,200,.08);border-radius:6px;padding:4px 8px;display:inline-block;}
+  .order-to-worker b{color:var(--p5);}
 
   /* пустой блок заказов */
   .orders-empty{text-align:center;padding:18px 0;color:var(--muted);font-size:13px;}
@@ -1185,10 +1187,11 @@ function renderOrderCard(o, empId, showTimer){
 }
 
 // Рендер сворачиваемой секции заказов
-function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTimer, defaultCollapsed){
+function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTimer, defaultCollapsed, cardRenderer){
   const count = items.length;
   const collapsed = ordersCollapsed[id] !== undefined ? ordersCollapsed[id] : defaultCollapsed;
   const bodyId = 'orders-sec-body-' + id;
+  const renderFn = cardRenderer || ((o) => renderOrderCard(o, empId, showTimer));
   return `<div class="orders-section ${sectionClass}">
     <div class="orders-section-header${collapsed?' collapsed':''}" data-orders-toggle="${id}">
       <span class="sec-title">${icon} ${title} <span class="sec-count">${count}</span></span>
@@ -1197,7 +1200,7 @@ function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTi
     <div class="orders-section-body" id="${bodyId}" style="${collapsed?'display:none':''}">
       ${count === 0
         ? '<div class="orders-empty">Нет заказов</div>'
-        : items.map(o => renderOrderCard(o, empId, showTimer)).join('')
+        : items.map(o => renderFn(o)).join('')
       }
     </div>
   </div>`;
@@ -1235,6 +1238,65 @@ function renderOrdersBlock(empId){
     </div>`;
 }
 
+// Рендер карточки заказа для ОП (без таймера, без паузы, с ТО-специалистом)
+function renderOrderCardOP(o, empId){
+  const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
+
+  const metaLine = [
+    o.gross     ? `💰 ${fmtMoney(o.gross)}`              : '',
+    o.payMethod ? `${escapeHtml(o.payMethod)}`             : '',
+    o.duration  ? `⏱ ${escapeHtml(o.duration)}`           : '',
+    o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}`   : '',
+    o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
+  ].filter(Boolean).join('  ·  ');
+
+  function renderContactLine(o){
+    const parts = [];
+    if(o.contactPlace) parts.push(`📍 ${escapeHtml(o.contactPlace)}`);
+    if(o.notes) parts.push(`📝 ${escapeHtml(o.notes)}`);
+    return parts.length ? parts.join('  ·  ') : '';
+  }
+
+  function renderPhone(raw){
+    if(!raw) return '';
+    const isUrl = /^https?:\/\//i.test(raw) || /^(wa\.me|t\.me|vk\.com|instagram\.com|tiktok\.com)/i.test(raw);
+    const fullUrl = isUrl ? raw : null;
+    if(fullUrl){
+      const short = fullUrl.replace(/^https?:\/\//i,'').split('/')[0].replace(/^www\./,'');
+      return `📞 <a href="${fullUrl}" target="_blank" rel="noopener" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${short}</a>`;
+    }
+    const tel = raw.replace(/[^+\d]/g,'');
+    if(tel.length >= 7){
+      return `📞 <a href="tel:${tel}" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(raw)}</a>`;
+    }
+    return `📞 ${escapeHtml(raw)}`;
+  }
+
+  const contactLine = renderContactLine(o);
+  const phoneHtml   = renderPhone(o.phone||'');
+
+  const toWorkerHtml = o.toWorker
+    ? `<div class="order-to-worker">🎬 ТО: <b>${escapeHtml(o.toWorker)}</b></div>`
+    : '';
+
+  return `<div class="order-item done-item" data-order-id="${o.id}">
+    <div class="order-header">
+      <span class="order-client">${escapeHtml(o.client||'—')}</span>
+    </div>
+    ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
+    ${contactLine ? `<div class="order-contact-line">${contactLine}</div>` : ''}
+    ${phoneHtml ? `<div class="order-phone-line">${phoneHtml}</div>` : ''}
+    ${toWorkerHtml}
+    <div class="order-status-row">
+      <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
+    </div>
+    <div class="order-comment-wrap">
+      <textarea placeholder="Комментарий по заказу…" data-order-comment="${o.id}" data-emp-id="${empId}" rows="2">${escapeHtml(o.comment||'')}</textarea>
+      ${commentSaved}
+    </div>
+  </div>`;
+}
+
 // Рендер блока заказов для сотрудников ОП (без таймеров, 3 секции)
 function renderOrdersBlockOP(empId){
   const allOrders = getOrdersForEmp(empId);
@@ -1257,9 +1319,9 @@ function renderOrdersBlockOP(empId){
   return `
     <div class="card" id="orders-card-${empId}">
       <h2>Текущие заказы</h2>
-      ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false)}
-      ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
-      ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true)}
+      ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false, o=>renderOrderCardOP(o,empId))}
+      ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true, o=>renderOrderCardOP(o,empId))}
+      ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true, o=>renderOrderCardOP(o,empId))}
     </div>`;
 }
 
@@ -1975,6 +2037,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const notesCol        = findCol(['примечани','заметк']);
         const phoneCol        = findCol(['телефон','номер телефона','phone','номер для связи']);
         const durationCol     = findCol(['\u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442']);
+        const toWorkerCol     = findCol(['кто делает']);
 
         const newOrdersData = {};
         for(const emp of deptEmployees){
@@ -1998,6 +2061,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const notes      = notesCol>=0 ? (row[notesCol]||'').trim() : '';
             const phone      = phoneCol>=0 ? (row[phoneCol]||'').trim() : '';
             const duration   = durationCol>=0 ? (row[durationCol]||'').trim() : '';
+            const toWorker   = toWorkerCol>=0 ? (row[toWorkerCol]||'').trim() : '';
             const orderId    = `r${r}-${emp.id}`;
             const existing   = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
             const statusSince= (existing && existing.status === statusRaw)
@@ -2020,6 +2084,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
               notes,
               phone,
               duration,
+              toWorker,
             });
           }
           newOrdersData[emp.id] = empOrders;
