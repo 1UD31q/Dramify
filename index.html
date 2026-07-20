@@ -1242,19 +1242,25 @@ function renderOrdersBlock(empId){
 function renderOrderCardOP(o, empId){
   const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
 
-  const metaLine = [
-    o.gross     ? `💰 ${fmtMoney(o.gross)}`              : '',
-    o.payMethod ? `${escapeHtml(o.payMethod)}`             : '',
-    o.duration  ? `⏱ ${escapeHtml(o.duration)}`           : '',
-    o.deadline  ? `📅 Сдать: ${escapeHtml(o.deadline)}`   : '',
-    o.dateCreated ? `🗓 Принят: ${escapeHtml(o.dateCreated)}` : '',
+  // Строка 1: финансы
+  const financeLine = [
+    o.gross   ? `💰 ${fmtMoney(o.gross)}`              : '',
+    o.prepay  ? `✅ предоплата ${fmtMoney(o.prepay)}`  : '',
+    o.pending ? `⏳ остаток ${fmtMoney(o.pending)}`    : '',
+    o.earning ? `🏷 заработок ${fmtMoney(o.earning)}`  : '',
+  ].filter(Boolean).join('  ·  ');
+
+  // Строка 2: детали
+  const detailLine = [
+    o.duration  ? `⏱ ${escapeHtml(o.duration)}`              : '',
+    o.payMethod ? `💳 ${escapeHtml(o.payMethod)}`             : '',
+    o.dateCreated ? `🗓 ${escapeHtml(o.dateCreated)}`         : '',
+    o.deadline  ? `📅 сдача: ${escapeHtml(o.deadline)}`       : '',
   ].filter(Boolean).join('  ·  ');
 
   function renderContactLine(o){
-    const parts = [];
-    if(o.contactPlace) parts.push(`📍 ${escapeHtml(o.contactPlace)}`);
-    if(o.notes) parts.push(`📝 ${escapeHtml(o.notes)}`);
-    return parts.length ? parts.join('  ·  ') : '';
+    if(o.contactPlace) return `📍 ${escapeHtml(o.contactPlace)}`;
+    return '';
   }
 
   function renderPhone(raw){
@@ -1283,9 +1289,10 @@ function renderOrderCardOP(o, empId){
     <div class="order-header">
       <span class="order-client">${escapeHtml(o.client||'—')}</span>
     </div>
-    ${metaLine ? `<div class="order-meta">${metaLine}</div>` : ''}
+    ${financeLine ? `<div class="order-meta">${financeLine}</div>` : ''}
+    ${detailLine  ? `<div class="order-contact-line">${detailLine}</div>` : ''}
     ${contactLine ? `<div class="order-contact-line">${contactLine}</div>` : ''}
-    ${phoneHtml ? `<div class="order-phone-line">${phoneHtml}</div>` : ''}
+    ${phoneHtml   ? `<div class="order-phone-line">${phoneHtml}</div>`    : ''}
     ${toWorkerHtml}
     <div class="order-status-row">
       <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
@@ -1310,14 +1317,9 @@ function renderOrdersBlockOP(empId){
   const done    = allOrders.filter(o => isSuccessful(o));
 
   if(allOrders.length === 0){
-    const rawCount = (ordersData[empId]||[]).length;
-    const debugHint = rawCount > 0
-      ? `<div style="font-size:11px;color:var(--ink4);margin-top:4px;">ordersData: ${rawCount} строк (все отфильтрованы)</div>`
-      : `<div style="font-size:11px;color:var(--ink4);margin-top:4px;">ordersData пуст для этого сотрудника</div>`;
     return `<div class="card" id="orders-card-${empId}">
       <h2>Текущие заказы</h2>
       <div class="orders-empty">Нет активных заказов</div>
-      ${debugHint}
     </div>`;
   }
 
@@ -2031,72 +2033,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         await storeSet('app:ordersData', ordersData, SHARED);
       }
 
-      // ---- Парсим активные заказы для блока «Текущие заказы» (ОП) ----
-      if(dept === 'op'){
-        const nameCol         = findCol(['имя','name']);
-        const clientCol       = nameCol >= 0 ? nameCol : 0;
-        const deadlineCol     = findCol(['дата сдачи','дедлайн','срок']);
-        const payMethodCol    = findCol(['метод оплаты','способ оплаты','оплата']);
-        const prepayCol       = findCol(['предоплат']);
-        const contactPlaceCol = findCol(['место общения','мессенджер','канал связи','платформа']);
-        const notesCol        = findCol(['примечани','заметк']);
-        const phoneCol        = findCol(['телефон','номер телефона','phone','номер для связи']);
-        const durationCol     = findCol(['\u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442']);
-        const toWorkerCol     = findCol(['кто делает']);
 
-        const newOrdersData = {};
-        for(const emp of deptEmployees){
-          const nameLc = emp.name.trim().toLowerCase();
-          const empOrders = [];
-          for(let r=1;r<rows.length;r++){
-            const row = rows[r];
-            const actor = (row[actorCol]||'').trim().replace(/\.+$/, '').toLowerCase();
-            if(actor !== nameLc) continue;
-            if(!rowInMonth(row, dateCol, targetMonth)) continue;
-            const statusRaw  = statusCol>=0 ? (row[statusCol]||'').trim() : '';
-            const isDone     = statusRaw.toLowerCase().includes('успешно');
-            const clientName = clientCol>=0 ? (row[clientCol]||'').trim() : '';
-            const grossVal   = grossCol>=0  ? parseNum(row[grossCol])  : 0;
-            const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]): 0;
-            const prepayVal  = prepayCol>=0  ? parseNum(row[prepayCol]) : 0;
-            const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
-            const payMethod  = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
-            const dateCreated= dateCol>=0 ? (row[dateCol]||'').trim() : '';
-            const contactPlace = contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
-            const notes      = notesCol>=0 ? (row[notesCol]||'').trim() : '';
-            const phone      = phoneCol>=0 ? (row[phoneCol]||'').trim() : '';
-            const duration   = durationCol>=0 ? (row[durationCol]||'').trim() : '';
-            const toWorker   = toWorkerCol>=0 ? (row[toWorkerCol]||'').trim() : '';
-            const orderId    = `r${r}-${emp.id}`;
-            const existing   = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
-            const statusSince= (existing && existing.status === statusRaw)
-              ? existing.statusSince
-              : Date.now();
 
-            empOrders.push({
-              id: orderId,
-              client: clientName,
-              status: statusRaw,
-              statusSince,
-              gross: grossVal,
-              pending: pendingVal,
-              prepay: prepayVal,
-              payMethod,
-              deadline: deadlineStr,
-              dateCreated,
-              isDone,
-              contactPlace,
-              notes,
-              phone,
-              duration,
-              toWorker,
-            });
-          }
-          newOrdersData[emp.id] = empOrders;
-        }
-        Object.assign(ordersData, newOrdersData);
-        await storeSet('app:ordersData', ordersData, SHARED);
-      }
     } else {
       const nameIdx = header.findIndex(h=>/имя|name/i.test(h));
       const idx = nameIdx>=0 ? nameIdx : 0;
@@ -2125,6 +2063,90 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         });
         kpiData[targetMonth][emp.id] = values;
         matched++;
+      }
+    }
+
+    // ---- Парсим активные заказы для блока «Текущие заказы» (ОП) ----
+    // Логика: берём колонку «Кто продал» (I), сравниваем с именем сотрудника,
+    // и все строки этого месяца где совпало — кладём в ordersData[emp.id]
+    if(dept === 'op'){
+      // Колонки по заголовкам таблицы
+      const clientCol       = findCol(['имя','name']);                               // A
+      const dateCreatedCol  = findCol(['дата оформления','дата']);                   // B
+      const contactPlaceCol = findCol(['место общения','примечани','платформа','мессенджер','канал']); // D (место общения+примечания)
+      const phoneCol        = findCol(['номер для связи','телефон','номер телефона','phone']); // E
+      const grossCol2       = findCol(['сумма общая','сумма']);                      // F
+      const prepayCol2      = findCol(['предоплат']);                                // G
+      const pendingCol2     = findCol(['остаток']);                                  // H
+      const sellerCol2      = findCol(['кто продал']);                               // I — главный ключ
+      const toWorkerCol     = findCol(['кто делает']);                               // J
+      const statusCol2      = findCol(['статус']);                                   // K
+      const durationCol     = findCol(['длительност']);                              // L
+      const payMethodCol    = findCol(['метод оплаты','способ оплаты','оплата']);    // M
+      const earningCol      = findCol(['заработок']);                                // N
+      const deadlineCol     = findCol(['дата сдачи','дедлайн','срок']);              // O
+
+      // sellerCol2 обязателен — без него не знаем кому заказ
+      if(sellerCol2 < 0){
+        console.warn('[ОП заказы] Не найдена колонка «Кто продал» — заказы не загружены');
+      } else {
+        const newOrdersData = {};
+        // Инициализируем пустой массив для каждого сотрудника ОП
+        for(const emp of deptEmployees) newOrdersData[emp.id] = [];
+
+        for(let r=1; r<rows.length; r++){
+          const row = rows[r];
+          // Фильтр по месяцу через дату оформления (колонка B)
+          if(!rowInMonth(row, dateCreatedCol >= 0 ? dateCreatedCol : dateCol, targetMonth)) continue;
+          // Кто продал
+          const sellerRaw = (row[sellerCol2]||'').trim().replace(/\.+$/, '');
+          if(!sellerRaw || sellerRaw==='-' || sellerRaw==='—') continue;
+          const sellerLc = sellerRaw.toLowerCase();
+          // Ищем совпадение с сотрудником ОП
+          const emp = deptEmployees.find(e => e.name.trim().toLowerCase() === sellerLc);
+          if(!emp) continue;
+
+          const statusRaw   = statusCol2>=0   ? (row[statusCol2]||'').trim()   : '';
+          const clientName  = clientCol>=0    ? (row[clientCol]||'').trim()    : '';
+          const grossVal    = grossCol2>=0    ? parseNum(row[grossCol2])        : 0;
+          const prepayVal   = prepayCol2>=0   ? parseNum(row[prepayCol2])       : 0;
+          const pendingVal  = pendingCol2>=0  ? parseNum(row[pendingCol2])      : 0;
+          const toWorker    = toWorkerCol>=0  ? (row[toWorkerCol]||'').trim()  : '';
+          const duration    = durationCol>=0  ? (row[durationCol]||'').trim()  : '';
+          const payMethod   = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
+          const deadlineStr = deadlineCol>=0  ? (row[deadlineCol]||'').trim()  : '';
+          const earning     = earningCol>=0   ? parseNum(row[earningCol])       : 0;
+          const contactPlace= contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
+          const phone       = phoneCol>=0     ? (row[phoneCol]||'').trim()     : '';
+          const dateCreated = dateCreatedCol>=0 ? (row[dateCreatedCol]||'').trim()
+                            : (dateCol>=0 ? (row[dateCol]||'').trim() : '');
+
+          const orderId = `r${r}-op`;
+          const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
+          const statusSince = (existing && existing.status === statusRaw)
+            ? existing.statusSince : Date.now();
+
+          newOrdersData[emp.id].push({
+            id: orderId,
+            client: clientName,
+            status: statusRaw,
+            statusSince,
+            gross: grossVal,
+            prepay: prepayVal,
+            pending: pendingVal,
+            toWorker,
+            duration,
+            payMethod,
+            deadline: deadlineStr,
+            earning,
+            contactPlace,
+            phone,
+            dateCreated,
+            isDone: statusRaw.toLowerCase().includes('успешно'),
+          });
+        }
+        Object.assign(ordersData, newOrdersData);
+        await storeSet('app:ordersData', ordersData, SHARED);
       }
     }
 
