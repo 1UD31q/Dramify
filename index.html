@@ -984,6 +984,49 @@
     }
   }
 
+  /* ── DESKTOP CENTERING: красиво на широких мониторах ── */
+  @media (min-width: 900px) {
+    /* Фоновый паттерн для body — добавляет глубину */
+    body {
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 40%, rgba(61,32,112,.06), transparent),
+        radial-gradient(ellipse 60% 60% at 80% 70%, rgba(29,185,84,.04), transparent),
+        var(--bg1);
+    }
+    html.dark body, html.dark body {
+      background:
+        radial-gradient(ellipse 70% 50% at 15% 30%, rgba(61,32,112,.18), transparent),
+        radial-gradient(ellipse 50% 60% at 85% 70%, rgba(29,100,60,.10), transparent),
+        #070709;
+    }
+
+    /* Центрируем весь app-контейнер */
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+      box-shadow: 0 0 0 1px var(--bg2), 0 32px 80px rgba(0,0,0,.08);
+    }
+  }
+
+  /* На очень широких экранах — центрируем как «окно» */
+  @media (min-width: 1500px) {
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+    .app {
+      border-radius: 0 0 28px 28px;
+      overflow: hidden;
+      min-height: 100vh;
+    }
+    header.cover {
+      border-radius: 0;
+    }
+  }
+
 </style>
 </head>
 <body>
