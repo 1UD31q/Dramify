@@ -642,22 +642,19 @@
     }
 
     /* ── App shell: full-screen two-column layout ── */
-    html, body { height: 100%; }
     .app {
       max-width: 100%;
       min-height: 100vh;
       flex-direction: row;
       background: transparent;
       margin: 0;
-
     }
 
     /* ── LEFT SIDEBAR ── */
     header.cover {
       width: 260px;
       min-width: 260px;
-      flex-shrink: 0;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
       border-radius: 0;
       padding: 32px 24px 32px 24px;
@@ -666,8 +663,10 @@
       gap: 0;
       position: sticky;
       top: 0;
+      height: 100vh;
       overflow-y: auto;
       box-shadow: 2px 0 20px rgba(20, 0, 50, 0.18);
+      /* richer gradient for desktop sidebar */
       background: linear-gradient(160deg, #1a0a2e 0%, #2d1854 40%, #3d2070 100%);
     }
 
@@ -769,6 +768,7 @@
       padding: 32px 36px 48px 36px;
       background: var(--bg1);
       min-height: 100vh;
+      max-width: calc(100% - 260px);
       overflow-y: auto;
     }
 
@@ -973,6 +973,7 @@
       min-width: 280px;
     }
     main#main {
+      max-width: 1100px;
       padding: 36px 48px 60px 48px;
     }
     .kpi-grid {
@@ -2811,7 +2812,6 @@ let salesForm = {
 let salesSubmitting = false;
 let salesResult = '';   // '' | 'ok' | 'err'
 let salesResultMsg = '';
-let salesTgReport = '';  // готовый текст отчёта для копирования в ТГ
 
 // Список стран для «Таргет»
 const TARGET_OPTIONS = ['Беларусь','Грузия','Азербайджан','Армения','Казахстан','Россия','Другое'];
@@ -2822,53 +2822,6 @@ const PAY_METHODS = ['Lava top','Halyk Gani','Halyk Mars','FREEDOM GANI','Kaspi 
 // Длительности
 const DURATION_OPTIONS = ['1,5 мин','2 мин','2,5 мин','3 мин','3,5 мин','4 мин','4,5 мин','5 мин','6 мин','Другое'];
 const ADDON_OPTIONS = ['', '+Диктор', '+ЛЮКС', 'Другое'];
-
-// Получаем курсы валют с frankfurter.app (бесплатный, без ключа)
-async function fetchRates(target) {
-  // Определяем нужные валюты по стране
-  const needBYR = target === 'Беларусь';
-  const needRUB = target === 'Россия';
-  const needUSD_EUR = !needBYR && !needRUB; // все остальные
-
-  const currencies = needBYR ? 'BYN' : needRUB ? 'RUB' : 'USD,EUR';
-
-  try {
-    const resp = await fetch(`https://api.frankfurter.app/latest?from=KZT&to=${currencies}`);
-    const data = await resp.json();
-    return data.rates || {};
-  } catch(e) {
-    return {};
-  }
-}
-
-// Форматирует сумму в тенге + конвертированную валюту
-function fmtMoney(tenge, rates, target) {
-  const t = Math.round(tenge);
-  const fmt = (val, sym) => `${t.toLocaleString('ru-RU')}₸ (${Math.round(val).toLocaleString('ru-RU')}${sym})`;
-
-  if(target === 'Беларусь' && rates.BYN)  return fmt(tenge * rates.BYN, ' BYN');
-  if(target === 'Россия'   && rates.RUB)  return fmt(tenge * rates.RUB, '₽');
-  if(rates.USD && rates.EUR)
-    return `${t.toLocaleString('ru-RU')}₸ ($${Math.round(tenge * rates.USD).toLocaleString('ru-RU')} / €${Math.round(tenge * rates.EUR).toLocaleString('ru-RU')})`;
-  // Если курсы не загрузились — только тенге
-  return `${t.toLocaleString('ru-RU')}₸`;
-}
-
-// Собирает готовый текст отчёта для ТГ
-function buildTgReport(payload, rates) {
-  const { clientName, phone, prepayment, remainder, total, date, duration, source, target } = payload;
-  const lines = [];
-  lines.push(`ФИО: ${clientName}`);
-  if(phone) lines.push(`Номер для связи: ${phone}`);
-  lines.push(`Предоплата: ${fmtMoney(prepayment, rates, target)}`);
-  lines.push(`Остаток: ${fmtMoney(remainder, rates, target)}`);
-  lines.push(`Полная сумма: ${fmtMoney(total, rates, target)}`);
-  lines.push(`Дата: ${date}`);
-  lines.push(`Длительность: ${duration}`);
-  lines.push(`Примечание:`);
-  if(source) lines.push(source);
-  return lines.join('\n');
-}
 
 function salesEmpName(){
   if(!myEmployeeId) return '';
@@ -2894,35 +2847,11 @@ function renderSalesView(){
   const monthOpts = MONTHS_RU.map(m=>
     `<option value="${m}" ${salesForm.sheetMonth===m?'selected':''}>${m}</option>`).join('');
 
-  const tgBlock = salesResult==='ok' ? `
-    <div style="border-radius:var(--radius-md);background:rgba(29,185,84,.08);border:1px solid rgba(29,185,84,.25);padding:14px 14px 10px;margin-bottom:12px;">
-      <div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:8px;">✅ ${escapeHtml(salesResultMsg)}</div>
-      <div style="font-size:11px;color:var(--ink2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Отчёт для Telegram</div>
-      <pre id="tgReportText" style="font-family:var(--font-mono);font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:var(--p1);border-radius:8px;padding:10px 12px;margin:0 0 8px;color:var(--ink);">${escapeHtml(salesTgReport)}</pre>
-      <button onclick="(function(){
-        const el = document.getElementById('tgReportText');
-        if(!el) return;
-        const txt = el.textContent;
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(txt).then(()=>{
-            const btn = event.currentTarget;
-            btn.textContent='✅ Скопировано!';
-            setTimeout(()=>{ btn.textContent='📋 Скопировать'; },2000);
-          });
-        } else {
-          const ta=document.createElement('textarea');
-          ta.value=txt; document.body.appendChild(ta); ta.select();
-          document.execCommand('copy'); document.body.removeChild(ta);
-          const btn = event.currentTarget;
-          btn.textContent='✅ Скопировано!';
-          setTimeout(()=>{ btn.textContent='📋 Скопировать'; },2000);
-        }
-      })()" style="width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">📋 Скопировать</button>
-    </div>` : salesResult==='err'
+  const resultBanner = salesResult==='ok'
+    ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:rgba(29,185,84,.12);color:#15803d;font-weight:600;font-size:13px;margin-bottom:12px;">✅ ${escapeHtml(salesResultMsg)}</div>`
+    : salesResult==='err'
     ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:var(--rust-tint);color:var(--rust-dark);font-weight:600;font-size:13px;margin-bottom:12px;">❌ ${escapeHtml(salesResultMsg)}</div>`
     : '';
-
-  const resultBanner = tgBlock;
 
   const noScript = !salesScriptUrl.trim()
     ? `<div style="padding:12px 14px;border-radius:var(--radius-md);background:var(--p1);font-size:12.5px;color:var(--ink2);margin-bottom:12px;">
@@ -3091,7 +3020,6 @@ async function submitSalesForm(){
 
   salesSubmitting = true;
   salesResult = '';
-  salesTgReport = '';
   render();
 
   try{
@@ -3107,11 +3035,6 @@ async function submitSalesForm(){
     if(ok){
       salesResult = 'ok';
       salesResultMsg = 'Запись добавлена в отчёт!';
-      // Загружаем курсы и строим ТГ-отчёт до сброса формы
-      salesTgReport = '⏳ Загружаю курсы валют…';
-      render();
-      const rates = await fetchRates(payload.target);
-      salesTgReport = buildTgReport(payload, rates);
       // Сброс формы (кроме таргета и метода оплаты)
       salesForm = {
         clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
