@@ -1681,7 +1681,7 @@ let ordersData = {}; // загружается из Supabase
 // Можно задать своё: ['Новый','В работе','Ждёт оплату','Выполнен']
 const ORDER_STATUSES = ['Новый','В работе','Проверка','Ждёт оплату','Ждёт материалы','Выполнен'];
 
-const PAUSE_REASONS = ['Жду ОС от клиента','Нужны новые материалы','Техническая проблема','Другое'];
+const PAUSE_REASONS = ['Жду ОС от клиента','Нужны новые материалы','Техническая проблема','Переместить','Ждём оплату','Другое'];
 
 // Порог «зависшего» заказа — 8 часов
 const ORDER_OVERDUE_MS = 8 * 60 * 60 * 1000;
@@ -3040,12 +3040,17 @@ function initialsFor(e){
 function renderEmployeeList(){
   const groups = {};
   employees.forEach(e=>{ (groups[e.department]=groups[e.department]||[]).push(e); });
+  // Show OP first, then TO
+  const deptOrder = ['op','to'].filter(d=>groups[d] && groups[d].length);
+  // Add any other depts not in deptOrder
+  Object.keys(groups).forEach(d=>{ if(!deptOrder.includes(d)) deptOrder.push(d); });
   let html = `<div class="card"><h2>Кто вы?</h2><div class="name-list">`;
-  Object.keys(groups).forEach(dept=>{
+  deptOrder.forEach(dept=>{
+    html += `<div class="dept-group-title">${DEPARTMENTS[dept]?DEPARTMENTS[dept].label:dept}</div>`;
     groups[dept].forEach(e=>{
       html += `<div class="name-btn" data-pick="${e.id}">
         <div class="avatar ${dept}">${escapeHtml(initialsFor(e))}</div>
-        <div class="meta">${escapeHtml(e.name)}<span class="dept">${DEPARTMENTS[dept].label}</span></div>
+        <div class="meta">${escapeHtml(e.name)}</div>
       </div>`;
     });
   });
