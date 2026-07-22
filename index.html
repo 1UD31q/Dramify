@@ -1758,6 +1758,7 @@ function getOrdersForEmp(empId){
       pauseReason: ov.pauseReason || '',
       pausedAt:    ov.pausedAt    || null,
       comment:     ov.comment     || '',
+      finalTime:   ov.finalTime   != null ? ov.finalTime : null,
     });
   }).filter(Boolean);
 }
@@ -1792,9 +1793,18 @@ function renderOrderCard(o, empId, showTimer){
   const isOverdue = !o.paused && elapsed >= ORDER_OVERDUE_MS;
   const timerLabel = o.paused ? `⏸ ${fmtOrderTime(elapsed)}` : fmtOrderTime(elapsed);
 
+  // Для финальных статусов (Ждём оплату / Успешно) — скрываем плашки паузы и просрочки
+  const isFinalStatus = !showTimer; // showTimer=false для done и paying секций
+
   let pauseInfo = '';
-  if(o.paused && o.pauseReason){
+  if(!isFinalStatus && o.paused && o.pauseReason){
     pauseInfo = `<span class="order-pause-reason">⏸️ ${escapeHtml(o.pauseReason)}</span>`;
+  }
+
+  // Плашка с финальным временем выполнения
+  let finalTimeInfo = '';
+  if(isFinalStatus && o.finalTime != null){
+    finalTimeInfo = `<span class="order-pause-reason" style="background:rgba(100,100,100,.08);color:var(--ink3);">⏱ ${fmtOrderTime(o.finalTime)}</span>`;
   }
 
   // Пауза — отображается, но некликабельна (pointer-events:none)
@@ -1856,7 +1866,8 @@ function renderOrderCard(o, empId, showTimer){
     <div class="order-status-row">
       <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
       ${pauseInfo}
-      ${isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
+      ${!isFinalStatus && isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
+      ${finalTimeInfo}
     </div>
     ${showTimer ? `<div class="order-actions">${pauseOrResume}</div>` : ''}
     <div class="order-comment-wrap">
@@ -3965,6 +3976,18 @@ function attachDelegatedHandlers(){
       const newStatus = await showStatusModal(curStatus);
       if(!newStatus || newStatus === curStatus) return;
       if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
+      // Сохраняем финальное время выполнения при переходе в "Ждём оплату" или завершённый статус
+      const isFinalStatus = newStatus.toLowerCase().includes('оплат') || newStatus.toLowerCase().includes('успешно') || newStatus === 'Выполнен';
+      const wasFinal = curStatus.toLowerCase().includes('оплат') || curStatus.toLowerCase().includes('успешно') || curStatus === 'Выполнен';
+      if(isFinalStatus && !wasFinal){
+        const curOv = ordersOverlay[orderId] || {};
+        const baseOrder = (ordersData[empId]||[]).find(o=>o.id===orderId) || {};
+        const sinceMs = curOv.statusSince || baseOrder.statusSince || Date.now();
+        const elapsed = curOv.paused
+          ? (curOv.pausedAt||Date.now()) - sinceMs
+          : Date.now() - sinceMs;
+        ordersOverlay[orderId].finalTime = Math.max(0, elapsed);
+      }
       ordersOverlay[orderId].status      = newStatus;
       ordersOverlay[orderId].statusSince = Date.now();
       ordersOverlay[orderId].paused      = false;
