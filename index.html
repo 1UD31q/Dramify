@@ -283,7 +283,42 @@
   .emp-edit-block{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--bg2);}
   .emp-edit-block:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
 
-  /* ---------- анимации ---------- */
+  /* ── SLOT MACHINE animation ── */
+  @keyframes slotSpin {
+    0%   { transform: translateY(0);    opacity: 1; }
+    15%  { transform: translateY(-40%); opacity: 0; }
+    16%  { transform: translateY(60%);  opacity: 0; }
+    30%  { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes slotSpinFast {
+    0%   { transform: translateY(0);    opacity: 1; }
+    10%  { transform: translateY(-50%); opacity: 0; }
+    11%  { transform: translateY(70%);  opacity: 0; }
+    25%  { transform: translateY(0);    opacity: 1; }
+  }
+  .slot-rolling {
+    display: inline-block;
+    overflow: hidden;
+  }
+  .slot-rolling .slot-digit {
+    display: inline-block;
+    animation: slotSpin var(--slot-dur, 0.9s) cubic-bezier(.22,.68,0,1.2) both;
+    animation-delay: var(--slot-delay, 0s);
+  }
+  /* progress bar slot */
+  @keyframes barGrow {
+    from { width: 0%; }
+  }
+  .plan-bar-fill {
+    animation: barGrow 1.2s cubic-bezier(.22,.68,0,1.2) both;
+    animation-delay: 0.3s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slot-rolling .slot-digit { animation: none; }
+    .plan-bar-fill { animation: none; }
+  }
+
+
   @keyframes viewIn{ from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
   @keyframes valuePop{ from{opacity:0;transform:translateY(2px);} to{opacity:1;transform:translateY(0);} }
   #main.anim-in{animation:viewIn .28s cubic-bezier(.22,.61,.36,1) both;}
@@ -2271,6 +2306,36 @@ function getKpi(empId, monthKey){
 
 function fmtMoney(n){ return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₸'; }
 function fmtTime(ts){ return new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); }
+
+// ── Slot machine animation ──
+// Wraps each char of a .value element in an animated span with staggered delay
+function slotRoll(container){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const els = container ? container.querySelectorAll('.kpi-box .value, .finance-box .value, .elapsed') : [];
+  els.forEach((el, elIdx) => {
+    const text = el.textContent;
+    // Split into chars, animate digits individually, letters together
+    const chars = Array.from(text);
+    const baseDelay = elIdx * 0.06; // stagger per box
+    let digitCount = 0;
+    const html = chars.map((ch) => {
+      const isDigit = /\d/.test(ch);
+      if(isDigit){
+        const delay = (baseDelay + digitCount * 0.04).toFixed(3);
+        const dur = (0.55 + digitCount * 0.02).toFixed(3);
+        digitCount++;
+        return `<span class="slot-digit" style="--slot-delay:${delay}s;--slot-dur:${dur}s">${ch}</span>`;
+      }
+      return `<span>${ch}</span>`;
+    }).join('');
+    el.innerHTML = `<span class="slot-rolling">${html}</span>`;
+    // After animation ends, restore plain text (so future updates can re-animate)
+    const maxDur = (baseDelay + digitCount * 0.04 + 0.75) * 1000;
+    setTimeout(() => { el.textContent = text; }, maxDur + 200);
+  });
+}
+
+
 function fmtDateTime(ts){ const d=new Date(ts); return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) + ' ' + fmtTime(ts); }
 function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
 
@@ -2493,7 +2558,10 @@ async function syncTracker(silent){
     if(!silent){ trackerStatus = 'Не получилось: ' + err.message + hint; showToast(trackerStatus, 'error'); }
   }
   if(!silent){ trackerSyncing = false; render(); }
-  else if(mode==='employee'){ render(); }
+  else if(mode==='employee'){
+    render();
+    setTimeout(() => slotRoll(document.getElementById('main')), 80);
+  }
 }
 
 // Публичный CSV-экспорт гугл-таблиц иногда отвечает ошибкой без видимой причины
@@ -2828,7 +2896,11 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     if(!silent){ syncStatus[dept] = 'Не получилось: ' + err.message + hint; showToast(syncStatus[dept], 'error'); }
   }
   if(!silent){ syncing[dept] = false; render(); }
-  else if(mode==='employee'){ render(); }
+  else if(mode==='employee'){
+    render();
+    // тихое обновление данных — прогоняем слот-машину без смены экрана
+    setTimeout(() => slotRoll(document.getElementById('main')), 80);
+  }
 }
 
 async function silentAutoSync(){
@@ -2907,6 +2979,8 @@ function render(){
     void main.offsetWidth; // форс reflow, чтобы браузер применил анимацию как «свежее» появление
     main.classList.add('anim-in');
     lastViewKey = viewKey;
+    // запускаем слот-машину с небольшой задержкой (карточки ещё «въезжают»)
+    setTimeout(() => slotRoll(main), 120);
   }
   // обработчики событий навешаны один раз через делегирование (см. attachDelegatedHandlers),
   // поэтому после каждого render() их не нужно перевешивать заново — это и есть оптимизация
