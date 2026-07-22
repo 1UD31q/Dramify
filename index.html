@@ -309,6 +309,25 @@
   .toast .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7;flex:none;}
   .toast .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7;flex:none;}
 
+  /* TG Notification overlay */
+  #tgNotifOverlay{position:fixed;inset:0;z-index:2000;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(16px + env(safe-area-inset-bottom));pointer-events:none;opacity:0;transition:opacity .25s ease;}
+  #tgNotifOverlay.visible{opacity:1;pointer-events:all;}
+  #tgNotifBox{max-width:min(96vw,480px);width:100%;background:var(--glass-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1.5px solid var(--glass-border);border-radius:18px;box-shadow:0 12px 48px rgba(0,0,0,.18);padding:16px 16px 14px;display:flex;flex-direction:column;gap:10px;transform:translateY(20px);transition:transform .25s ease;}
+  #tgNotifOverlay.visible #tgNotifBox{transform:translateY(0);}
+  #tgNotifHeader{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink2);}
+  #tgNotifHeader .tg-icon{font-size:17px;}
+  #tgNotifTimer{margin-left:auto;font-size:12px;font-weight:700;color:var(--p5);min-width:24px;text-align:right;}
+  #tgNotifTimerBar{height:3px;border-radius:99px;background:var(--bg2);overflow:hidden;}
+  #tgNotifTimerFill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--p5),var(--p4));width:100%;transition:width 1s linear;}
+  #tgNotifText{font-size:13px;line-height:1.6;color:var(--ink);white-space:pre-wrap;word-break:break-word;background:var(--bg1);border-radius:10px;padding:10px 12px;max-height:260px;overflow-y:auto;user-select:text;}
+  #tgNotifActions{display:flex;gap:8px;}
+  .tg-btn{flex:1;padding:10px 8px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+  .tg-btn.copy{background:var(--p6);color:#fff;}
+  .tg-btn.copy:active{opacity:.8;}
+  .tg-btn.copy.copied{background:var(--green);}
+  .tg-btn.close{background:var(--bg2);color:var(--ink2);}
+  .tg-btn.close:active{opacity:.7;}
+
   /* ---------- модалка подтверждения ---------- */
   #modalHost{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;z-index:1001;pointer-events:none;}
   #modalHost.open{pointer-events:auto;}
@@ -1046,6 +1065,21 @@
   <main id="main"></main>
 </div>
 <div id="toastHost" aria-live="polite"></div>
+<div id="tgNotifOverlay" onclick="if(event.target===this)closeTgNotif()">
+  <div id="tgNotifBox">
+    <div id="tgNotifHeader">
+      <span class="tg-icon">✈️</span>
+      <span>Отчёт для Telegram</span>
+      <span id="tgNotifTimer">60</span>
+    </div>
+    <div id="tgNotifTimerBar"><div id="tgNotifTimerFill"></div></div>
+    <div id="tgNotifText"></div>
+    <div id="tgNotifActions">
+      <button class="tg-btn copy" id="tgCopyBtn" onclick="copyTgText()">📋 Скопировать</button>
+      <button class="tg-btn close" onclick="closeTgNotif()">Закрыть</button>
+    </div>
+  </div>
+</div>
 <div id="modalHost"></div>
 
 <script>
@@ -1108,6 +1142,140 @@ function showToast(message, type){
     el.classList.remove('show');
     setTimeout(()=> el.remove(), 250);
   }, 3200);
+}
+
+// ---------------------------------------------------------------------
+// TG-уведомление: автозакрытие через 60 с, кнопка копирования
+// ---------------------------------------------------------------------
+let _tgTimerInterval = null;
+let _tgSecsLeft = 60;
+
+function buildTgText(payload, rates){
+  const fmtAmt = (amt, symbol) => {
+    if(!amt || isNaN(amt)) return null;
+    let s = Number(amt).toLocaleString('ru-RU');
+    if(symbol) s += ' ' + symbol;
+    if(rates && rates.RUB && symbol === '₸'){
+      const rub = Math.round(amt / rates.RUB);
+      s += ' (' + Number(rub).toLocaleString('ru-RU') + ' ₽)';
+    } else if(rates && rates.USD && symbol === '$'){
+      const rub = Math.round(amt * rates.USD / rates.RUB);
+      s += ' (' + Number(rub).toLocaleString('ru-RU') + ' ₽)';
+    }
+    return s;
+  };
+
+  // Определяем символ валюты по методу оплаты / стране
+  let sym = '₸';
+  const pm = (payload.payMethod||'').toLowerCase();
+  if(pm.includes('usdt') || pm.includes('usd') || pm.includes('крипто')) sym = 'USDT';
+  else if(pm.includes('₽') || pm.includes('руб')) sym = '₽';
+  else if(pm.includes('$')) sym = '$';
+
+  // Длительность: "1,5 мин+ЛЮКС" → "Lux 1,5 минуты"
+  let dur = (payload.duration||'').trim();
+  const isLux = dur.includes('+ЛЮКС') || dur.includes('+Lux');
+  dur = dur.replace(/\+ЛЮКС/gi,'').replace(/\+Lux/gi,'').trim();
+  // "1,5 мин" → "1,5 минуты", "2 мин" → "2 минуты"
+  dur = dur.replace(/мин$/, 'минуты').trim();
+  if(isLux) dur = 'Lux ' + dur;
+
+  const lines = [];
+  lines.push('ФИО : ' + (payload.clientName||'—'));
+  if(payload.phone) lines.push('Номер для связи : ' + payload.phone);
+  if(payload.prepayment) lines.push('Предоплата : ' + (fmtAmt(payload.prepayment, sym)||payload.prepayment));
+  if(payload.remainder) lines.push('Остаток : ' + (fmtAmt(payload.remainder, sym)||payload.remainder));
+  if(payload.total) lines.push('Полная сумма : ' + (fmtAmt(payload.total, sym)||payload.total));
+  if(payload.deliveryDate) lines.push('Дата : ' + payload.deliveryDate);
+  if(dur) lines.push('Длительность : ' + dur);
+  if(payload.source) lines.push('Примечание : ' + payload.source);
+  return lines.join('\n');
+}
+
+async function fetchRates(){
+  // Используем open.er-api.com — бесплатный, без ключа, CORS-friendly
+  try{
+    const r = await fetch('https://open.er-api.com/v6/latest/RUB');
+    if(!r.ok) return null;
+    const d = await r.json();
+    // d.rates содержит курсы относительно RUB
+    // RUB→KZT: d.rates.KZT, RUB→USD: 1/d.rates.USD
+    return d.rates || null;
+  }catch(e){ return null; }
+}
+
+async function showTgNotif(payload){
+  const overlay = document.getElementById('tgNotifOverlay');
+  const textEl  = document.getElementById('tgNotifText');
+  const timerEl = document.getElementById('tgNotifTimer');
+  const fillEl  = document.getElementById('tgNotifTimerFill');
+  const copyBtn = document.getElementById('tgCopyBtn');
+  if(!overlay) return;
+
+  // Сброс
+  if(_tgTimerInterval) clearInterval(_tgTimerInterval);
+  copyBtn.textContent = '📋 Скопировать';
+  copyBtn.classList.remove('copied');
+
+  // Текст без курса пока грузится
+  let text = buildTgText(payload, null);
+  textEl.textContent = text;
+  overlay.classList.add('visible');
+
+  // Таймер 60 сек
+  _tgSecsLeft = 60;
+  timerEl.textContent = _tgSecsLeft;
+  fillEl.style.transition = 'none';
+  fillEl.style.width = '100%';
+  requestAnimationFrame(()=>{
+    fillEl.style.transition = 'width 60s linear';
+    fillEl.style.width = '0%';
+  });
+  _tgTimerInterval = setInterval(()=>{
+    _tgSecsLeft--;
+    timerEl.textContent = _tgSecsLeft;
+    if(_tgSecsLeft <= 0){ closeTgNotif(); }
+  }, 1000);
+
+  // Загружаем курс асинхронно и обновляем текст
+  fetchRates().then(rates => {
+    if(!rates) return;
+    // rates из open.er-api.com: RUB→X
+    // Нам нужно KZT→RUB: 1 ₸ = 1/rates.KZT рублей
+    // Переводим в удобный формат: сколько RUB за 1 KZT
+    // open.er-api.com/latest/RUB: rates.KZT = сколько тенге за 1 рубль
+    // Для buildTgText: normalized.RUB = сколько тенге за 1 рубль
+    const normalized = { RUB: rates.KZT };
+    text = buildTgText(payload, normalized);
+    textEl.textContent = text;
+  });
+}
+
+function closeTgNotif(){
+  const overlay = document.getElementById('tgNotifOverlay');
+  if(overlay) overlay.classList.remove('visible');
+  if(_tgTimerInterval){ clearInterval(_tgTimerInterval); _tgTimerInterval = null; }
+}
+
+function copyTgText(){
+  const textEl = document.getElementById('tgNotifText');
+  const copyBtn = document.getElementById('tgCopyBtn');
+  if(!textEl || !copyBtn) return;
+  const txt = textEl.textContent;
+  navigator.clipboard.writeText(txt).then(()=>{
+    copyBtn.textContent = '✅ Скопировано';
+    copyBtn.classList.add('copied');
+    setTimeout(()=>{ copyBtn.textContent = '📋 Скопировать'; copyBtn.classList.remove('copied'); }, 2000);
+  }).catch(()=>{
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); copyBtn.textContent = '✅ Скопировано'; copyBtn.classList.add('copied');
+      setTimeout(()=>{ copyBtn.textContent = '📋 Скопировать'; copyBtn.classList.remove('copied'); }, 2000);
+    }catch(e){}
+    document.body.removeChild(ta);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -3035,6 +3203,8 @@ async function submitSalesForm(){
     if(ok){
       salesResult = 'ok';
       salesResultMsg = 'Запись добавлена в отчёт!';
+      // Показываем TG-уведомление
+      showTgNotif(payload);
       // Сброс формы (кроме таргета и метода оплаты)
       salesForm = {
         clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
