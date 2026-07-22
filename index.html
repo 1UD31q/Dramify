@@ -1150,27 +1150,38 @@ function showToast(message, type){
 let _tgTimerInterval = null;
 let _tgSecsLeft = 60;
 
+// Маппинг страна → {symbol, ratesKey}
+// ratesKey — код валюты в ответе open.er-api.com/latest/RUB
+const COUNTRY_CURRENCY = {
+  'Беларусь':    { symbol: 'BYN', key: 'BYN' },
+  'Грузия':      { symbol: 'GEL', key: 'GEL' },
+  'Азербайджан': { symbol: 'AZN', key: 'AZN' },
+  'Армения':     { symbol: '֏',   key: 'AMD' },
+  'Казахстан':   { symbol: '₸',   key: 'KZT' },
+  'Россия':      { symbol: '₽',   key: null  }, // уже рубли — без конвертации
+};
+
 function buildTgText(payload, rates){
-  const fmtAmt = (amt, symbol) => {
+  const country = payload.target || '';
+  const cc = COUNTRY_CURRENCY[country] || null;
+  const sym = cc ? cc.symbol : null;
+
+  const fmtAmt = (amt) => {
     if(!amt || isNaN(amt)) return null;
     let s = Number(amt).toLocaleString('ru-RU');
-    if(symbol) s += ' ' + symbol;
-    if(rates && rates.RUB && symbol === '₸'){
-      const rub = Math.round(amt / rates.RUB);
-      s += ' (' + Number(rub).toLocaleString('ru-RU') + ' ₽)';
-    } else if(rates && rates.USD && symbol === '$'){
-      const rub = Math.round(amt * rates.USD / rates.RUB);
-      s += ' (' + Number(rub).toLocaleString('ru-RU') + ' ₽)';
+    if(sym) s += ' ' + sym;
+    // Конвертация в рубли (если не Россия и есть ключ курса)
+    if(rates && cc && cc.key){
+      // open.er-api.com/latest/RUB: rates[key] = сколько единиц валюты за 1 RUB
+      // => 1 единица валюты = 1/rates[key] RUB
+      const rate = rates[cc.key];
+      if(rate && rate > 0){
+        const rub = Math.round(amt / rate);
+        s += ' (' + Number(rub).toLocaleString('ru-RU') + ' ₽)';
+      }
     }
     return s;
   };
-
-  // Определяем символ валюты по методу оплаты / стране
-  let sym = '₸';
-  const pm = (payload.payMethod||'').toLowerCase();
-  if(pm.includes('usdt') || pm.includes('usd') || pm.includes('крипто')) sym = 'USDT';
-  else if(pm.includes('₽') || pm.includes('руб')) sym = '₽';
-  else if(pm.includes('$')) sym = '$';
 
   // Длительность: "1,5 мин+ЛЮКС" → "Lux 1,5 минуты"
   let dur = (payload.duration||'').trim();
@@ -1183,9 +1194,9 @@ function buildTgText(payload, rates){
   const lines = [];
   lines.push('ФИО : ' + (payload.clientName||'—'));
   if(payload.phone) lines.push('Номер для связи : ' + payload.phone);
-  if(payload.prepayment) lines.push('Предоплата : ' + (fmtAmt(payload.prepayment, sym)||payload.prepayment));
-  if(payload.remainder) lines.push('Остаток : ' + (fmtAmt(payload.remainder, sym)||payload.remainder));
-  if(payload.total) lines.push('Полная сумма : ' + (fmtAmt(payload.total, sym)||payload.total));
+  if(payload.prepayment) lines.push('Предоплата : ' + (fmtAmt(payload.prepayment)||String(payload.prepayment)));
+  if(payload.remainder) lines.push('Остаток : ' + (fmtAmt(payload.remainder)||String(payload.remainder)));
+  if(payload.total) lines.push('Полная сумма : ' + (fmtAmt(payload.total)||String(payload.total)));
   if(payload.deliveryDate) lines.push('Дата : ' + payload.deliveryDate);
   if(dur) lines.push('Длительность : ' + dur);
   if(payload.source) lines.push('Примечание : ' + payload.source);
@@ -2966,6 +2977,7 @@ let salesForm = {
   clientName: '',
   date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
   target: 'Беларусь',
+  targetCustom: '',
   source: '',
   phone: '',
   total: '',
@@ -3043,7 +3055,10 @@ function renderSalesView(){
         </div>
         <div class="field-item">
           <label class="field-label">Таргет (страна)</label>
-          <select id="sf_target">${targetOpts}</select>
+          <select id="sf_target" onchange="(function(){const v=document.getElementById('sf_target').value;const c=document.getElementById('sf_target_custom_wrap');if(c)c.style.display=v==='Другое'?'block':'none';})()">${targetOpts}</select>
+          <div id="sf_target_custom_wrap" style="display:${salesForm.target==='Другое'?'block':'none'};margin-top:6px;">
+            <input type="text" id="sf_target_custom" value="${escapeHtml(salesForm.targetCustom||'')}" placeholder="Укажите страну">
+          </div>
         </div>
         <div class="field-item">
           <label class="field-label">Номер для связи</label>
@@ -3136,6 +3151,7 @@ async function submitSalesForm(){
   salesForm.clientName   = get('sf_clientName');
   salesForm.date         = get('sf_date');
   salesForm.target       = get('sf_target');
+  salesForm.targetCustom = get('sf_target_custom');
   salesForm.source       = get('sf_source');
   salesForm.phone        = get('sf_phone');
   salesForm.total        = get('sf_total');
@@ -3171,7 +3187,7 @@ async function submitSalesForm(){
   const payload = {
     clientName:   salesForm.clientName,
     date:         salesForm.date,
-    target:       salesForm.target,
+    target:       salesForm.target === 'Другое' ? (salesForm.targetCustom||'Другое') : salesForm.target,
     source:       salesForm.source,
     phone:        salesForm.phone,
     total:        total,
@@ -3208,7 +3224,7 @@ async function submitSalesForm(){
       // Сброс формы (кроме таргета и метода оплаты)
       salesForm = {
         clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
-        target: salesForm.target, source:'', phone:'', total:'', prepayment:'',
+        target: salesForm.target, targetCustom: salesForm.targetCustom, source:'', phone:'', total:'', prepayment:'',
         duration: salesForm.duration, durationCustom:'',
         addon:'', addonCustom:'',
         payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
