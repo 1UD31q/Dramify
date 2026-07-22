@@ -140,6 +140,15 @@
   .card:hover::before{opacity:1;}
   .card h2{font-size:11px;font-weight:600;margin:0 0 14px 0;color:var(--ink4);text-transform:uppercase;letter-spacing:.08em;}
 
+  /* ── Employee dashboard: single col by default, 2-col on desktop ── */
+  .emp-dashboard-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .emp-col-left, .emp-col-right {
+    display: contents;
+  }
+
   select, input[type=text], input[type=number]{
     width:100%;padding:10px 13px;border-radius:var(--radius-md);border:1px solid var(--bg3);
     font-family:var(--font);font-size:14px;background:var(--bg1);color:var(--ink);
@@ -409,6 +418,7 @@
     .punch-btn{width:140px;height:140px;font-size:19px;}
     .field-grid{grid-template-columns:1fr;}
     .kpi-grid{gap:8px;}
+    .emp-dashboard-grid{grid-template-columns:1fr;}
   }
   /* запрещаем зум при фокусе на iOS */
   select, input[type=text], input[type=number]{font-size:16px;}
@@ -813,8 +823,60 @@
       margin-bottom: 18px;
     }
 
-    /* ── KPI grid: 4 columns on desktop ── */
-    .kpi-grid {
+    /* ── Employee dashboard: two-column layout with independent scroll ── */
+    .emp-dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: start;
+      height: calc(100vh - 64px); /* full viewport minus top padding */
+    }
+    .emp-col-left, .emp-col-right {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 6px;
+      padding-bottom: 32px;
+      /* hide scrollbar visually but keep it functional */
+      scrollbar-width: thin;
+      scrollbar-color: var(--bg3) transparent;
+    }
+    .emp-col-left::-webkit-scrollbar,
+    .emp-col-right::-webkit-scrollbar {
+      width: 4px;
+    }
+    .emp-col-left::-webkit-scrollbar-thumb,
+    .emp-col-right::-webkit-scrollbar-thumb {
+      background: var(--bg3);
+      border-radius: 4px;
+    }
+    .emp-col-left::-webkit-scrollbar-track,
+    .emp-col-right::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    /* Cards in grid don't need bottom margin */
+    .emp-col-left .card,
+    .emp-col-right .card {
+      margin-bottom: 0;
+      flex-shrink: 0;
+    }
+    /* Also fix main so it doesn't double-scroll when emp dashboard is active */
+    main#main.emp-split-view {
+      overflow-y: hidden;
+      height: 100vh;
+      padding-bottom: 0;
+      padding-top: 24px;
+    }
+
+    /* ── KPI grid: 2 columns inside the left card ── */
+    .emp-col-left .kpi-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+
       grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 14px;
     }
@@ -2834,6 +2896,10 @@ function render(){
   if(mode==='employee')       main.innerHTML = renderEmployeeArea();
   else if(mode==='sales')     main.innerHTML = renderSalesView();
   else                         main.innerHTML = renderAdminView();
+  // Включаем split-scroll только для дашборда сотрудника на десктопе
+  const isEmpDash = mode==='employee' && myEmployeeId && employees.find(e=>e.id===myEmployeeId);
+  const isDesktop = window.innerWidth >= 900;
+  main.classList.toggle('emp-split-view', !!(isEmpDash && isDesktop));
   // анимацию «появления» включаем только когда реально сменился экран, а не на каждый рендер
   // (иначе ввод PIN или KPI подёргивался бы при каждой цифре/символе)
   const viewKey = currentViewKey();
@@ -2930,45 +2996,51 @@ function renderEmployeeDashboard(){
   }).join('');
 
   return `
-    <div class="card">
-      <div class="punch-wrap">
-        <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)} · ${checkedIn?'на смене':'не на смене'}</div>
-        <div class="punch-ring ${checkedIn?'on-shift':''}">
-          <button class="punch-btn ${checkedIn?'ready-out':'ready-in'}" id="punchBtn">
-            ${checkedIn?'END':'START'}
-            <span class="sub" id="punchClock">${fmtTime(Date.now())}</span>
-          </button>
+    <div class="emp-dashboard-grid">
+      <div class="emp-col-left">
+        <div class="card">
+          <div class="punch-wrap">
+            <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)} · ${checkedIn?'на смене':'не на смене'}</div>
+            <div class="punch-ring ${checkedIn?'on-shift':''}">
+              <button class="punch-btn ${checkedIn?'ready-out':'ready-in'}" id="punchBtn">
+                ${checkedIn?'END':'START'}
+                <span class="sub" id="punchClock">${fmtTime(Date.now())}</span>
+              </button>
+            </div>
+            <div class="elapsed">Сегодня отработано: <span id="elapsedText">${fmtDuration(todayHoursFor(emp.id))}</span></div>
+            <div class="switch-user" id="switchUser">Это не я</div>
+          </div>
         </div>
-        <div class="elapsed">Сегодня отработано: <span id="elapsedText">${fmtDuration(todayHoursFor(emp.id))}</span></div>
-        <div class="switch-user" id="switchUser">Это не я</div>
+
+        <div class="card">
+          <h2>KPI · ${monthLabel(activeMonth)}</h2>
+          <div class="kpi-grid">${kpiBoxes}</div>
+          <div class="plan-bar-wrap">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
+            <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${ratioPct}%"></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Мой график · ${monthLabel(activeMonth)}</h2>
+          ${renderCalendarGrid(emp.id, activeMonth, false)}
+          <div class="cal-legend">
+            <span><span class="sw work"></span>Рабочий день</span>
+            <span><span class="sw off"></span>Выходной</span>
+            <span><span class="sw today"></span>Сегодня</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>KPI · ${monthLabel(activeMonth)}</h2>
-      <div class="kpi-grid">${kpiBoxes}</div>
-      <div class="plan-bar-wrap">
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
-        <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${ratioPct}%"></div></div>
-      </div>
-    </div>
+      <div class="emp-col-right">
+        <div class="card">
+          <h2>Мои отметки сегодня</h2>
+          ${todays.length===0 ? '<div class="empty">Пока нет отметок</div>' :
+            todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
+        </div>
 
-    <div class="card">
-      <h2>Мои отметки сегодня</h2>
-      ${todays.length===0 ? '<div class="empty">Пока нет отметок</div>' :
-        todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
-    </div>
-
-    ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
-    ${emp.department === 'op' ? renderOrdersBlockOP(emp.id) : ''}
-
-    <div class="card">
-      <h2>Мой график · ${monthLabel(activeMonth)}</h2>
-      ${renderCalendarGrid(emp.id, activeMonth, false)}
-      <div class="cal-legend">
-        <span><span class="sw work"></span>Рабочий день</span>
-        <span><span class="sw off"></span>Выходной</span>
-        <span><span class="sw today"></span>Сегодня</span>
+        ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
+        ${emp.department === 'op' ? renderOrdersBlockOP(emp.id) : ''}
       </div>
     </div>`;
 }
