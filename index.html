@@ -385,6 +385,11 @@
   .cal-cell.editable:hover{background:var(--p1);}
   .cal-cell.off.editable:hover{filter:brightness(1.12);}
   .cal-legend{display:flex;gap:16px;margin-top:10px;font-size:11.5px;color:var(--ink4);}
+
+  /* ── Переключатель месяца для сотрудника ── */
+  .emp-month-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+  .emp-month-bar select{flex:1;font-size:13px;padding:8px 10px;}
+  .emp-month-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(29,185,84,.12);color:#15803d;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
   .cal-legend span{display:inline-flex;align-items:center;gap:6px;}
   .cal-legend .sw{width:10px;height:10px;border-radius:3px;}
   .cal-legend .sw.off{background:linear-gradient(145deg, var(--p6), var(--p7));}
@@ -2242,6 +2247,7 @@ let pinError = '';
 let selectingEmpId = null;   
 let empPinInput = '';
 let empPinError = '';
+let empViewMonth = null; // выбранный сотрудником месяц для просмотра (null = activeMonth)
 
 let logsExpanded = false;
 
@@ -3178,7 +3184,14 @@ function renderEmployeeDashboard(){
   const dept = DEPARTMENTS[emp.department];
   const checkedIn = isCheckedIn(emp.id);
   const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
-  const k = getKpi(emp.id, activeMonth);
+
+  // Месяц для просмотра: если не выбран или не существует — показываем активный
+  const availMonths = Object.keys(kpiData).sort().reverse();
+  if(!empViewMonth || !availMonths.includes(empViewMonth)) empViewMonth = activeMonth;
+  const viewMonth = empViewMonth;
+  const isCurrentMonth = viewMonth === activeMonth;
+
+  const k = getKpi(emp.id, viewMonth);
   const autoPlan = planShareFor(emp.department);
   const num = Number(k[dept.ratio.num])||0;
   const den = (dept.ratio.den==='plan' && autoPlan!=null) ? autoPlan : (Number(k[dept.ratio.den])||0);
@@ -3194,6 +3207,16 @@ function renderEmployeeDashboard(){
     const wideClass = (f.key==='avgCheck' && emp.department==='op') ? ' wide' : '';
     return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
   }).join('');
+
+  const monthOptions = availMonths.map(mk=>
+    `<option value="${mk}" ${mk===viewMonth?'selected':''}>${monthLabel(mk)}${mk===activeMonth?' ✦':''}</option>`
+  ).join('');
+
+  const monthBar = `
+    <div class="emp-month-bar">
+      <select id="empMonthSelect">${monthOptions}</select>
+      ${isCurrentMonth ? '<span class="emp-month-badge">текущий</span>' : ''}
+    </div>`;
 
   return `
     <div class="emp-dashboard-grid">
@@ -3213,7 +3236,8 @@ function renderEmployeeDashboard(){
         </div>
 
         <div class="card">
-          <h2>KPI · ${monthLabel(activeMonth)}</h2>
+          <h2>KPI · ${monthLabel(viewMonth)}</h2>
+          ${monthBar}
           <div class="kpi-grid">${kpiBoxes}</div>
           <div class="plan-bar-wrap">
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
@@ -3222,8 +3246,8 @@ function renderEmployeeDashboard(){
         </div>
 
         <div class="card">
-          <h2>Мой график · ${monthLabel(activeMonth)}</h2>
-          ${renderCalendarGrid(emp.id, activeMonth, false)}
+          <h2>Мой график · ${monthLabel(viewMonth)}</h2>
+          ${renderCalendarGrid(emp.id, viewMonth, false)}
           <div class="cal-legend">
             <span><span class="sw work"></span>Рабочий день</span>
             <span><span class="sw off"></span>Выходной</span>
@@ -3846,7 +3870,7 @@ function attachDelegatedHandlers(){
     if(el.closest('#punchBtn')){ await runOnce(()=>punch(myEmployeeId)); return; }
 
     if(el.closest('#switchUser')){
-      myEmployeeId=null; await storeSet('app:myEmployeeId', null, false); renderNow(); return;
+      myEmployeeId=null; empViewMonth=null; await storeSet('app:myEmployeeId', null, false); renderNow(); return;
     }
 
     if(el.closest('#lockAdminBtn')){ adminUnlocked = false; renderNow(); return; }
@@ -4066,6 +4090,7 @@ function attachDelegatedHandlers(){
   document.addEventListener('change', (ev)=>{
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
+    if(ev.target.id === 'empMonthSelect'){ empViewMonth = ev.target.value; renderNow(); }
   });
 
   // Автосохранение комментариев к заказам (debounce 800ms)
