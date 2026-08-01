@@ -2809,17 +2809,29 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const row = rows[r];
             const actor = (row[actorCol]||'').trim().toLowerCase();
             if(actor !== nameLc) continue;
-            // Берём все строки этого месяца
-            if(!rowInMonth(row, dateCol, targetMonth)) continue;
             const statusRaw = statusCol>=0 ? (row[statusCol]||'').trim() : '';
             const isDone = statusRaw.toLowerCase().includes('успешно');
+            const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
+            const dateCreated= dateCol>=0 ? (row[dateCol]||'').trim() : '';
+
+            // Для активных заказов: показываем строку если:
+            // 1) Заказ создан в этом месяце (targetMonth), ИЛИ
+            // 2) Заказ ещё не завершён И срок сдачи (deadline) попадает в targetMonth или позже
+            const createdInMonth = rowInMonth(row, dateCol, targetMonth);
+            const deadlineInMonthOrLater = (() => {
+              if(!deadlineStr) return false;
+              const dm = deadlineStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+              if(!dm) return false;
+              const deadlineMk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
+              return deadlineMk >= targetMonth;
+            })();
+            if(!createdInMonth && !(deadlineInMonthOrLater && !isDone)) continue;
+
             const clientName = clientCol>=0 ? (row[clientCol]||'').trim() : '';
             const grossVal   = grossCol>=0  ? parseNum(row[grossCol])  : 0;
             const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]): 0;
             const prepayVal  = prepayCol>=0  ? parseNum(row[prepayCol]) : 0;
-            const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
             const payMethod  = payMethodCol>=0 ? (row[payMethodCol]||'').trim() : '';
-            const dateCreated= dateCol>=0 ? (row[dateCol]||'').trim() : '';
             const contactPlace = contactPlaceCol>=0 ? (row[contactPlaceCol]||'').trim() : '';
             const notes      = notesCol>=0 ? (row[notesCol]||'').trim() : '';
             const phone      = phoneCol>=0 ? (row[phoneCol]||'').trim() : '';
