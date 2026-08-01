@@ -2461,7 +2461,7 @@ async function punch(empId){
   } finally {
     punchInFlight = false;
   }
-  render();
+  renderNow();
 }
 
 async function saveKpiForMonth(monthKey, empId, values){
@@ -2473,7 +2473,7 @@ async function saveKpiForMonth(monthKey, empId, values){
 async function activateMonth(monthKey){
   activeMonth = monthKey;
   await storeSet('app:activeMonth', monthKey, SHARED);
-  render();
+  renderNow();
 }
 
 async function addMonth(monthKey){
@@ -2481,7 +2481,7 @@ async function addMonth(monthKey){
   ensureMonth(monthKey);
   await storeSet('app:kpiData', kpiData, SHARED);
   editingMonth = monthKey;
-  render();
+  renderNow();
 }
 
 async function setAdminPin(newPin){ adminPin = newPin; await storeSet('app:adminPin', newPin, SHARED); }
@@ -3025,6 +3025,7 @@ function escapeHtml(str){
 
 let mainEl = null; // элемент #main кэшируется один раз, а не ищется на каждый чих
 let lastViewKey = null; // сигнатура текущего «экрана» — нужна, чтобы не переигрывать анимацию появления по каждому чиху
+let _renderScheduled = false; // дебаунс: несколько render() подряд схлопываются в один
 
 function currentViewKey(){
   // Ключ отражает только то, какой ЭКРАН показан, а не что на нём меняется
@@ -3039,10 +3040,25 @@ function currentViewKey(){
 }
 
 function render(){
+  // Дебаунс: если уже запланирован рендер — не дублируем.
+  // Исключение: прямые вызовы из UI-событий (клики) — они выполняются сразу,
+  // а накопленные фоновые синхронизации схлопываются в один проход.
+  if(_renderScheduled) return;
+  _renderScheduled = true;
+  Promise.resolve().then(_doRender);
+}
+
+// Немедленный рендер для UI-событий (клики, смена вкладки) — без дебаунса
+function renderNow(){
+  _renderScheduled = false;
+  _doRender();
+}
+
+function _doRender(){
+  _renderScheduled = false;
   const main = mainEl || (mainEl = document.getElementById('main'));
   if(!main) return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
-  window.scrollTo({top:0,behavior:'smooth'});
   main.classList.remove('anim-in'); // сначала снимаем класс — иначе только что вставленные карточки
                                      // унаследуют его и будут переигрывать анимацию на каждый рендер
   // Показываем вкладку «Продажа» только для сотрудников ОП
@@ -3064,6 +3080,7 @@ function render(){
   // (иначе ввод PIN или KPI подёргивался бы при каждой цифре/символе)
   const viewKey = currentViewKey();
   if(viewKey !== lastViewKey){
+    window.scrollTo({top:0,behavior:'instant'}); // скроллим только при смене экрана
     void main.offsetWidth; // форс reflow, чтобы браузер применил анимацию как «свежее» появление
     main.classList.add('anim-in');
     lastViewKey = viewKey;
@@ -3483,7 +3500,7 @@ async function submitSalesForm(){
 
   salesSubmitting = true;
   salesResult = '';
-  render();
+  renderNow();
 
   try{
     const resp = await fetch(url, {
@@ -3518,7 +3535,7 @@ async function submitSalesForm(){
     salesResultMsg = 'Не удалось отправить: ' + e.message;
   }
   salesSubmitting = false;
-  render();
+  renderNow();
 }
 
 function renderAdminView(){
@@ -3789,12 +3806,12 @@ function attachDelegatedHandlers(){
     const el = ev.target;
 
     const tab = el.closest('.tab');
-    if(tab){ mode = tab.dataset.mode; render(); return; }
+    if(tab){ mode = tab.dataset.mode; renderNow(); return; }
 
     const pickBtn = el.closest('[data-pick]');
-    if(pickBtn){ selectingEmpId = pickBtn.dataset.pick; empPinInput=''; empPinError=''; render(); return; }
+    if(pickBtn){ selectingEmpId = pickBtn.dataset.pick; empPinInput=''; empPinError=''; renderNow(); return; }
 
-    if(el.closest('#backToList')){ selectingEmpId = null; render(); return; }
+    if(el.closest('#backToList')){ selectingEmpId = null; renderNow(); return; }
 
     const empKeyBtn = el.closest('.keypad button[data-empkey]');
     if(empKeyBtn){
@@ -3809,7 +3826,7 @@ function attachDelegatedHandlers(){
           selectingEmpId = null; empPinInput='';
         } else { empPinError = 'Неверный PIN'; empPinInput=''; }
       }
-      render();
+      renderNow();
       return;
     }
 
@@ -3822,17 +3839,17 @@ function attachDelegatedHandlers(){
         if(pinInput===adminPin){ adminUnlocked=true; pinInput=''; }
         else { pinError='Неверный PIN'; pinInput=''; }
       }
-      render();
+      renderNow();
       return;
     }
 
     if(el.closest('#punchBtn')){ await runOnce(()=>punch(myEmployeeId)); return; }
 
     if(el.closest('#switchUser')){
-      myEmployeeId=null; await storeSet('app:myEmployeeId', null, false); render(); return;
+      myEmployeeId=null; await storeSet('app:myEmployeeId', null, false); renderNow(); return;
     }
 
-    if(el.closest('#lockAdminBtn')){ adminUnlocked = false; render(); return; }
+    if(el.closest('#lockAdminBtn')){ adminUnlocked = false; renderNow(); return; }
 
     if(el.closest('#addMonthBtn')){
       const now = new Date();
@@ -3845,7 +3862,7 @@ function attachDelegatedHandlers(){
 
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
-    if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; render(); return; }
+    if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
 
     if(el.closest('#saveKpiBtn')){
       await runOnce(async ()=>{
@@ -3863,7 +3880,7 @@ function attachDelegatedHandlers(){
           });
           await saveKpiForMonth(editingMonth, empId, values);
         }
-        render();
+        renderNow();
       });
       return;
     }
@@ -3880,7 +3897,7 @@ function attachDelegatedHandlers(){
           if(emp && /^\d{4}$/.test(i.value.trim())) emp.pin = i.value.trim();
         });
         await storeSet('app:employees', employees, SHARED);
-        render();
+        renderNow();
       });
       return;
     }
@@ -3893,7 +3910,7 @@ function attachDelegatedHandlers(){
         if(!name || !/^\d{4}$/.test(pin)){ showToast('Укажите имя и 4-значный PIN', 'error'); return; }
         const id = 'e' + Date.now();
         await saveEmployee({id, name, department:dept, pin});
-        render();
+        renderNow();
       });
       return;
     }
@@ -3907,7 +3924,7 @@ function attachDelegatedHandlers(){
       await runOnce(async ()=>{
         employees = employees.filter(e=>e.id!==emp.id);
         await storeSet('app:employees', employees, SHARED);
-        render();
+        renderNow();
         showToast('Сотрудник удалён', 'success');
       });
       return;
@@ -3915,7 +3932,7 @@ function attachDelegatedHandlers(){
 
     if(el.closest('#changePinBtn')){
       const val = document.getElementById('newAdminPin').value.trim();
-      if(new RegExp('^\\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); render(); showToast('PIN администратора обновлён', 'success'); }
+      if(new RegExp('^\\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); renderNow(); showToast('PIN администратора обновлён', 'success'); }
       else { showToast('PIN должен состоять из ' + ADMIN_PIN_LEN + ' цифр', 'error'); }
       return;
     }
@@ -3924,7 +3941,7 @@ function attachDelegatedHandlers(){
     if(calCell){
       await runOnce(async ()=>{
         await toggleOffDay(calCell.dataset.caltoggle, calCell.dataset.calmonth, calCell.dataset.calday);
-        render();
+        renderNow();
       });
       return;
     }
@@ -3949,7 +3966,7 @@ function attachDelegatedHandlers(){
     // ---- Отчёт продаж: сохранить URL скрипта ----
     if(el.closest('#saveSalesScriptBtn')){
       const inp = document.getElementById('salesScriptUrlInput');
-      if(inp){ salesScriptUrl = inp.value.trim(); await storeSet('app:salesScriptUrl', salesScriptUrl, SHARED); showToast('URL скрипта сохранён','success'); render(); }
+      if(inp){ salesScriptUrl = inp.value.trim(); await storeSet('app:salesScriptUrl', salesScriptUrl, SHARED); showToast('URL скрипта сохранён','success'); renderNow(); }
       return;
     }
 
@@ -3984,7 +4001,7 @@ function attachDelegatedHandlers(){
       const ordP = empListP.find(o => o.id === orderId);
       if(ordP && !ordersOverlay[orderId].statusSince) ordersOverlay[orderId].statusSince = ordP.statusSince;
       await saveOverlay();
-      render();
+      renderNow();
       showToast('Заказ на паузе: ' + reason, 'success');
       return;
     }
@@ -4006,7 +4023,7 @@ function attachDelegatedHandlers(){
         statusSince: Date.now() - pausedDuration,
       });
       await saveOverlay();
-      render();
+      renderNow();
       showToast('Заказ возобновлён', 'success');
       return;
     }
@@ -4040,15 +4057,15 @@ function attachDelegatedHandlers(){
       ordersOverlay[orderId].pauseReason = '';
       ordersOverlay[orderId].pausedAt    = null;
       await saveOverlay();
-      render();
+      renderNow();
       showToast('Статус: ' + newStatus, 'success');
       return;
     }
   });
 
   document.addEventListener('change', (ev)=>{
-    if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; render(); }
-    if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; render(); }
+    if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
+    if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
   });
 
   // Автосохранение комментариев к заказам (debounce 800ms)
@@ -4084,7 +4101,7 @@ function attachDelegatedHandlers(){
     if(isEditingSomething()) return; // не мешаем вводу в обычные текстовые поля
 
     if(mode==='employee' && selectingEmpId && !myEmployeeId){
-      if(ev.key==='Backspace'){ empPinInput = empPinInput.slice(0,-1); empPinError=''; render(); return; }
+      if(ev.key==='Backspace'){ empPinInput = empPinInput.slice(0,-1); empPinError=''; renderNow(); return; }
       if(empPinInput.length<EMP_PIN_LEN){
         empPinInput += ev.key; empPinError='';
         if(empPinInput.length===EMP_PIN_LEN){
@@ -4095,19 +4112,19 @@ function attachDelegatedHandlers(){
             selectingEmpId = null; empPinInput='';
           } else { empPinError = 'Неверный PIN'; empPinInput=''; }
         }
-        render();
+        renderNow();
       }
       return;
     }
     if(mode==='admin' && !adminUnlocked){
-      if(ev.key==='Backspace'){ pinInput = pinInput.slice(0,-1); pinError=''; render(); return; }
+      if(ev.key==='Backspace'){ pinInput = pinInput.slice(0,-1); pinError=''; renderNow(); return; }
       if(pinInput.length<ADMIN_PIN_LEN){
         pinInput += ev.key; pinError='';
         if(pinInput.length===ADMIN_PIN_LEN){
           if(pinInput===adminPin){ adminUnlocked=true; pinInput=''; }
           else { pinError='Неверный PIN'; pinInput=''; }
         }
-        render();
+        renderNow();
       }
       return;
     }
@@ -4122,9 +4139,9 @@ let orderTimerHandle = null;
   attachDelegatedHandlers();
   await loadAll();
   await loadOrders();
-  render();
+  renderNow();
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
-  timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного render()
+  timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного renderNow()
   orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
   if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
     silentAutoSync();
@@ -4200,7 +4217,7 @@ window.addEventListener('pagehide', ()=>{
       if(tapCount >= 5){
         tapCount = 0;
         mode = 'admin';
-        render();
+        renderNow();
       }
     });
   }
@@ -4217,7 +4234,7 @@ window.addEventListener('pagehide', ()=>{
     ){
       e.preventDefault();
       mode = 'admin';
-      render();
+      renderNow();
     }
   });
 })();
