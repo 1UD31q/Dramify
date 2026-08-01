@@ -1789,8 +1789,7 @@ async function saveOverlay(){
 }
 
 // Возвращает заказы сотрудника с наложенным overlay (пауза, комментарий, ручной статус)
-// filterMonth — если передан (формат 'YYYY-MM'), показываем только заказы назначенные в этот месяц
-function getOrdersForEmp(empId, filterMonth){
+function getOrdersForEmp(empId){
   const list = ordersData[empId] || [];
   return list.map(o => {
     const ov = ordersOverlay[o.id] || {};
@@ -1807,15 +1806,7 @@ function getOrdersForEmp(empId, filterMonth){
       comment:     ov.comment     || '',
       finalTime:   ov.finalTime   != null ? ov.finalTime : null,
     });
-  }).filter(o => {
-    if(!filterMonth) return true;
-    // assignedAt — момент первого появления заказа в системе (запоминается навсегда)
-    const ts = o.assignedAt || o.statusSince;
-    if(!ts) return true;
-    const d = new Date(ts);
-    const mk = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-    return mk === filterMonth;
-  });
+  }).filter(Boolean);
 }
 
 function orderElapsed(order){
@@ -1953,8 +1944,8 @@ function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTi
 }
 
 // Рендер блока «Текущие заказы» для одного сотрудника
-function renderOrdersBlock(empId, filterMonth){
-  const allOrders = getOrdersForEmp(empId, filterMonth);
+function renderOrdersBlock(empId){
+  const allOrders = getOrdersForEmp(empId);
 
   // Разбиваем по колонкам
   // 1. В работе — не пауза, не успешно, не ждёт оплату, не новый (распределён)
@@ -1967,18 +1958,16 @@ function renderOrdersBlock(empId, filterMonth){
   const paying   = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
   const done     = allOrders.filter(o => isSuccessful(o));
 
-  const monthTitle = filterMonth ? ` · ${monthLabel(filterMonth)}` : '';
-
   if(allOrders.length === 0){
     return `<div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitle}</h2>
-      <div class="orders-empty">Нет заказов за этот месяц</div>
+      <h2>Текущие заказы</h2>
+      <div class="orders-empty">Нет активных заказов</div>
     </div>`;
   }
 
   return `
     <div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitle}</h2>
+      <h2>Текущие заказы</h2>
       ${renderOrdersSection('working-'+empId, 'sec-working', '🟢', 'В работе', working, empId, true, false)}
       ${renderOrdersSection('new-'+empId,     'sec-new',     '📋', 'Взять в работу', newOrds, empId, false, false)}
       ${renderOrdersSection('pay-'+empId,     'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
@@ -2053,8 +2042,8 @@ function renderOrderCardOP(o, empId){
 }
 
 // Рендер блока заказов для сотрудников ОП (без таймеров, 3 секции)
-function renderOrdersBlockOP(empId, filterMonth){
-  const allOrders = getOrdersForEmp(empId, filterMonth);
+function renderOrdersBlockOP(empId){
+  const allOrders = getOrdersForEmp(empId);
 
   const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
   const isPayWait    = o => o.status.toLowerCase().includes('оплат');
@@ -2064,18 +2053,16 @@ function renderOrdersBlockOP(empId, filterMonth){
   const paying  = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
   const done    = allOrders.filter(o => isSuccessful(o));
 
-  const monthTitleOP = filterMonth ? ` · ${monthLabel(filterMonth)}` : '';
-
   if(allOrders.length === 0){
     return `<div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitleOP}</h2>
-      <div class="orders-empty">Нет заказов за этот месяц</div>
+      <h2>Текущие заказы</h2>
+      <div class="orders-empty">Нет активных заказов</div>
     </div>`;
   }
 
   return `
     <div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitleOP}</h2>
+      <h2>Текущие заказы</h2>
       ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false, o=>renderOrderCardOP(o,empId))}
       ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true, o=>renderOrderCardOP(o,empId))}
       ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true, o=>renderOrderCardOP(o,empId))}
@@ -2083,8 +2070,8 @@ function renderOrdersBlockOP(empId, filterMonth){
 }
 
 // Рендер блока заказов для сотрудников ТО (без таймеров, 3 секции)
-function renderOrdersBlockTO(empId, filterMonth){
-  const allOrders = getOrdersForEmp(empId, filterMonth);
+function renderOrdersBlockTO(empId){
+  const allOrders = getOrdersForEmp(empId);
 
   const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
   const isPayWait    = o => o.status.toLowerCase().includes('оплат');
@@ -2094,18 +2081,16 @@ function renderOrdersBlockTO(empId, filterMonth){
   const paying  = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
   const done    = allOrders.filter(o => isSuccessful(o));
 
-  const monthTitleTO = filterMonth ? ` · ${monthLabel(filterMonth)}` : '';
-
   if(allOrders.length === 0){
     return `<div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitleTO}</h2>
-      <div class="orders-empty">Нет заказов за этот месяц</div>
+      <h2>Текущие заказы</h2>
+      <div class="orders-empty">Нет активных заказов</div>
     </div>`;
   }
 
   return `
     <div class="card" id="orders-card-${empId}">
-      <h2>Заказы${monthTitleTO}</h2>
+      <h2>Текущие заказы</h2>
       ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false)}
       ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
       ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true)}
@@ -2861,15 +2846,12 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const statusSince = (existing && existing.status === statusRaw)
               ? existing.statusSince
               : Date.now();
-            // assignedAt — дата первого назначения в системе, никогда не перезаписывается
-            const assignedAt = (existing && existing.assignedAt) ? existing.assignedAt : Date.now();
 
             empOrders.push({
               id: orderId,
               client: clientName,
               status: statusRaw,
               statusSince,
-              assignedAt,
               gross: grossVal,
               pending: pendingVal,
               prepay: prepayVal,
@@ -2970,15 +2952,12 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
           const statusSince = (existing && existing.status === statusRaw)
             ? existing.statusSince : Date.now();
-          // assignedAt — дата первого назначения в системе, никогда не перезаписывается
-          const assignedAt = (existing && existing.assignedAt) ? existing.assignedAt : Date.now();
 
           empOrders.push({
             id: orderId,
             client: clientName,
             status: statusRaw,
             statusSince,
-            assignedAt,
             gross: grossVal,
             prepay: prepayVal,
             pending: pendingVal,
@@ -3032,13 +3011,6 @@ async function silentAutoSync(){
   try{
     if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', activeMonth, true);
     if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', activeMonth, true);
-    // Также подтягиваем прошлый месяц, чтобы сотрудник мог посмотреть историю заказов
-    const _prevDate = new Date(); _prevDate.setDate(1); _prevDate.setMonth(_prevDate.getMonth()-1);
-    const _prevMk = _prevDate.getFullYear() + '-' + String(_prevDate.getMonth()+1).padStart(2,'0');
-    if(_prevMk !== activeMonth){
-      if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', _prevMk, true);
-      if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', _prevMk, true);
-    }
     if((trackerUrl||'').trim()) await syncTracker(true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
@@ -3303,8 +3275,8 @@ function renderEmployeeDashboard(){
             todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
         </div>
 
-        ${emp.department === 'to' ? renderOrdersBlock(emp.id, viewMonth) : ''}
-        ${emp.department === 'op' ? renderOrdersBlockOP(emp.id, viewMonth) : ''}
+        ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
+        ${emp.department === 'op' ? renderOrdersBlockOP(emp.id) : ''}
       </div>
     </div>`;
 }
