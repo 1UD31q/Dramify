@@ -1318,17 +1318,35 @@ const EMP_PIN_LEN = 4;
 const SUPABASE_URL = 'https://wujcylwtjwbnpqjupslp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1amN5bHd0andibnBxanVwc2xwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDkyMDAsImV4cCI6MjA5OTA4NTIwMH0.uq8FPREpqeXxZH8oAuDZNeLaP9ZstoFh_KaW-3StTII';
 
+// =========================================================================
+// ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ
+// Раньше storeGet возвращал null и когда данных нет, и когда запрос упал.
+// Из-за этого при обрыве связи на старте приложение решало, что данных нет,
+// заполняло месяц нулями и записывало эти нули в общее хранилище — цифры
+// пропадали сразу у всех. Теперь ошибка чтения фиксируется отдельно, и пока
+// состояние не прочитано успешно, запись важных ключей запрещена.
+// =========================================================================
+let storeReadFailed = false;   // была ли ошибка чтения в текущей серии
+let stateLoaded = false;       // общее состояние успешно прочитано хотя бы раз
+
+// Ключи, потеря которых необратима — их нельзя писать «вслепую»
+const GUARDED_KEYS = [
+  'app:kpiData', 'app:ledgerTotals', 'app:trackerData', 'app:cashTotals',
+  'app:ordersData', 'app:ordersOverlay', 'app:employees', 'attendance:log',
+  'app:schedules',
+];
+
 async function storeGet(key, shared){
   if(shared){
     try{
       const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, {
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
       });
-      if(!res.ok) { console.error('Supabase вернул статус:', res.status); return null; }
+      if(!res.ok){ console.error('Supabase статус', res.status, 'для', key); storeReadFailed = true; return null; }
       const data = await res.json();
-      if(!data || !data.length) return null;
+      if(!data || !data.length) return null; // ключа правда нет — это не ошибка
       return JSON.parse(data[0].value);
-    }catch(e){ console.error('storeGet failed', e); return null; }
+    }catch(e){ console.error('storeGet failed', key, e); storeReadFailed = true; return null; }
   } else {
     try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
     catch(e){ return null; }
@@ -1337,20 +1355,32 @@ async function storeGet(key, shared){
 
 async function storeSet(key, value, shared){
   if(shared){
-    try{
-      await fetch(`${SUPABASE_URL}/rest/v1/kv_store?on_conflict=key`, {
-        method: 'POST',
-        headers:{
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify([{ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }])
-      });
-    }catch(e){ console.error('storeSet failed', e); }
+    // Пока состояние не прочитано успешно — не трогаем важные ключи,
+    // иначе можно затереть живые данные пустышкой.
+    if(!stateLoaded && GUARDED_KEYS.indexOf(key) >= 0){
+      console.warn('storeSet заблокирован — состояние ещё не загружено:', key);
+      return false;
+    }
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?on_conflict=key`, {
+          method: 'POST',
+          headers:{
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify([{ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }])
+        });
+        if(res.ok) return true;
+        console.error('storeSet статус', res.status, 'для', key);
+      }catch(e){ console.error('storeSet failed', key, e); }
+      if(attempt===0) await new Promise(r=>setTimeout(r, 600));
+    }
+    return false;
   } else {
-    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){ console.error(e); }
+    try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(e){ console.error(e); return false; }
   }
 }
 
@@ -1557,7 +1587,8 @@ async function pollSharedData(){
   if(isPolling || document.visibilityState==='hidden') return;
   isPolling = true;
   try{
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv] = await Promise.all([
+    storeReadFailed = false;
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       storeGet('attendance:log', SHARED),
@@ -1570,8 +1601,17 @@ async function pollSharedData(){
       storeGet('app:trackerData', SHARED),
       storeGet('app:ordersData', SHARED),
       storeGet('app:ordersOverlay', SHARED),
+      storeGet('app:cashUrls', SHARED),
+      storeGet('app:cashTotals', SHARED),
     ]);
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv});
+    // Чтение прошло успешно — если раньше сидели в режиме «только чтение»,
+    // связь вернулась, можно снова сохранять.
+    if(!storeReadFailed && !stateLoaded){
+      stateLoaded = true;
+      showToast('Связь с базой восстановлена', 'success');
+    }
+
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals});
     if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
@@ -1585,6 +1625,8 @@ async function pollSharedData(){
     if(freshLedger) ledgerTotals = freshLedger;
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshTrackerData) trackerData = freshTrackerData;
+    if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
+    if(freshCashTotals) cashTotals = Object.assign({}, cashTotals, freshCashTotals);
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
@@ -1759,14 +1801,17 @@ function companyFinance(monthKey){
 
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
   const trendPct = (source==='tracker' && td) ? td.trendPct : planPct;
-  // Чистая касса и висящий остаток — по ВСЕЙ таблице за месяц («Предоплата» и «Остаток»),
-  // независимо от того, назначен ли исполнитель. Берём тот лист, где строк больше.
-  const cands = [lt.op, lt.to].filter(x=>x && x.allRows>0).sort((a,b)=>b.allRows-a.allRows);
-  const sheetTotals = cands[0] || null;
-  const sheetPrepaid = sheetTotals ? sheetTotals.allPrepaid : null;
-  const sheetOutstanding = sheetTotals ? sheetTotals.allPending : null;
-  const sheetGross = sheetTotals ? sheetTotals.allGross : null;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to, sheetPrepaid, sheetOutstanding, sheetGross};
+  // Чистая касса и висящий остаток. Приоритет — отдельный лист «Касса»
+  // (там просто суммы колонок). Если его нет — считаем по листам ОП/ТО.
+  const ct = cashTotals[monthKey];
+  let sheetPrepaid = null, sheetOutstanding = null, cashSource = null;
+  if(ct && (ct.prepaid>0 || ct.pending>0)){
+    sheetPrepaid = ct.prepaid; sheetOutstanding = ct.pending; cashSource = 'cash-sheet';
+  } else {
+    const cands = [lt.op, lt.to].filter(x=>x && x.allRows>0).sort((a,b)=>b.allRows-a.allRows);
+    if(cands[0]){ sheetPrepaid = cands[0].allPrepaid; sheetOutstanding = cands[0].allPending; cashSource = 'ledger'; }
+  }
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to, sheetPrepaid, sheetOutstanding, cashSource};
 }
 
 // Общий план (цель из трекера) делится ПОРОВНУ между сотрудниками внутри
@@ -2499,6 +2544,14 @@ let trackerSyncing = {};  // { monthKey: bool }
 let trackerStatus = {};   // { monthKey: string }
 let lastTrackerSyncAt = {}; // { monthKey: timestamp }
 
+// ── Лист «Касса»: отдельная ссылка на месяц, просто суммы колонок ──
+// cashTotals[mk] = {prepaid, pending, rows, prepaidLabel, pendingLabel}
+let cashUrls = {};
+let cashTotals = {};
+let cashSyncing = {};
+let cashStatus = {};
+let lastCashSyncAt = {};
+
 let myEmployeeId = null;
 let mode = 'employee';
 let timerHandle = null;
@@ -2604,6 +2657,10 @@ async function loadAll(){
       const oldUrl = await storeGet('app:trackerUrl', SHARED);
       if(oldUrl) trackerUrls[activeMonth] = oldUrl;
     }
+    const storedCashUrls = await storeGet('app:cashUrls', SHARED);
+    if(storedCashUrls) cashUrls = storedCashUrls;
+    const storedCashTotals = await storeGet('app:cashTotals', SHARED);
+    if(storedCashTotals) cashTotals = storedCashTotals;
     const storedTrackerData = await storeGet('app:trackerData', SHARED);
     if(storedTrackerData){
       // миграция: старый формат был одним объектом, не per-month
@@ -2990,6 +3047,61 @@ function parseTrackerGrid(grid){
   result.forecastPct = result.trendPct;
   result.effectivePlan = effectivePlan;
   return result;
+}
+
+// ---------------------------------------------------------------------
+// Лист «Касса»: никакой логики — просто складываем колонку G (чистая касса)
+// и колонку H (висит остаток) по всем строкам листа.
+// ---------------------------------------------------------------------
+async function syncCashSheet(mk, silent){
+  mk = mk || editingMonth;
+  const rawUrl = (cashUrls[mk]||'').trim();
+  if(!rawUrl){ if(!silent){ cashStatus[mk] = 'Сначала вставьте ссылку на лист'; showToast(cashStatus[mk],'error'); } return; }
+  if(!silent){ cashSyncing[mk] = true; cashStatus[mk] = ''; render(); }
+  try{
+    const rows = await fetchSheetRows(rawUrl, true); // CSV — сетка как есть, без домыслов про шапку
+    if(!rows.length) throw new Error('Лист пустой или не найден');
+
+    // По умолчанию — колонки G и H (7-я и 8-я). Если в шапке есть
+    // «Предоплата» и «Остаток» — берём их, так надёжнее при сдвиге колонок.
+    let prepaidIdx = 6, pendingIdx = 7;
+    const header = (rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());
+    const findIdx = (p)=> header.findIndex(h=>h.includes(p));
+    const pIdx = findIdx('предоплат'), oIdx = findIdx('остаток');
+    if(pIdx>=0) prepaidIdx = pIdx;
+    if(oIdx>=0) pendingIdx = oIdx;
+
+    const colLetter = (i)=> String.fromCharCode(65+i);
+    let prepaid = 0, pending = 0, counted = 0;
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r] || [];
+      const p = parseNum(row[prepaidIdx]);
+      const o = parseNum(row[pendingIdx]);
+      if(p===0 && o===0) continue;
+      prepaid += p; pending += o; counted++;
+    }
+
+    // Защита от обнуления: пустой ответ не затирает прошлые цифры
+    const prev = cashTotals[mk];
+    if(counted===0 && prev && (prev.prepaid>0 || prev.pending>0)){
+      if(!silent){ cashStatus[mk] = 'Лист вернулся пустым — оставил прошлые цифры'; showToast(cashStatus[mk],'error'); cashSyncing[mk]=false; render(); }
+      return;
+    }
+
+    cashTotals[mk] = {
+      prepaid, pending, rows: counted,
+      prepaidLabel: `${colLetter(prepaidIdx)}${header[prepaidIdx]?` («${rows[0][prepaidIdx]}»)`:''}`,
+      pendingLabel: `${colLetter(pendingIdx)}${header[pendingIdx]?` («${rows[0][pendingIdx]}»)`:''}`,
+    };
+    await storeSet('app:cashTotals', cashTotals, SHARED);
+    await storeSet('app:cashUrls', cashUrls, SHARED);
+    lastCashSyncAt[mk] = Date.now();
+    if(!silent){ cashStatus[mk] = `Посчитано по ${counted} строк(-е)`; showToast(cashStatus[mk],'success'); }
+  } catch(err){
+    if(!silent){ cashStatus[mk] = 'Не получилось: ' + err.message; showToast(cashStatus[mk],'error'); }
+  }
+  if(!silent){ cashSyncing[mk] = false; render(); }
+  else render();
 }
 
 async function syncTracker(mk, silent){
@@ -3441,10 +3553,12 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 }
 
 async function silentAutoSync(){
+  if(!stateLoaded) return; // нет связи с базой — не пишем ничего
   try{
     if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
     if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
     if((trackerUrls[activeMonth]||'').trim()) await syncTracker(activeMonth, true);
+    if((cashUrls[activeMonth]||'').trim()) await syncCashSheet(activeMonth, true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
 
@@ -3524,9 +3638,10 @@ function _doRender(){
   // Запоминаем то, что админ уже набрал в полях ссылок, но ещё не сохранил.
   // Без этого фоновая синхронизация перерисовывала экран и стирала вставку.
   const pendingInputs = [];
-  document.querySelectorAll('.sheet-url-input, .tracker-url-input').forEach(inp=>{
+  document.querySelectorAll('.sheet-url-input, .tracker-url-input, .cash-url-input').forEach(inp=>{
     pendingInputs.push({
-      cls: inp.classList.contains('sheet-url-input') ? 'sheet-url-input' : 'tracker-url-input',
+      cls: inp.classList.contains('sheet-url-input') ? 'sheet-url-input'
+         : inp.classList.contains('cash-url-input') ? 'cash-url-input' : 'tracker-url-input',
       month: inp.dataset.month, dept: inp.dataset.dept || '', value: inp.value,
     });
   });
@@ -4226,7 +4341,7 @@ function renderAdminView(){
         <div class="finance-box" style="grid-column:1/-1"><div class="fi-icon">${icon('target')}</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
         <div class="finance-box trend-box wide"><div class="fi-icon">${icon('trend')}</div><div class="label">Тенденция</div><div class="value">${finance.trendPct}%</div></div>
       </div>
-      ${finance.sheetPrepaid!=null ? `<div class="hint" style="margin-top:8px;">Чистая касса — сумма колонки «Предоплата» по всей таблице за ${monthLabel(editingMonth)}, висит остаток — сумма колонки «Остаток».</div>` : ''}
+      ${finance.sheetPrepaid!=null ? `<div class="hint" style="margin-top:8px;">${finance.cashSource==='cash-sheet' ? `Чистая касса и висящий остаток — суммы колонок листа «Касса» за ${monthLabel(editingMonth)}.` : `Чистая касса — сумма колонки «Предоплата», висит остаток — сумма колонки «Остаток». Для точного счёта вставьте ссылку в блоке «Лист Касса».`}</div>` : ''}
       ${finance.source==='tracker' ? `
         <div class="hint" style="margin-top:10px;">Цифры взяты из трекера тенденции: «Сейчас сумма» → чистая касса, «Сумма» (сколько ещё нужно до цели) → остаток.</div>` :
         finance.source==='ledger' ? `
@@ -4341,6 +4456,34 @@ function renderAdminView(){
               ${syncStatus['to_'+mk] ? `<div class="hint" style="margin-top:4px;">${escapeHtml(syncStatus['to_'+mk])}</div>` : ''}
               ${syncedTo ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(syncedTo)}</div>` : ''}
             </div>
+          </div>
+        </details>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <h2>Лист «Касса»</h2>
+      <div class="hint" style="margin-top:0;">Отдельная ссылка на месяц. Просто складывает колонку <b>G</b> → чистая касса и колонку <b>H</b> → висит остаток. Никакой фильтрации.</div>
+      ${Object.keys(kpiData).sort().reverse().map(mk => {
+        const cUrl = cashUrls[mk]||'';
+        const ct = cashTotals[mk];
+        const cs = cashStatus[mk]||'';
+        const busy = cashSyncing[mk]||false;
+        const at = lastCashSyncAt[mk]||null;
+        return `
+        <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${mk===editingMonth?'open':''}>
+          <summary style="padding:12px 16px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;">
+            <span style="flex:1;">${monthLabel(mk)}</span>
+            ${cUrl ? `<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>` : ''}
+          </summary>
+          <div style="padding:0 16px 16px;">
+            <div class="row" style="margin-top:8px;">
+              <input type="text" class="cash-url-input" data-month="${mk}" value="${escapeHtml(cUrl)}" placeholder="Ссылка на лист с суммами">
+              <button class="btn small cash-sync-btn ${busy?'secondary':''}" data-month="${mk}" ${busy?'disabled':''}>${busy?'Считаю…':'Обновить'}</button>
+            </div>
+            ${ct ? `<div class="hint" style="margin-top:6px;">Чистая касса ${fmtMoney(ct.prepaid)} (кол. ${escapeHtml(ct.prepaidLabel)}) · висит ${fmtMoney(ct.pending)} (кол. ${escapeHtml(ct.pendingLabel)}) · строк: ${ct.rows}</div>` : ''}
+            ${cs ? `<div class="hint" style="margin-top:4px;">${escapeHtml(cs)}</div>` : ''}
+            ${at ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(at)}</div>` : ''}
           </div>
         </details>`;
       }).join('')}
@@ -4610,6 +4753,15 @@ function attachDelegatedHandlers(){
       await syncFromGoogleSheet(dept, mk);
       return;
     }
+    if(el.closest('.cash-sync-btn')){
+      const btn = el.closest('.cash-sync-btn');
+      const mk = btn.dataset.month;
+      const input = document.querySelector(`.cash-url-input[data-month="${mk}"]`);
+      if(input) cashUrls[mk] = input.value.trim();
+      await storeSet('app:cashUrls', cashUrls, SHARED);
+      await syncCashSheet(mk);
+      return;
+    }
     if(el.closest('.tracker-sync-btn')){
       const btn = el.closest('.tracker-sync-btn');
       const mk = btn.dataset.month;
@@ -4740,6 +4892,12 @@ function attachDelegatedHandlers(){
       try{ await storeSet('app:trackerUrls', trackerUrls, SHARED); }catch(e){ console.error(e); }
       return;
     }
+    if(ev.target.classList.contains('cash-url-input')){
+      const mk = ev.target.dataset.month;
+      cashUrls[mk] = ev.target.value.trim();
+      try{ await storeSet('app:cashUrls', cashUrls, SHARED); }catch(e){ console.error(e); }
+      return;
+    }
   });
 
   // Автосохранение комментариев к заказам (debounce 800ms)
@@ -4811,8 +4969,18 @@ let orderTimerHandle = null;
 
 (async function init(){
   attachDelegatedHandlers();
+  storeReadFailed = false;
   await loadAll();
   await loadOrders();
+
+  // Разрешаем запись в общее хранилище только если чтение прошло без ошибок.
+  // Иначе работаем в режиме «только чтение»: показываем, что есть, но ничего
+  // не сохраняем — чтобы не затереть живые цифры пустыми.
+  stateLoaded = !storeReadFailed;
+  if(!stateLoaded){
+    showToast('Нет связи с базой — данные не сохраняются. Пробую переподключиться…', 'error');
+  }
+
   renderNow();
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrls, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
   timerHandle = setInterval(tickEmployeeClock, 15000);
@@ -4821,8 +4989,6 @@ let orderTimerHandle = null;
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
-  // фоновая синхронизация общих данных: отметки/KPI/сотрудники теперь
-  // подтягиваются сами на всех устройствах, без нажатия «Обновить»
   startBackgroundSync();
 })();
 
