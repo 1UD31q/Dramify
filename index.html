@@ -2557,25 +2557,96 @@ function parseNum(s){
   return isNaN(n) ? 0 : Math.round(n);
 }
 
+// Конвертирует любую ссылку на Google Sheets в gviz JSON URL (надёжнее CSV).
+// Поддерживает: ссылки на редактирование (/d/ID/edit), опубликованные (/d/e/2PACX.../pub),
+// и уже готовые gviz-ссылки.
+function toGvizUrl(url, sheetName){
+  url = (url||'').trim();
+  const gidMatch = url.match(/gid=([0-9]+)/);
+  const gid = gidMatch ? gidMatch[1] : null;
+
+  // Обычная ссылка на редактирование: .../spreadsheets/d/ID/edit
+  const editMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if(editMatch){
+    const id = editMatch[1];
+    let q = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json`;
+    if(sheetName) q += `&sheet=${encodeURIComponent(sheetName)}`;
+    else if(gid) q += `&gid=${gid}`;
+    return q;
+  }
+
+  // Опубликованная ссылка .../d/e/2PACX.../pub — извлекаем ID документа через отдельный fetch невозможен,
+  // поэтому для таких ссылок оставляем CSV как fallback
+  return null;
+}
+
+// Конвертирует ссылку в CSV URL (fallback для опубликованных ссылок)
 function toCsvUrl(url){
   url = (url||'').trim();
   const gidMatch = url.match(/gid=([0-9]+)/);
   const gid = gidMatch ? gidMatch[1] : '0';
-
-  // Обычная ссылка на редактирование: .../spreadsheets/d/ID/edit...
   const editMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)\/edit/);
   if(editMatch){
     return `https://docs.google.com/spreadsheets/d/${editMatch[1]}/export?format=csv&gid=${gid}`;
   }
-
-  // Опубликованная ссылка (Файл → Опубликовать в интернете): .../spreadsheets/d/e/2PACX-.../pubhtml или /pub
   const pubMatch = url.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
   if(pubMatch){
     return `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?gid=${gid}&single=true&output=csv`;
   }
-
-  // Уже готовая прямая ссылка (например, сразу с output=csv) — используем как есть
   return url;
+}
+
+// Парсит ответ gviz JSON в массив строк (аналог parseCSV)
+function parseGvizJson(text){
+  // Google оборачивает JSON в /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+  const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+  if(!m) throw new Error('Неверный формат ответа Google Sheets');
+  const data = JSON.parse(m[1]);
+  const table = data.table;
+  if(!table || !table.cols) throw new Error('Таблица пустая');
+
+  // Заголовки
+  const header = table.cols.map(c => (c.label || c.id || '').trim());
+  const rows = [header];
+
+  // Строки данных
+  for(const row of (table.rows||[])){
+    const cells = (row.c||[]).map(cell => {
+      if(!cell || cell.v === null || cell.v === undefined) return '';
+      // Даты Google возвращает как Date(year,month,day) — month 0-based
+      if(typeof cell.v === 'string' && cell.v.startsWith('Date(')){
+        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        if(dm){
+          const d = String(dm[3]).padStart(2,'0');
+          const mo = String(Number(dm[2])+1).padStart(2,'0');
+          return `${d}.${mo}.${dm[1]}`;
+        }
+      }
+      // Форматированное значение предпочтительнее сырого (сохраняет ₸ и пробелы)
+      return cell.f !== undefined && cell.f !== null ? String(cell.f) : String(cell.v);
+    });
+    rows.push(cells);
+  }
+  return rows;
+}
+
+// Универсальный fetch: сначала пробует gviz JSON, при неудаче — CSV
+async function fetchSheetRows(url){
+  const gvizUrl = toGvizUrl(url);
+  if(gvizUrl){
+    try{
+      const res = await fetch(gvizUrl, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      return parseGvizJson(text);
+    }catch(e){
+      console.warn('gviz failed, falling back to CSV:', e.message);
+    }
+  }
+  // Fallback: CSV
+  const csvUrl = toCsvUrl(url);
+  const text = await fetchCsvWithRetry(csvUrl);
+  return parseCSV(text);
 }
 
 // Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
@@ -2656,9 +2727,7 @@ async function syncTracker(silent){
   if(!rawUrl){ if(!silent){ trackerStatus = 'Сначала вставьте ссылку на трекер'; showToast(trackerStatus, 'error'); } return; }
   if(!silent){ trackerSyncing = true; trackerStatus = ''; render(); }
   try{
-    const url = toCsvUrl(rawUrl);
-    const text = await fetchCsvWithRetry(url);
-    const rows = parseCSV(text);
+    const rows = await fetchSheetRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
     const grid = rows.map(r=>r.map(c=>String(c||'').trim()));
     const parsed = parseTrackerGrid(grid);
@@ -2669,7 +2738,7 @@ async function syncTracker(silent){
     if(!silent){ trackerStatus = 'Данные обновлены'; showToast(trackerStatus, 'success'); }
   } catch(err){
     const hint = /failed to fetch/i.test(err.message)
-      ? ' — проверьте, что таблица опубликована (Файл → Поделиться → Опубликовать в интернете → формат CSV) и ссылка вставлена целиком'
+      ? ' — проверьте, что таблица открыта для просмотра (Настройки доступа → Все у кого есть ссылка) и ссылка вставлена целиком'
       : '';
     if(!silent){ trackerStatus = 'Не получилось: ' + err.message + hint; showToast(trackerStatus, 'error'); }
   }
@@ -2707,9 +2776,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
   if(!rawUrl){ if(!silent) syncStatus[dept] = 'Сначала вставьте ссылку на таблицу'; return; }
   if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
   try{
-    const url = toCsvUrl(rawUrl);
-    const text = await fetchCsvWithRetry(url);
-    const rows = parseCSV(text);
+    const rows = await fetchSheetRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
 
     const header = rows[0].map(h=>h.trim());
@@ -3042,7 +3109,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     }
   } catch(err){
     const hint = /failed to fetch/i.test(err.message)
-      ? ' — проверьте, что таблица опубликована (Файл → Поделиться → Опубликовать в интернете → формат CSV) и ссылка вставлена целиком'
+      ? ' — проверьте, что таблица открыта для просмотра (Настройки доступа → Все у кого есть ссылка) и ссылка вставлена целиком'
       : '';
     if(!silent){ syncStatus[dept] = 'Не получилось: ' + err.message + hint; showToast(syncStatus[dept], 'error'); }
   }
