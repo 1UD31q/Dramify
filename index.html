@@ -2261,9 +2261,12 @@ let empViewMonth = null; // выбранный сотрудником месяц
 
 let logsExpanded = false;
 
-let sheetUrls = {op:'', to:''}; // просто две ссылки, gid в них определяет лист
-let syncStatus = {op:'', to:''};
-let syncing = {op:false, to:false};
+// sheetUrls — ссылки на листы по месяцам: { '2025-08': {op:'...', to:'...'}, ... }
+let sheetUrls = {};
+function getSheetUrl(dept, mk){ return ((sheetUrls[mk]||{})[dept])||''; }
+function setSheetUrl(dept, mk, url){ if(!sheetUrls[mk]) sheetUrls[mk]={}; sheetUrls[mk][dept]=url; }
+let syncStatus = {};  // ключи: 'op_2025-08', 'to_2025-08', ...
+let syncing = {};     // ключи: 'op_2025-08', 'to_2025-08', ...
 
 // Ручной график: schedules[monthKey][empId] = { '5': true, '12': true, ... } — номера дней, помеченных выходными.
 // По умолчанию (нет записи) день считается рабочим.
@@ -2314,15 +2317,12 @@ async function loadAll(){
   try {
     const storedSheetUrls = await storeGet('app:sheetUrls', SHARED);
     if(storedSheetUrls){
-      // Миграция: per-month формат {monthKey:{op,to}} → плоский {op,to}
+      // Миграция: старый плоский {op,to} → per-month
       if(typeof storedSheetUrls.op === 'string' || typeof storedSheetUrls.to === 'string'){
-        sheetUrls = storedSheetUrls;
+        if(storedSheetUrls.op) setSheetUrl('op', activeMonth, storedSheetUrls.op);
+        if(storedSheetUrls.to) setSheetUrl('to', activeMonth, storedSheetUrls.to);
       } else {
-        // старый per-month — берём последний месяц
-        const lastMk = Object.keys(storedSheetUrls).sort().reverse()[0];
-        if(lastMk && storedSheetUrls[lastMk]){
-          sheetUrls = { op: storedSheetUrls[lastMk].op||'', to: storedSheetUrls[lastMk].to||'' };
-        }
+        sheetUrls = storedSheetUrls;
       }
     }
   } catch(e) { console.error(e); }
@@ -2772,9 +2772,10 @@ async function fetchCsvWithRetry(url, attempts){
 
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
-  const rawUrl = (sheetUrls[dept]||'').trim();
-  if(!rawUrl){ if(!silent) syncStatus[dept] = 'Сначала вставьте ссылку на таблицу'; return; }
-  if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
+  const key = dept + '_' + targetMonth;
+  const rawUrl = getSheetUrl(dept, targetMonth);
+  if(!rawUrl){ if(!silent) syncStatus[key] = 'Сначала вставьте ссылку на таблицу'; return; }
+  if(!silent){ syncing[key] = true; syncStatus[key] = ''; render(); }
   try{
     const rows = await fetchSheetRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
@@ -3095,25 +3096,25 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     await storeSet('app:kpiData', kpiData, SHARED);
     await storeSet('app:sheetUrls', sheetUrls, SHARED);
     await storeSet('app:ledgerTotals', ledgerTotals, SHARED);
-    lastSheetSyncAt[dept] = Date.now();
+    lastSheetSyncAt[key] = Date.now();
     if(!silent){
       const lt = ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept];
       const sampleNames = (lt && lt.diag && lt.diag.unmatchedNames && lt.diag.unmatchedNames.length)
         ? ` Например: ${lt.diag.unmatchedNames.map(n=>'«'+n+'»').join(', ')}.`
         : '';
       const unmatchedNote = (lt && lt.unmatched>0) ? ` (${lt.unmatched} строк не сопоставлено с сотрудниками — на кассу компании это не влияет.${sampleNames})` : '';
-      syncStatus[dept] = matched>0
+      syncStatus[key] = matched>0
         ? `Обновлено ${matched} из ${deptEmployees.length} сотрудников${unmatchedNote}`
         : 'Никто не найден — проверьте, что имена в таблице совпадают с именами в приложении' + unmatchedNote;
-      showToast(syncStatus[dept], matched>0 ? 'success' : 'error');
+      showToast(syncStatus[key], matched>0 ? 'success' : 'error');
     }
   } catch(err){
     const hint = /failed to fetch/i.test(err.message)
       ? ' — проверьте, что таблица открыта для просмотра (Настройки доступа → Все у кого есть ссылка) и ссылка вставлена целиком'
       : '';
-    if(!silent){ syncStatus[dept] = 'Не получилось: ' + err.message + hint; showToast(syncStatus[dept], 'error'); }
+    if(!silent){ syncStatus[key] = 'Не получилось: ' + err.message + hint; showToast(syncStatus[key], 'error'); }
   }
-  if(!silent){ syncing[dept] = false; render(); }
+  if(!silent){ syncing[key] = false; render(); }
   else if(mode==='employee'){
     render();
     // тихое обновление данных — прогоняем слот-машину без смены экрана
@@ -3123,8 +3124,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
 async function silentAutoSync(){
   try{
-    if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', activeMonth, true);
-    if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', activeMonth, true);
+    if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
+    if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
     if((trackerUrl||'').trim()) await syncTracker(true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
@@ -3839,25 +3840,41 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Google Таблица</h2>
-      <div class="hint" style="margin-top:0;">Таблица подтягивается автоматически каждые несколько минут. При смене месяца вставьте ссылку с нужным gid листа и нажмите «Обновить сейчас».</div>
-      <div style="margin-top:12px;">
-        <label class="field-label">Лист «ОП»</label>
-        <div class="row">
-          <input type="text" id="sheetUrlOp" value="${escapeHtml(sheetUrls.op||'')}" placeholder="Ссылка на опубликованный CSV">
-          <button class="btn small ${syncing.op?'secondary':''}" id="syncOpBtn" ${syncing.op?'disabled':''}>${syncing.op?'Обновляю…':'Обновить сейчас'}</button>
-        </div>
-        ${syncStatus.op ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.op)}</div>` : ''}
-        ${lastSheetSyncAt.op ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastSheetSyncAt.op)}</div>` : ''}
-      </div>
-      <div style="margin-top:16px;">
-        <label class="field-label">Лист «ТО»</label>
-        <div class="row">
-          <input type="text" id="sheetUrlTo" value="${escapeHtml(sheetUrls.to||'')}" placeholder="Ссылка на опубликованный CSV">
-          <button class="btn small ${syncing.to?'secondary':''}" id="syncToBtn" ${syncing.to?'disabled':''}>${syncing.to?'Обновляю…':'Обновить сейчас'}</button>
-        </div>
-        ${syncStatus.to ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.to)}</div>` : ''}
-        ${lastSheetSyncAt.to ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastSheetSyncAt.to)}</div>` : ''}
-      </div>
+      <div class="hint" style="margin-top:0;">Для каждого месяца своя ссылка на лист. Вставьте обычную ссылку из браузера — приложение само возьмёт нужный лист по gid.</div>
+      ${Object.keys(kpiData).sort().reverse().map(mk => {
+        const opUrl = getSheetUrl('op', mk);
+        const toUrl = getSheetUrl('to', mk);
+        const isActive = mk === editingMonth;
+        const syncedOp = lastSheetSyncAt['op_'+mk];
+        const syncedTo = lastSheetSyncAt['to_'+mk];
+        return `
+        <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${isActive ? 'open' : ''}>
+          <summary style="padding:12px 16px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;">
+            <span style="flex:1;">${monthLabel(mk)}</span>
+            ${(opUrl||toUrl) ? `<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>` : ''}
+          </summary>
+          <div style="padding:0 16px 16px;">
+            <div style="margin-top:8px;">
+              <label class="field-label">Лист «ОП»</label>
+              <div class="row">
+                <input type="text" class="sheet-url-input" data-month="${mk}" data-dept="op" value="${escapeHtml(opUrl)}" placeholder="Ссылка на лист ОП">
+                <button class="btn small sheet-sync-btn ${syncing['op_'+mk]?'secondary':''}" data-month="${mk}" data-dept="op" ${syncing['op_'+mk]?'disabled':''}>${syncing['op_'+mk]?'Обновляю…':'Обновить'}</button>
+              </div>
+              ${syncStatus['op_'+mk] ? `<div class="hint" style="margin-top:4px;">${escapeHtml(syncStatus['op_'+mk])}</div>` : ''}
+              ${syncedOp ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(syncedOp)}</div>` : ''}
+            </div>
+            <div style="margin-top:12px;">
+              <label class="field-label">Лист «ТО»</label>
+              <div class="row">
+                <input type="text" class="sheet-url-input" data-month="${mk}" data-dept="to" value="${escapeHtml(toUrl)}" placeholder="Ссылка на лист ТО">
+                <button class="btn small sheet-sync-btn ${syncing['to_'+mk]?'secondary':''}" data-month="${mk}" data-dept="to" ${syncing['to_'+mk]?'disabled':''}>${syncing['to_'+mk]?'Обновляю…':'Обновить'}</button>
+              </div>
+              ${syncStatus['to_'+mk] ? `<div class="hint" style="margin-top:4px;">${escapeHtml(syncStatus['to_'+mk])}</div>` : ''}
+              ${syncedTo ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(syncedTo)}</div>` : ''}
+            </div>
+          </div>
+        </details>`;
+      }).join('')}
     </div>
 
     <div class="card">
@@ -4098,16 +4115,14 @@ function attachDelegatedHandlers(){
       return;
     }
 
-    if(el.closest('#syncOpBtn')){
-      sheetUrls.op = document.getElementById('sheetUrlOp').value.trim();
+    if(el.closest('.sheet-sync-btn')){
+      const btn = el.closest('.sheet-sync-btn');
+      const mk = btn.dataset.month;
+      const dept = btn.dataset.dept;
+      const input = document.querySelector(`.sheet-url-input[data-month="${mk}"][data-dept="${dept}"]`);
+      if(input) setSheetUrl(dept, mk, input.value.trim());
       await storeSet('app:sheetUrls', sheetUrls, SHARED);
-      await syncFromGoogleSheet('op');
-      return;
-    }
-    if(el.closest('#syncToBtn')){
-      sheetUrls.to = document.getElementById('sheetUrlTo').value.trim();
-      await storeSet('app:sheetUrls', sheetUrls, SHARED);
-      await syncFromGoogleSheet('to');
+      await syncFromGoogleSheet(dept, mk);
       return;
     }
     if(el.closest('#syncTrackerBtn')){
@@ -4298,7 +4313,7 @@ let orderTimerHandle = null;
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного renderNow()
   orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
-  if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
+  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrl||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
