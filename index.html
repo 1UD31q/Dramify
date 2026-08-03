@@ -1336,17 +1336,47 @@ const GUARDED_KEYS = [
   'app:schedules',
 ];
 
+// Локальное зеркало общего хранилища. Каждое удачное чтение оседает здесь,
+// и если база потом не ответила — отдаём последние известные хорошие данные,
+// а не пустоту. Именно из-за пустоты приложение раньше подставляло демо-данные
+// с чужими ID, и все цифры превращались в нули.
+function cacheKey(key){ return 'lastgood:' + key; }
+function cacheWrite(key, value){
+  try{ localStorage.setItem(cacheKey(key), JSON.stringify({t: Date.now(), v: value})); }catch(e){}
+}
+function cacheRead(key){
+  try{
+    const raw = localStorage.getItem(cacheKey(key));
+    if(!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return parsed && 'v' in parsed ? parsed.v : undefined;
+  }catch(e){ return undefined; }
+}
+
 async function storeGet(key, shared){
   if(shared){
     try{
       const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, {
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
       });
-      if(!res.ok){ console.error('Supabase статус', res.status, 'для', key); storeReadFailed = true; return null; }
+      if(!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
-      if(!data || !data.length) return null; // ключа правда нет — это не ошибка
-      return JSON.parse(data[0].value);
-    }catch(e){ console.error('storeGet failed', key, e); storeReadFailed = true; return null; }
+      if(!data || !data.length){
+        // Ключа правда нет. Но если локально есть последнее хорошее значение —
+        // значит данные когда-то были, и «пусто» подозрительно: отдаём кэш.
+        const cached = cacheRead(key);
+        if(cached !== undefined){ storeReadFailed = true; return cached; }
+        return null;
+      }
+      const parsed = JSON.parse(data[0].value);
+      cacheWrite(key, parsed);
+      return parsed;
+    }catch(e){
+      console.error('storeGet failed', key, e);
+      storeReadFailed = true;
+      const cached = cacheRead(key);
+      return cached !== undefined ? cached : null; // последние хорошие данные вместо пустоты
+    }
   } else {
     try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
     catch(e){ return null; }
@@ -1604,9 +1634,16 @@ async function pollSharedData(){
       storeGet('app:cashUrls', SHARED),
       storeGet('app:cashTotals', SHARED),
     ]);
+    // Если чтение упало — данные могли прийти из локального кэша.
+    // Применять их поверх текущих не нужно: в памяти уже актуальнее.
+    if(storeReadFailed){
+      if(stateLoaded){ stateLoaded = false; showToast('Нет связи с базой — сохранение приостановлено', 'error'); }
+      return;
+    }
+
     // Чтение прошло успешно — если раньше сидели в режиме «только чтение»,
     // связь вернулась, можно снова сохранять.
-    if(!storeReadFailed && !stateLoaded){
+    if(!stateLoaded){
       stateLoaded = true;
       showToast('Связь с базой восстановлена', 'success');
     }
@@ -2589,17 +2626,25 @@ const SEED_MONTH_DATA = {
 
 async function loadAll(){
   try {
-    employees = await storeGet('app:employees', SHARED);
-    if(!employees){ employees = SEED_EMPLOYEES; await storeSet('app:employees', employees, SHARED); }
-  } catch(e) { console.error(e); employees = SEED_EMPLOYEES; }
+    const loadedEmp = await storeGet('app:employees', SHARED);
+    if(loadedEmp){ employees = loadedEmp; }
+    else if(!storeReadFailed){
+      // База ответила, и там правда пусто — первый запуск, ставим стартовый набор
+      employees = SEED_EMPLOYEES;
+      await storeSet('app:employees', employees, SHARED);
+    }
+    // Если чтение упало — НИКОГДА не подменяем демо-данными: у них другие ID,
+    // и весь KPI, записанный на настоящие ID, перестаёт находиться → нули.
+  } catch(e) { console.error(e); }
 
   try {
-    kpiData = await storeGet('app:kpiData', SHARED);
-    if(!kpiData){
+    const loadedKpi = await storeGet('app:kpiData', SHARED);
+    if(loadedKpi){ kpiData = loadedKpi; }
+    else if(!storeReadFailed){
       kpiData = { [currentMonthKey()]: SEED_MONTH_DATA };
       await storeSet('app:kpiData', kpiData, SHARED);
     }
-  } catch(e) { console.error(e); kpiData = { [currentMonthKey()]: SEED_MONTH_DATA }; }
+  } catch(e) { console.error(e); }
 
   let storedActive = null;
   try { storedActive = await storeGet('app:activeMonth', SHARED); } catch(e) { console.error(e); }
