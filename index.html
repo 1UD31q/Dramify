@@ -2261,7 +2261,11 @@ let empViewMonth = null; // выбранный сотрудником месяц
 
 let logsExpanded = false;
 
-let sheetUrls = {op:'', to:''};
+let sheetUrls = {}; // { monthKey: {op:'', to:''} }
+
+// Хелперы для работы с sheetUrls по месяцу
+function getSheetUrl(dept, monthKey){ const mk = monthKey||editingMonth; return (sheetUrls[mk]&&sheetUrls[mk][dept])||''; }
+function setSheetUrl(dept, monthKey, url){ const mk = monthKey||editingMonth; if(!sheetUrls[mk]) sheetUrls[mk]={}; sheetUrls[mk][dept]=url; }
 let syncStatus = {op:'', to:''};
 let syncing = {op:false, to:false};
 
@@ -2313,7 +2317,16 @@ async function loadAll(){
 
   try {
     const storedSheetUrls = await storeGet('app:sheetUrls', SHARED);
-    if(storedSheetUrls) sheetUrls = storedSheetUrls;
+    if(storedSheetUrls){
+      // Миграция: старый формат {op,to} → новый {monthKey:{op,to}}
+      if(typeof storedSheetUrls.op === 'string' || typeof storedSheetUrls.to === 'string'){
+        sheetUrls = {};
+        if(storedSheetUrls.op) setSheetUrl('op', activeMonth, storedSheetUrls.op);
+        if(storedSheetUrls.to) setSheetUrl('to', activeMonth, storedSheetUrls.to);
+      } else {
+        sheetUrls = storedSheetUrls;
+      }
+    }
   } catch(e) { console.error(e); }
 
   try {
@@ -2692,7 +2705,7 @@ async function fetchCsvWithRetry(url, attempts){
 
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
-  const rawUrl = (sheetUrls[dept]||'').trim();
+  const rawUrl = getSheetUrl(dept, targetMonth);
   if(!rawUrl){ if(!silent) syncStatus[dept] = 'Сначала вставьте ссылку на таблицу'; return; }
   if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
   try{
@@ -2874,7 +2887,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
             // statusSince: берём из существующего ordersData если статус не изменился,
             // иначе — сейчас (точное время неизвестно из CSV)
-            const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
+            const existing = ((ordersData[targetMonth]&&ordersData[targetMonth][emp.id])||[]).find(o=>o.id===orderId);
             const statusSince = (existing && existing.status === statusRaw)
               ? existing.statusSince
               : Date.now();
@@ -2984,7 +2997,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const dateCreated = dateCol>=0        ? (row[dateCol]||'').trim()            : '';
 
           const orderId = `r${r}-${emp.id}`;
-          const existing = (ordersData[emp.id]||[]).find(o=>o.id===orderId);
+          const existing = ((ordersData[targetMonth]&&ordersData[targetMonth][emp.id])||[]).find(o=>o.id===orderId);
           const statusSince = (existing && existing.status === statusRaw)
             ? existing.statusSince : Date.now();
 
@@ -3045,8 +3058,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
 async function silentAutoSync(){
   try{
-    if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', activeMonth, true);
-    if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', activeMonth, true);
+    if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
+    if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
     if((trackerUrl||'').trim()) await syncTracker(true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
@@ -3759,11 +3772,11 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Google Таблица</h2>
-      <div class="hint" style="margin-top:0;">Таблица сама подтягивается каждые несколько минут. Кнопка нужна, только если хотите обновить данные прямо сейчас.</div>
+      <div class="hint" style="margin-top:0;">Ссылки привязаны к выбранному месяцу (<b>${monthLabel(editingMonth)}</b>). Переключите месяц — вставьте другую ссылку. Таблица подтягивается автоматически каждые несколько минут.</div>
       <div style="margin-top:12px;">
         <label class="field-label">Лист «ОП»</label>
         <div class="row">
-          <input type="text" id="sheetUrlOp" value="${escapeHtml(sheetUrls.op||'')}" placeholder="Ссылка на опубликованный CSV">
+          <input type="text" id="sheetUrlOp" value="${escapeHtml(getSheetUrl('op', editingMonth))}" placeholder="Ссылка на опубликованный CSV">
           <button class="btn small ${syncing.op?'secondary':''}" id="syncOpBtn" ${syncing.op?'disabled':''}>${syncing.op?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.op ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.op)}</div>` : ''}
@@ -3772,7 +3785,7 @@ function renderAdminView(){
       <div style="margin-top:16px;">
         <label class="field-label">Лист «ТО»</label>
         <div class="row">
-          <input type="text" id="sheetUrlTo" value="${escapeHtml(sheetUrls.to||'')}" placeholder="Ссылка на опубликованный CSV">
+          <input type="text" id="sheetUrlTo" value="${escapeHtml(getSheetUrl('to', editingMonth))}" placeholder="Ссылка на опубликованный CSV">
           <button class="btn small ${syncing.to?'secondary':''}" id="syncToBtn" ${syncing.to?'disabled':''}>${syncing.to?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.to ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.to)}</div>` : ''}
@@ -4019,12 +4032,12 @@ function attachDelegatedHandlers(){
     }
 
     if(el.closest('#syncOpBtn')){
-      sheetUrls.op = document.getElementById('sheetUrlOp').value.trim();
+      setSheetUrl('op', editingMonth, document.getElementById('sheetUrlOp').value.trim());
       await syncFromGoogleSheet('op');
       return;
     }
     if(el.closest('#syncToBtn')){
-      sheetUrls.to = document.getElementById('sheetUrlTo').value.trim();
+      setSheetUrl('to', editingMonth, document.getElementById('sheetUrlTo').value.trim());
       await syncFromGoogleSheet('to');
       return;
     }
@@ -4069,7 +4082,7 @@ function attachDelegatedHandlers(){
       ordersOverlay[orderId].pauseReason = reason;
       ordersOverlay[orderId].pausedAt    = Date.now();
       // сохраняем statusSince для корректного таймера
-      const empListP = ordersData[empId] || [];
+      const empListP = (ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId]) || [];
       const ordP = empListP.find(o => o.id === orderId);
       if(ordP && !ordersOverlay[orderId].statusSince) ordersOverlay[orderId].statusSince = ordP.statusSince;
       await saveOverlay();
@@ -4084,7 +4097,7 @@ function attachDelegatedHandlers(){
       const orderId = resumeBtn.dataset.orderResume;
       const empId   = resumeBtn.dataset.empId;
       const ov = ordersOverlay[orderId] || {};
-      const empListR = ordersData[empId] || [];
+      const empListR = (ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId]) || [];
       const ordR = empListR.find(o => o.id === orderId);
       const baseSince = ordR ? (ordR.statusSince||Date.now()) : Date.now();
       const pausedDuration = ov.pausedAt ? (ov.pausedAt - baseSince) : 0;
@@ -4105,7 +4118,7 @@ function attachDelegatedHandlers(){
     if(statusBtn){
       const orderId = statusBtn.dataset.orderStatus;
       const empId   = statusBtn.dataset.empId;
-      const empListS = ordersData[empId] || [];
+      const empListS = (ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId]) || [];
       const ordS = empListS.find(o => o.id === orderId);
       const curStatus = (ordersOverlay[orderId]||{}).status || (ordS||{}).status || '';
       const newStatus = await showStatusModal(curStatus);
@@ -4116,7 +4129,7 @@ function attachDelegatedHandlers(){
       const wasFinal = curStatus.toLowerCase().includes('оплат') || curStatus.toLowerCase().includes('успешно') || curStatus === 'Выполнен';
       if(isFinalStatus && !wasFinal){
         const curOv = ordersOverlay[orderId] || {};
-        const baseOrder = (ordersData[empId]||[]).find(o=>o.id===orderId) || {};
+        const baseOrder = ((ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId])||[]).find(o=>o.id===orderId) || {};
         const sinceMs = curOv.statusSince || baseOrder.statusSince || Date.now();
         const elapsed = curOv.paused
           ? (curOv.pausedAt||Date.now()) - sinceMs
@@ -4216,7 +4229,7 @@ let orderTimerHandle = null;
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного renderNow()
   orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
-  if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
+  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrl||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
