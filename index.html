@@ -1727,8 +1727,8 @@ let editingMonth = activeMonth;
 
 // =========================================================================
 // ДАННЫЕ ЗАКАЗОВ
-// ordersData — объект вида { empId: [ {id, client, status, statusSince, paused, pauseReason, comment}, ... ] }
-// Статус «statusSince» — метка времени (ms), когда заказ попал в текущий статус.
+// ordersData — объект вида { monthKey: { empId: [ {id, client, status, ...} ] } }
+// Разбивка по месяцам позволяет переключать месяц и видеть нужные заказы.
 // =========================================================================
 let ordersData = {}; // загружается из Supabase
 
@@ -1757,8 +1757,8 @@ const SEED_ORDERS = {
   e4: [],
 };
 
-// ordersData — данные из CSV (обновляются при каждом синке ТО):
-//   { empId: [{id, client, status, statusSince, gross, pending, payMethod, deadline, dateCreated}, ...] }
+// ordersData — данные из CSV (обновляются при каждом синке):
+//   { monthKey: { empId: [{id, client, status, statusSince, gross, pending, payMethod, deadline, dateCreated}, ...] } }
 // ordersOverlay — ручные данные (пауза, комментарий), хранятся в Supabase:
 //   { orderId: {paused, pauseReason, pausedAt, comment} }
 let ordersOverlay = {};
@@ -1771,7 +1771,16 @@ async function loadOrders(){
     const savedOverlay = await storeGet('app:ordersOverlay', SHARED);
     if(savedOverlay){ ordersOverlay = savedOverlay; }
     const savedCsv = await storeGet('app:ordersData', SHARED);
-    if(savedCsv){ ordersData = savedCsv; }
+    if(savedCsv){
+      // Миграция: старый формат { empId: [...] } → новый { monthKey: { empId: [...] } }
+      const firstKey = Object.keys(savedCsv)[0];
+      if(firstKey && Array.isArray(savedCsv[firstKey])){
+        // Старый формат — кладём в activeMonth
+        ordersData = { [activeMonth]: savedCsv };
+      } else {
+        ordersData = savedCsv;
+      }
+    }
   }catch(e){ console.error('loadOrders failed', e); }
 }
 
@@ -1788,9 +1797,10 @@ async function saveOverlay(){
   catch(e){ console.error('saveOverlay failed', e); }
 }
 
-// Возвращает заказы сотрудника с наложенным overlay (пауза, комментарий, ручной статус)
-function getOrdersForEmp(empId){
-  const list = ordersData[empId] || [];
+// Возвращает заказы сотрудника за конкретный месяц с наложенным overlay
+function getOrdersForEmp(empId, monthKey){
+  const mk = monthKey || empViewMonth || activeMonth;
+  const list = (ordersData[mk] && ordersData[mk][empId]) || [];
   return list.map(o => {
     const ov = ordersOverlay[o.id] || {};
     // Статус: если сотрудник менял вручную — берём из overlay, иначе из CSV
@@ -1944,8 +1954,8 @@ function renderOrdersSection(id, sectionClass, icon, title, items, empId, showTi
 }
 
 // Рендер блока «Текущие заказы» для одного сотрудника
-function renderOrdersBlock(empId){
-  const allOrders = getOrdersForEmp(empId);
+function renderOrdersBlock(empId, monthKey){
+  const allOrders = getOrdersForEmp(empId, monthKey);
 
   // Разбиваем по колонкам
   // 1. В работе — не пауза, не успешно, не ждёт оплату, не новый (распределён)
@@ -2042,8 +2052,8 @@ function renderOrderCardOP(o, empId){
 }
 
 // Рендер блока заказов для сотрудников ОП (без таймеров, 3 секции)
-function renderOrdersBlockOP(empId){
-  const allOrders = getOrdersForEmp(empId);
+function renderOrdersBlockOP(empId, monthKey){
+  const allOrders = getOrdersForEmp(empId, monthKey);
 
   const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
   const isPayWait    = o => o.status.toLowerCase().includes('оплат');
@@ -2070,8 +2080,8 @@ function renderOrdersBlockOP(empId){
 }
 
 // Рендер блока заказов для сотрудников ТО (без таймеров, 3 секции)
-function renderOrdersBlockTO(empId){
-  const allOrders = getOrdersForEmp(empId);
+function renderOrdersBlockTO(empId, monthKey){
+  const allOrders = getOrdersForEmp(empId, monthKey);
 
   const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
   const isPayWait    = o => o.status.toLowerCase().includes('оплат');
@@ -2889,8 +2899,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           }
           newOrdersData[emp.id] = empOrders;
         }
-        // Мёрджим: обновляем ordersData данными из CSV
-        Object.assign(ordersData, newOrdersData);
+        // Мёрджим: обновляем ordersData[targetMonth] данными из CSV
+        if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
+        Object.assign(ordersData[targetMonth], newOrdersData);
         await storeSet('app:ordersData', ordersData, SHARED);
       }
 
@@ -2998,7 +3009,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         }
         newOrdersData[emp.id] = empOrders;
       }
-      Object.assign(ordersData, newOrdersData);
+      if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
+      Object.assign(ordersData[targetMonth], newOrdersData);
       await storeSet('app:ordersData', ordersData, SHARED);
     }
 
@@ -3299,8 +3311,8 @@ function renderEmployeeDashboard(){
             todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
         </div>
 
-        ${emp.department === 'to' ? renderOrdersBlock(emp.id) : ''}
-        ${emp.department === 'op' ? renderOrdersBlockOP(emp.id) : ''}
+        ${emp.department === 'to' ? renderOrdersBlock(emp.id, viewMonth) : ''}
+        ${emp.department === 'op' ? renderOrdersBlockOP(emp.id, viewMonth) : ''}
       </div>
     </div>`;
 }
