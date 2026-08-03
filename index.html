@@ -326,7 +326,6 @@
   .toast.error{background:var(--red);color:#fff;border-color:transparent;}
   .toast.success{background:linear-gradient(135deg, #34d97a, #15803d);color:#fff;border-color:transparent;}
   .toast .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7;flex:none;}
-  .toast .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7;flex:none;}
 
   /* TG Notification overlay */
   #tgNotifOverlay{position:fixed;inset:0;z-index:2000;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(16px + env(safe-area-inset-bottom));pointer-events:none;opacity:0;transition:opacity .25s ease;}
@@ -441,13 +440,7 @@
   body{padding-bottom:env(safe-area-inset-bottom);}
 
   /* ── Скроллбар в стиле системы ── */
-  ::-webkit-scrollbar{width:8px;height:8px;}
-  ::-webkit-scrollbar-track{background:transparent;}
-  ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:20px;border:2px solid var(--bg0);}
-  ::-webkit-scrollbar-thumb:hover{background:var(--p4);}
-  *{scrollbar-width:thin;scrollbar-color:var(--bg3) transparent;}
   :focus-visible{outline:2px solid var(--p5);outline-offset:2px;}
-  ::selection{background:var(--p5);color:#fff;}
 
   /* Защита от двойного тапа на iOS */
   button, .btn, .tab, .keypad button, .name-btn, .order-btn, .punch-btn,
@@ -471,7 +464,7 @@
 
   /* лёгкая зерновая текстура поверх фона — добавляет глубину без утяжеления */
   body::before{
-    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;mix-blend-mode:multiply;
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   }
   .app{position:relative;z-index:1;}
@@ -572,7 +565,7 @@
 
   /* Верхняя строка заказа: номер + имя + таймер */
   .order-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
-  .order-num{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;flex:none;}
+  .order-num{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;flex:none;}
   .order-client{font-size:14px;font-weight:600;flex:1;color:var(--ink);}
   .order-timer{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--teal-dark);background:var(--teal-tint);border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .order-timer.warn{background:rgba(245,158,11,.12);color:#92400e;}
@@ -641,7 +634,7 @@
   .orders-section-header{
     display:flex;align-items:center;justify-content:space-between;
     padding:10px 12px;border-radius:10px;cursor:pointer;
-    font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;
+    font-family:var(--font);font-size:13px;font-weight:700;
     margin-bottom:6px;user-select:none;
   }
   .orders-section-header .sec-title{display:flex;align-items:center;gap:7px;}
