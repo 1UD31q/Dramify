@@ -3134,6 +3134,8 @@ function _doRender(){
     const emp = employees.find(e=>e.id===myEmployeeId);
     salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
   }
+  const viewKey = currentViewKey();
+  const scrollY = window.scrollY; // запоминаем позицию до перезаписи DOM
   if(mode==='employee')       main.innerHTML = renderEmployeeArea();
   else if(mode==='sales')     main.innerHTML = renderSalesView();
   else                         main.innerHTML = renderAdminView();
@@ -3145,14 +3147,14 @@ function _doRender(){
   main.classList.toggle('admin-split-view', !!(isAdminView && isDesktop));
   // анимацию «появления» включаем только когда реально сменился экран, а не на каждый рендер
   // (иначе ввод PIN или KPI подёргивался бы при каждой цифре/символе)
-  const viewKey = currentViewKey();
   if(viewKey !== lastViewKey){
     window.scrollTo({top:0,behavior:'instant'}); // скроллим только при смене экрана
-    void main.offsetWidth; // форс reflow, чтобы браузер применил анимацию как «свежее» появление
+    void main.offsetWidth;
     main.classList.add('anim-in');
     lastViewKey = viewKey;
-    // запускаем слот-машину с небольшой задержкой (карточки ещё «въезжают»)
     setTimeout(() => slotRoll(main), 120);
+  } else {
+    window.scrollTo({top: scrollY, behavior: 'instant'}); // восстанавливаем позицию
   }
   // обработчики событий навешаны один раз через делегирование (см. attachDelegatedHandlers),
   // поэтому после каждого render() их не нужно перевешивать заново — это и есть оптимизация
