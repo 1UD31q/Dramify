@@ -1498,13 +1498,13 @@ async function pollSharedData(){
       storeGet('app:sheetUrls', SHARED),
       storeGet('app:schedules', SHARED),
       storeGet('app:ledgerTotals', SHARED),
-      storeGet('app:trackerUrl', SHARED),
+      storeGet('app:trackerUrls', SHARED),
       storeGet('app:trackerData', SHARED),
       storeGet('app:ordersData', SHARED),
       storeGet('app:ordersOverlay', SHARED),
     ]);
     const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv});
-    if(snapshot === lastSyncSnapshot) return; // ничего не изменилось — рендер не нужен
+    if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
     if(freshEmployees) employees = freshEmployees;
@@ -1513,10 +1513,9 @@ async function pollSharedData(){
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = freshSheetUrls;
-    // salesScriptUrl not polled (admin sets it explicitly)
     if(freshSchedules) schedules = freshSchedules;
     if(freshLedger) ledgerTotals = freshLedger;
-    if(freshTrackerUrl) trackerUrl = freshTrackerUrl;
+    if(freshTrackerUrl) trackerUrls = freshTrackerUrl;
     if(freshTrackerData) trackerData = freshTrackerData;
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
@@ -1642,30 +1641,29 @@ function renderCalendarGrid(empId, monthKey, editable){
 // План делится поровну между сотрудниками отдела от одной и той же цели трекера:
 // ОП продаёт, ТО делает — по факту это одна и та же сумма, просто у каждого отдела
 // свой список людей, между которыми она делится.
-function planShareFor(deptKey){
-  if(!trackerData || !trackerData.effectivePlan) return null;
+function planShareFor(deptKey, monthKey){
+  const td = trackerData[monthKey||activeMonth];
+  if(!td || !td.effectivePlan) return null;
   const count = employees.filter(e=>e.department===deptKey).length;
   if(count<=0) return null;
-  return Math.round(trackerData.effectivePlan / count);
+  return Math.round(td.effectivePlan / count);
 }
 
 function companyFinance(monthKey){
   ensureMonth(monthKey);
   const lt = ledgerTotals[monthKey] || {};
   const to = lt.to || null;
+  const td = trackerData[monthKey];
 
   let netCash, pendingCash, grossCash, totalPlan, source;
 
-  if(trackerData){
-    // Основной источник — трекер тенденции: он уже стабильно синхронизируется
-    // и в нём есть всё нужное, не нужно бороться с отдельным листом сделок.
-    netCash = trackerData.currentSum || 0;        // «Сейчас сумма» — сколько реально собрано
-    totalPlan = trackerData.effectivePlan || 0;    // «Цель месяца»
-    pendingCash = Math.max(0, trackerData.remainingToPlan || 0); // «Сумма» — сколько ещё нужно до цели
+  if(td){
+    netCash = td.currentSum || 0;
+    totalPlan = td.effectivePlan || 0;
+    pendingCash = Math.max(0, td.remainingToPlan || 0);
     grossCash = netCash + pendingCash;
     source = 'tracker';
   } else if(to){
-    // Запасной вариант — построчный реестр сделок листа «ТО».
     netCash = to.net;
     pendingCash = to.pending;
     grossCash = to.gross;
@@ -1678,7 +1676,6 @@ function companyFinance(monthKey){
     });
     source = 'ledger';
   } else {
-    // Последний резерв — значения, сохранённые в карточках сотрудников ТО.
     netCash = 0; pendingCash = 0; totalPlan = 0;
     employees.forEach(e=>{
       if(e.department==='to'){
@@ -1693,7 +1690,7 @@ function companyFinance(monthKey){
   }
 
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
-  const trendPct = (source==='tracker' && trackerData) ? trackerData.trendPct : planPct;
+  const trendPct = (source==='tracker' && td) ? td.trendPct : planPct;
   return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to};
 }
 
@@ -1701,13 +1698,6 @@ function companyFinance(monthKey){
 // каждого отдела отдельно — у ОП и у ТО берётся одна и та же сумма цели
 // (ОП продаёт, ТО делает — деньги одни и те же), просто делится каждая
 // на свою численность отдела.
-function planShareFor(deptKey){
-  if(!trackerData || !trackerData.effectivePlan) return null;
-  const count = employees.filter(e=>e.department===deptKey).length;
-  if(count<=0) return null;
-  return Math.round(trackerData.effectivePlan / count);
-}
-
 function monthEndProjection(monthKey, netCash, totalPlan){
   if(monthKey !== currentMonthKey()) return null; // прогноз имеет смысл только для текущего месяца
   const today = new Date();
@@ -2239,11 +2229,11 @@ let lastSheetSyncAt = {op:null, to:null}; // время последней ус�
 // «Трекер тенденции» — отдельная гугл-таблица (одна на всю компанию), где уже
 // посчитаны цель месяца, факт, тенденция % и сколько нужно делать в день.
 // Мы просто читаем готовые цифры оттуда вместо собственного расчёта прогноза.
-let trackerUrl = '';
-let trackerData = null; // {monthGoal, dayToday, daysLeft, plan, currentSum, shouldBeNow, trendPct, diff, remainingToPlan, workDaysLeft, dailyTargetNeeded}
-let trackerSyncing = false;
-let trackerStatus = '';
-let lastTrackerSyncAt = null;
+let trackerUrls = {};   // { monthKey: url }
+let trackerData = {};   // { monthKey: {monthGoal, dayToday, ...} }
+let trackerSyncing = {};  // { monthKey: bool }
+let trackerStatus = {};   // { monthKey: string }
+let lastTrackerSyncAt = {}; // { monthKey: timestamp }
 
 let myEmployeeId = null;
 let mode = 'employee';
@@ -2343,10 +2333,22 @@ async function loadAll(){
   } catch(e) { console.error(e); }
 
   try {
-    const storedTrackerUrl = await storeGet('app:trackerUrl', SHARED);
-    if(storedTrackerUrl) trackerUrl = storedTrackerUrl;
+    const storedTrackerUrls = await storeGet('app:trackerUrls', SHARED);
+    if(storedTrackerUrls) trackerUrls = storedTrackerUrls;
+    else {
+      // миграция: старый одиночный trackerUrl
+      const oldUrl = await storeGet('app:trackerUrl', SHARED);
+      if(oldUrl) trackerUrls[activeMonth] = oldUrl;
+    }
     const storedTrackerData = await storeGet('app:trackerData', SHARED);
-    if(storedTrackerData) trackerData = storedTrackerData;
+    if(storedTrackerData){
+      // миграция: старый формат был одним объектом, не per-month
+      if(storedTrackerData.effectivePlan !== undefined){
+        trackerData[activeMonth] = storedTrackerData;
+      } else {
+        trackerData = storedTrackerData;
+      }
+    }
   } catch(e) { console.error(e); }
 }
 
@@ -2722,27 +2724,29 @@ function parseTrackerGrid(grid){
   return result;
 }
 
-async function syncTracker(silent){
-  const rawUrl = trackerUrl.trim();
-  if(!rawUrl){ if(!silent){ trackerStatus = 'Сначала вставьте ссылку на трекер'; showToast(trackerStatus, 'error'); } return; }
-  if(!silent){ trackerSyncing = true; trackerStatus = ''; render(); }
+async function syncTracker(mk, silent){
+  mk = mk || editingMonth;
+  const rawUrl = (trackerUrls[mk]||'').trim();
+  if(!rawUrl){ if(!silent){ trackerStatus[mk] = 'Сначала вставьте ссылку на трекер'; showToast(trackerStatus[mk], 'error'); } return; }
+  if(!silent){ trackerSyncing[mk] = true; trackerStatus[mk] = ''; render(); }
   try{
     const rows = await fetchSheetRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
     const grid = rows.map(r=>r.map(c=>String(c||'').trim()));
     const parsed = parseTrackerGrid(grid);
     if(!parsed) throw new Error('Не нашёл нужные подписи в таблице (Цель месяца / Дата сегодня)');
-    trackerData = parsed;
+    trackerData[mk] = parsed;
     await storeSet('app:trackerData', trackerData, SHARED);
-    lastTrackerSyncAt = Date.now();
-    if(!silent){ trackerStatus = 'Данные обновлены'; showToast(trackerStatus, 'success'); }
+    await storeSet('app:trackerUrls', trackerUrls, SHARED);
+    lastTrackerSyncAt[mk] = Date.now();
+    if(!silent){ trackerStatus[mk] = 'Данные обновлены'; showToast(trackerStatus[mk], 'success'); }
   } catch(err){
     const hint = /failed to fetch/i.test(err.message)
       ? ' — проверьте, что таблица открыта для просмотра (Настройки доступа → Все у кого есть ссылка) и ссылка вставлена целиком'
       : '';
-    if(!silent){ trackerStatus = 'Не получилось: ' + err.message + hint; showToast(trackerStatus, 'error'); }
+    if(!silent){ trackerStatus[mk] = 'Не получилось: ' + err.message + hint; showToast(trackerStatus[mk], 'error'); }
   }
-  if(!silent){ trackerSyncing = false; render(); }
+  if(!silent){ trackerSyncing[mk] = false; render(); }
   else if(mode==='employee'){
     render();
     setTimeout(() => slotRoll(document.getElementById('main')), 80);
@@ -3126,7 +3130,7 @@ async function silentAutoSync(){
   try{
     if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
     if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
-    if((trackerUrl||'').trim()) await syncTracker(true);
+    if((trackerUrls[activeMonth]||'').trim()) await syncTracker(activeMonth, true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
 
@@ -3321,7 +3325,7 @@ function renderEmployeeDashboard(){
   const isCurrentMonth = viewMonth === activeMonth;
 
   const k = getKpi(emp.id, viewMonth);
-  const autoPlan = planShareFor(emp.department);
+  const autoPlan = planShareFor(emp.department, viewMonth);
   const num = Number(k[dept.ratio.num])||0;
   const den = (dept.ratio.den==='plan' && autoPlan!=null) ? autoPlan : (Number(k[dept.ratio.den])||0);
   const ratioPct = den>0 ? Math.min(100, Math.round(num/den*100)) : 0;
@@ -3718,7 +3722,7 @@ function renderAdminView(){
     kpiEditor += `<div class="dept-group-title">${DEPARTMENTS[dept].label}</div>`;
     groups[dept].forEach(e=>{
       const k = getKpi(e.id, editingMonth);
-      const autoPlan = planShareFor(dept);
+      const autoPlan = planShareFor(dept, editingMonth);
       kpiEditor += `<div class="emp-edit-block">
         <div class="emp-edit-name">${escapeHtml(e.name)}</div>
         <div class="field-grid">
@@ -3807,21 +3811,21 @@ function renderAdminView(){
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>Выполнение общего плана</span><span>${finance.planPct}%</span></div>
         <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${Math.min(100,finance.planPct)}%"></div></div>
       </div>
-      ${trackerData ? `
-        <div class="trend-card ${trackerData.forecastPct<100?'behind':''}">
+      ${(()=>{ const td = trackerData[editingMonth]; return td ? `
+        <div class="trend-card ${td.forecastPct<100?'behind':''}">
           <div class="trend-title">${icon('trend',14)} Прогноз к концу месяца <span class="sync-indicator live" style="margin-left:6px;"><span class="sdot"></span>по трекеру</span></div>
           <div class="trend-text">
-            Сегодня ${trackerData.dayToday}-й день, осталось ${trackerData.daysLeft} дн.${trackerData.workDaysLeft?` (${trackerData.workDaysLeft} рабочих)`:''}.
-            Сейчас в кассе ${fmtMoney(trackerData.currentSum)}, должно быть ${fmtMoney(trackerData.shouldBeNow)} — разница ${trackerData.diff>=0?'+':''}${fmtMoney(trackerData.diff)}.
-            Темп ${trackerData.trendPct}% от графика. Если сохранится, к концу месяца выйдет примерно ${fmtMoney(trackerData.forecastTotal)} — это ${trackerData.forecastPct}% от цели ${fmtMoney(trackerData.effectivePlan)}.
-            ${trackerData.dailyTargetNeeded ? `Чтобы выполнить план, нужно делать ${fmtMoney(trackerData.dailyTargetNeeded)} в день.` : ''}
+            Сегодня ${td.dayToday}-й день, осталось ${td.daysLeft} дн.${td.workDaysLeft?` (${td.workDaysLeft} рабочих)`:''}.
+            Сейчас в кассе ${fmtMoney(td.currentSum)}, должно быть ${fmtMoney(td.shouldBeNow)} — разница ${td.diff>=0?'+':''}${fmtMoney(td.diff)}.
+            Темп ${td.trendPct}% от графика. Если сохранится, к концу месяца выйдет примерно ${fmtMoney(td.forecastTotal)} — это ${td.forecastPct}% от цели ${fmtMoney(td.effectivePlan)}.
+            ${td.dailyTargetNeeded ? `Чтобы выполнить план, нужно делать ${fmtMoney(td.dailyTargetNeeded)} в день.` : ''}
           </div>
         </div>` : projection ? `
         <div class="trend-card ${projection.projectedPct<100?'behind':''}">
           <div class="trend-title">${icon('trend',14)} Прогноз к концу месяца</div>
           <div class="trend-text">Сегодня ${projection.dayOfMonth}-й день из ${projection.total}. Если темп сохранится, к концу месяца касса составит примерно ${fmtMoney(projection.projectedNet)} — это ${projection.projectedPct}% от общего плана.</div>
         </div>` : `
-        <div class="hint" style="margin-top:12px;">Прогноз к концу месяца показывается только для текущего активного месяца.</div>`}
+        <div class="hint" style="margin-top:12px;">Прогноз к концу месяца показывается только для текущего активного месяца.</div>`; })()}
     </div>
 
     <div class="card">
@@ -3879,13 +3883,29 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Трекер тенденции</h2>
-      <div class="hint" style="margin-top:0;">Отдельная таблица с целью месяца, тенденцией и дневной нормой — прогноз к концу месяца берём готовым отсюда, а не считаем сами.</div>
-      <div class="row" style="margin-top:12px;">
-        <input type="text" id="trackerUrlInput" value="${escapeHtml(trackerUrl||'')}" placeholder="Ссылка на опубликованный CSV трекера">
-        <button class="btn small ${trackerSyncing?'secondary':''}" id="syncTrackerBtn" ${trackerSyncing?'disabled':''}>${trackerSyncing?'Обновляю…':'Обновить сейчас'}</button>
-      </div>
-      ${trackerStatus ? `<div class="hint" style="margin-top:8px;">${escapeHtml(trackerStatus)}</div>` : ''}
-      ${lastTrackerSyncAt ? `<div class="hint" style="margin-top:0;">Обновлено в ${fmtTime(lastTrackerSyncAt)}</div>` : ''}
+      <div class="hint" style="margin-top:0;">Для каждого месяца своя ссылка на трекер.</div>
+      ${Object.keys(kpiData).sort().reverse().map(mk => {
+        const tUrl = trackerUrls[mk]||'';
+        const tStatus = trackerStatus[mk]||'';
+        const tSyncing = trackerSyncing[mk]||false;
+        const tSyncedAt = lastTrackerSyncAt[mk]||null;
+        const isActive = mk === editingMonth;
+        return `
+        <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${isActive?'open':''}>
+          <summary style="padding:12px 16px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;">
+            <span style="flex:1;">${monthLabel(mk)}</span>
+            ${tUrl ? `<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>` : ''}
+          </summary>
+          <div style="padding:0 16px 16px;">
+            <div class="row" style="margin-top:8px;">
+              <input type="text" class="tracker-url-input" data-month="${mk}" value="${escapeHtml(tUrl)}" placeholder="Ссылка на трекер">
+              <button class="btn small tracker-sync-btn ${tSyncing?'secondary':''}" data-month="${mk}" ${tSyncing?'disabled':''}>${tSyncing?'Обновляю…':'Обновить'}</button>
+            </div>
+            ${tStatus ? `<div class="hint" style="margin-top:4px;">${escapeHtml(tStatus)}</div>` : ''}
+            ${tSyncedAt ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(tSyncedAt)}</div>` : ''}
+          </div>
+        </details>`;
+      }).join('')}
     </div>
 
     <div class="card">
@@ -4125,10 +4145,13 @@ function attachDelegatedHandlers(){
       await syncFromGoogleSheet(dept, mk);
       return;
     }
-    if(el.closest('#syncTrackerBtn')){
-      trackerUrl = document.getElementById('trackerUrlInput').value.trim();
-      await storeSet('app:trackerUrl', trackerUrl, SHARED);
-      await syncTracker();
+    if(el.closest('.tracker-sync-btn')){
+      const btn = el.closest('.tracker-sync-btn');
+      const mk = btn.dataset.month;
+      const input = document.querySelector(`.tracker-url-input[data-month="${mk}"]`);
+      if(input) trackerUrls[mk] = input.value.trim();
+      await storeSet('app:trackerUrls', trackerUrls, SHARED);
+      await syncTracker(mk);
       return;
     }
 
@@ -4310,10 +4333,10 @@ let orderTimerHandle = null;
   await loadAll();
   await loadOrders();
   renderNow();
-  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
-  timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного renderNow()
-  orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
-  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrl||'').trim()){
+  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrls, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
+  timerHandle = setInterval(tickEmployeeClock, 15000);
+  orderTimerHandle = setInterval(tickOrderTimers, 30000);
+  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrls[activeMonth]||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
