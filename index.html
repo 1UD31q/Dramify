@@ -2286,6 +2286,9 @@ async function loadAll(){
   
   activeMonth = storedActive || currentMonthKey();
   if(!kpiData[activeMonth]) ensureMonth(activeMonth);
+  // Всегда гарантируем, что текущий календарный месяц существует в kpiData
+  const nowMonthKey = currentMonthKey();
+  if(!kpiData[nowMonthKey]) ensureMonth(nowMonthKey);
   editingMonth = activeMonth;
 
   try { logs = await storeGet('attendance:log', SHARED); } catch(e) { console.error(e); }
@@ -2752,6 +2755,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
       ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched, diag};
 
+      // deadlineCol уже объявлен ниже в блоке парсинга ordersData — объявляем здесь заранее для ТО KPI
+      const _deadlineColForKpi = dept==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
+
       for(const emp of deptEmployees){
         const nameLc = emp.name.trim().toLowerCase();
         let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0, actualCash=0;
@@ -2759,7 +2765,23 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const row = rows[r];
           const actor = (row[actorCol]||'').trim().toLowerCase();
           if(actor !== nameLc) continue;
-          if(!rowInMonth(row, dateCol, targetMonth)) continue;
+
+          // Для ТО: строка попадает в targetMonth если:
+          //   а) дата оформления в targetMonth, ИЛИ
+          //   б) дата сдачи (дедлайн) в targetMonth (заказ из прошлого месяца, но сдавать сейчас)
+          let rowBelongsToMonth = rowInMonth(row, dateCol, targetMonth);
+          if(!rowBelongsToMonth && dept==='to' && _deadlineColForKpi>=0){
+            const dlStr = (row[_deadlineColForKpi]||'').trim();
+            if(dlStr){
+              const dm = dlStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+              if(dm){
+                const dlMk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
+                rowBelongsToMonth = dlMk === targetMonth;
+              }
+            }
+          }
+          if(!rowBelongsToMonth) continue;
+
           const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
           const isDone = statusText.includes('успешно');
           const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
@@ -2931,10 +2953,13 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           // Фильтр по колонке «Кто продал» — точно как ТО делает по «Кто делает»
           const actor = (row[sellerCol]||'').trim().replace(/\.+$/, '').toLowerCase();
           if(actor !== nameLc) continue;
-          // Фильтр по месяцу (dateCol = «Дата оформления», объявлен выше)
+          // ОП: строго по дате оформления — каждый месяц считается отдельно
           if(!rowInMonth(row, dateCol, targetMonth)) continue;
 
+          const deadlineStr = opDeadlineCol>=0  ? (row[opDeadlineCol]||'').trim()      : '';
           const statusRaw   = statusCol>=0      ? (row[statusCol]||'').trim()         : '';
+          const isDoneOp    = statusRaw.toLowerCase().includes('успешно');
+
           const clientName  =                     (row[opClientColFinal]||'').trim();
           const grossVal    = grossCol>=0       ? parseNum(row[grossCol])               : 0;
           const prepayVal   = opPrepayCol>=0    ? parseNum(row[opPrepayCol])            : 0;
@@ -2942,7 +2967,6 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const toWorker    = opToWorkerCol>=0  ? (row[opToWorkerCol]||'').trim()      : '';
           const duration    = opDurationCol>=0  ? (row[opDurationCol]||'').trim()      : '';
           const payMethod   = opPayMethodCol>=0 ? (row[opPayMethodCol]||'').trim()     : '';
-          const deadlineStr = opDeadlineCol>=0  ? (row[opDeadlineCol]||'').trim()      : '';
           const earning     = opEarningCol>=0   ? parseNum(row[opEarningCol])           : 0;
           const contactPlace= opContactCol>=0   ? (row[opContactCol]||'').trim()       : '';
           const phone       = opPhoneCol>=0     ? (row[opPhoneCol]||'').trim()         : '';
@@ -2969,7 +2993,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             contactPlace,
             phone,
             dateCreated,
-            isDone: statusRaw.toLowerCase().includes('успешно'),
+            isDone: isDoneOp,
           });
         }
         newOrdersData[emp.id] = empOrders;
