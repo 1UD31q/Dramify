@@ -421,6 +421,81 @@
   .trend-card.behind{background:linear-gradient(135deg, var(--rust-tint), var(--bg0));}
   .trend-card.behind .trend-title{color:var(--rust-dark);}
 
+  /* =========================================================================
+     ОБЗОРНАЯ ПАНЕЛЬ АДМИНА — весь бизнес на одном экране
+     ========================================================================= */
+  .ov-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .ov-stat{background:var(--bg1);border:1px solid var(--bg2);border-radius:var(--radius-md);padding:12px 14px;position:relative;overflow:hidden;}
+  .ov-stat .label{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:5px;}
+  .ov-stat .value{font-size:19px;font-weight:700;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--ink);}
+  .ov-stat .sub{font-size:11px;color:var(--ink4);margin-top:3px;}
+  .ov-stat.good{background:linear-gradient(155deg, var(--teal-tint), var(--bg0));border-color:rgba(29,185,84,.2);}
+  .ov-stat.good .value{color:var(--teal-dark);}
+  .ov-stat.bad{background:linear-gradient(155deg, var(--rust-tint), var(--bg0));border-color:rgba(229,72,77,.2);}
+  .ov-stat.bad .value{color:var(--rust-dark);}
+
+  .ov-depts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .ov-dept{border:1px solid var(--bg2);border-radius:var(--radius-md);overflow:hidden;background:var(--bg0);}
+  .ov-dept-head{padding:11px 14px;background:var(--bg1);border-bottom:1px solid var(--bg2);display:flex;align-items:baseline;gap:8px;}
+  .ov-dept-head .dname{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);}
+  .ov-dept-head .dshift{font-size:10.5px;color:var(--ink4);margin-left:auto;font-weight:500;}
+  .ov-dept-total{padding:12px 14px;border-bottom:1px solid var(--bg2);}
+  .ov-dept-total .tv{font-size:20px;font-weight:700;letter-spacing:-.025em;font-variant-numeric:tabular-nums;}
+  .ov-dept-total .tl{font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:4px;}
+  .ov-dept-total .tp{font-size:11.5px;color:var(--ink3);margin-top:4px;}
+  .ov-person{padding:10px 14px;border-bottom:1px solid var(--bg2);font-size:13px;}
+  .ov-person:last-child{border-bottom:none;}
+  .ov-person.is-best{background:linear-gradient(90deg, rgba(245,158,11,.09), transparent 70%);box-shadow:inset 3px 0 0 var(--amber);}
+  .ov-person-top{display:flex;align-items:center;gap:10px;}
+  .ov-person-sub{display:flex;align-items:center;gap:10px;margin-top:5px;padding-left:16px;font-size:11px;color:var(--ink4);}
+  .ov-person-sub .ptrend{margin-left:auto;font-weight:600;}
+  .ov-person-sub .ptrend.ok{color:var(--teal-dark);}
+  .ov-person-sub .ptrend.mid{color:#92400e;}
+  .ov-person-sub .ptrend.low{color:var(--rust-dark);}
+  .ov-person .pdot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ink4);}
+  .ov-person .pdot.on{background:var(--green);box-shadow:0 0 0 3px rgba(29,185,84,.15);}
+  .ov-person .pname{flex:1;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;}
+  .ov-person .best-tag{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--amber);color:#fff;border-radius:20px;padding:2px 7px;flex:none;}
+  .ov-person .pval{font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px;color:var(--ink2);flex:none;}
+  .ov-person .ppct{font-size:11px;font-weight:600;flex:none;min-width:38px;text-align:right;}
+  .ov-person .ppct.ok{color:var(--teal-dark);}
+  .ov-person .ppct.mid{color:#92400e;}
+  .ov-person .ppct.low{color:var(--rust-dark);}
+  .ov-bar{height:3px;background:var(--bg2);border-radius:3px;overflow:hidden;margin-top:6px;}
+  .ov-bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--p5),var(--p4));}
+  .ov-bar.ok i{background:linear-gradient(90deg,#34d97a,#15803d);}
+  .ov-bar.low i{background:linear-gradient(90deg,#ff7070,#be123c);}
+
+  .ov-attention{margin-top:16px;border:1px solid rgba(229,72,77,.22);border-radius:var(--radius-md);overflow:hidden;}
+  .ov-attention-head{padding:10px 14px;background:var(--rust-tint);font-size:11.5px;font-weight:700;color:var(--rust-dark);display:flex;align-items:center;gap:7px;}
+  .ov-att-row{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid var(--bg2);font-size:12.5px;background:var(--bg0);}
+  .ov-att-row .who{color:var(--ink3);font-size:11.5px;flex:none;}
+  .ov-att-row .what{flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ov-att-row .when{font-size:11px;font-weight:600;color:var(--rust-dark);flex:none;}
+  .ov-att-row.pausedrow .when{color:#92400e;}
+  .ov-att-empty{padding:14px;text-align:center;font-size:12.5px;color:var(--ink4);background:var(--bg0);}
+
+  @media (max-width:720px){
+    .ov-strip{grid-template-columns:1fr 1fr;}
+    .ov-depts{grid-template-columns:1fr;}
+  }
+
+  /* ── Сравнение месяц к месяцу ── */
+  .cmp-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--bg2);}
+  .cmp-row:last-child{border-bottom:none;}
+  .cmp-label{flex:1;font-size:13px;font-weight:500;color:var(--ink2);}
+  .cmp-nums{display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;flex:none;}
+  .cmp-before{font-size:12px;color:var(--ink4);}
+  .cmp-arrow{font-size:11px;color:var(--ink4);}
+  .cmp-now{font-size:14px;font-weight:700;color:var(--ink);}
+  .cmp-delta{font-size:11.5px;font-weight:700;flex:none;min-width:54px;text-align:right;padding:2px 7px;border-radius:20px;}
+  .cmp-delta.up{background:var(--teal-tint);color:var(--teal-dark);}
+  .cmp-delta.down{background:var(--rust-tint);color:var(--rust-dark);}
+  .cmp-delta.flat{background:var(--bg1);color:var(--ink4);}
+  .cmp-section{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink4);margin:14px 0 2px 0;padding-top:12px;border-top:1px solid var(--bg2);}
+  .cmp-section:first-child{margin-top:0;padding-top:0;border-top:none;}
+  .cmp-pace-note{font-size:11.5px;color:var(--ink4);line-height:1.5;margin-top:10px;padding:9px 12px;background:var(--bg1);border-radius:var(--radius-sm);}
+
   /* ---------- мобильная адаптация ---------- */
   @media (max-width:420px){
     main{padding:10px 10px 40px 10px;}
@@ -1684,13 +1759,206 @@ function companyFinance(monthKey){
 
   const planPct = totalPlan>0 ? Math.round(netCash/totalPlan*100) : 0;
   const trendPct = (source==='tracker' && td) ? td.trendPct : planPct;
-  return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to};
+  // Цифры прямо из таблицы, независимо от трекера:
+  // «Предоплата» → чистая касса (деньги зашли), «Остаток» → висит.
+  const sheetPrepaid = to && to.prepaid != null ? to.prepaid : null;
+  const sheetOutstanding = to ? to.pending : null;
+  return {netCash, pendingCash, grossCash, totalPlan, planPct, trendPct, source, hasLedger: !!to, toBreakdown: to, sheetPrepaid, sheetOutstanding};
 }
 
 // Общий план (цель из трекера) делится ПОРОВНУ между сотрудниками внутри
 // каждого отдела отдельно — у ОП и у ТО берётся одна и та же сумма цели
 // (ОП продаёт, ТО делает — деньги одни и те же), просто делится каждая
 // на свою численность отдела.
+// ---------------------------------------------------------------------
+// Сводка по отделу для обзорной панели админа: суммарные цифры отдела
+// плюс построчный список сотрудников с их ключевой метрикой.
+// ---------------------------------------------------------------------
+// Среднее время выполнения заказа сотрудником за месяц.
+// Берём finalTime — он проставляется, когда заказ переходит в финальный статус.
+function avgCompletionTime(empId, monthKey){
+  const times = getOrdersForEmp(empId, monthKey)
+    .map(o=>o.finalTime)
+    .filter(t=>t!=null && t>0);
+  if(!times.length) return null;
+  return {ms: times.reduce((a,b)=>a+b,0)/times.length, count: times.length};
+}
+
+// Личная тенденция: сколько сотрудник сделал против того, сколько должен был
+// сделать к этому дню месяца. Рабочие дни считаем по его личному календарю,
+// чтобы выходные не портили картину.
+function personalTrend(empId, monthKey, value, plan){
+  if(!plan || plan<=0) return null;
+  if(monthKey !== currentMonthKey()) return null; // тенденция имеет смысл только для текущего месяца
+  const total = daysInMonthOf(monthKey);
+  const today = Math.min(new Date().getDate(), total);
+  let workedSoFar = 0, workTotal = 0;
+  for(let d=1; d<=total; d++){
+    if(isOffDay(empId, monthKey, d)) continue;
+    workTotal++;
+    if(d<=today) workedSoFar++;
+  }
+  if(workTotal<=0 || workedSoFar<=0) return null;
+  const expected = plan * (workedSoFar/workTotal);
+  if(expected<=0) return null;
+  return {
+    pct: Math.round(value/expected*100),
+    expected: Math.round(expected),
+    workedSoFar, workTotal,
+  };
+}
+
+function deptOverview(dept, monthKey){
+  const def = DEPARTMENTS[dept];
+  if(!def) return null;
+  const list = employees.filter(e=>e.department===dept);
+  if(!list.length) return null;
+
+  const autoPlan = planShareFor(dept, monthKey);
+  const numKey = def.ratio.num;
+
+  const totals = {};
+  def.fields.forEach(f=>{ if(f.type==='number') totals[f.key] = 0; });
+
+  const people = list.map(e=>{
+    const k = getKpi(e.id, monthKey);
+    def.fields.forEach(f=>{
+      if(f.type!=='number') return;
+      if(f.key==='plan' && autoPlan!=null) totals.plan += autoPlan;
+      else totals[f.key] += Number(k[f.key])||0;
+    });
+    const num = Number(k[numKey])||0;
+    const den = autoPlan!=null ? autoPlan : (Number(k.plan)||0);
+    return {
+      id: e.id,
+      name: e.name,
+      onShift: isCheckedIn(e.id),
+      value: num,
+      plan: den,
+      pct: den>0 ? Math.round(num/den*100) : null,
+      orders: dept==='to' ? (Number(k.orders)||0) : (Number(k.deals)||0),
+      avgTime: avgCompletionTime(e.id, monthKey),
+      trend: personalTrend(e.id, monthKey, num, den),
+      best: false,
+    };
+  }).sort((a,b)=> b.value - a.value);
+
+  // Лучший на текущий момент: наибольший % выполнения плана.
+  // Если планов нет — просто наибольшая абсолютная цифра.
+  const ranked = people.filter(p=> p.value>0);
+  if(ranked.length){
+    const byPct = ranked.filter(p=>p.pct!=null);
+    const leader = byPct.length
+      ? byPct.reduce((a,b)=> (b.pct>a.pct || (b.pct===a.pct && b.value>a.value)) ? b : a)
+      : ranked[0];
+    leader.best = true;
+  }
+
+  // Среднее время выполнения по отделу
+  const allTimes = people.map(p=>p.avgTime).filter(Boolean);
+  const deptAvgTime = allTimes.length
+    ? {
+        ms: allTimes.reduce((s,t)=> s + t.ms*t.count, 0) / allTimes.reduce((s,t)=> s + t.count, 0),
+        count: allTimes.reduce((s,t)=> s + t.count, 0),
+      }
+    : null;
+
+  const totalNum = totals[numKey] || 0;
+  const totalPlan = totals.plan || 0;
+  return {
+    dept,
+    label: def.label,
+    people,
+    totalNum,
+    totalPlan,
+    totalPct: totalPlan>0 ? Math.round(totalNum/totalPlan*100) : null,
+    numLabel: (def.fields.find(f=>f.key===numKey)||{}).label || '',
+    totals,
+    deptAvgTime,
+    onShiftCount: people.filter(p=>p.onShift).length,
+  };
+}
+
+// Заказы, требующие внимания: просроченный дедлайн или долгая пауза.
+function attentionItems(monthKey){
+  const overdue = [], paused = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const PAUSE_ALERT_MS = 24*3600000; // пауза дольше суток
+
+  employees.forEach(e=>{
+    getOrdersForEmp(e.id, monthKey).forEach(o=>{
+      if(o.isDone) return;
+      if(o.paused && o.pausedAt && (Date.now()-o.pausedAt) > PAUSE_ALERT_MS){
+        paused.push({emp:e.name, client:o.client, reason:o.pauseReason, since:o.pausedAt});
+        return;
+      }
+      const dm = String(o.deadline||'').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if(dm){
+        const dl = new Date(Number(dm[3]), Number(dm[2])-1, Number(dm[1]));
+        if(dl < today){
+          overdue.push({emp:e.name, client:o.client, deadline:o.deadline, days:Math.round((today-dl)/86400000)});
+        }
+      }
+    });
+  });
+  overdue.sort((a,b)=>b.days-a.days);
+  paused.sort((a,b)=>a.since-b.since);
+  return {overdue, paused};
+}
+
+// Предыдущий месяц по ключу: '2026-08' → '2026-07'
+function prevMonthKey(mk){
+  const [y,m] = mk.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// Сравнение текущего месяца с предыдущим: касса, план, отделы, тенденция.
+// Для честного сравнения с незакрытым месяцем считаем ещё и «темп»:
+// сколько было у прошлого месяца на этот же день.
+function monthComparison(mk){
+  const prev = prevMonthKey(mk);
+  if(!kpiData[prev]) return null;
+
+  const cur = companyFinance(mk);
+  const old = companyFinance(prev);
+
+  const isCurrentMonth = mk === currentMonthKey();
+  const dayNow = isCurrentMonth ? new Date().getDate() : daysInMonthOf(mk);
+  const prevTotal = daysInMonthOf(prev);
+  // где прошлый месяц был к этому же дню (линейная оценка — точных дневных срезов не храним)
+  const prevAtSameDay = old.netCash * (Math.min(dayNow, prevTotal)/prevTotal);
+
+  const delta = (now, before)=>{
+    if(!before) return null;
+    return Math.round((now-before)/before*100);
+  };
+
+  const depts = ['op','to'].map(d=>{
+    const a = deptOverview(d, mk);
+    const b = deptOverview(d, prev);
+    if(!a || !b) return null;
+    return {
+      label: a.label,
+      now: a.totalNum,
+      before: b.totalNum,
+      deltaPct: delta(a.totalNum, b.totalNum),
+      avgNow: a.deptAvgTime ? a.deptAvgTime.ms : null,
+      avgBefore: b.deptAvgTime ? b.deptAvgTime.ms : null,
+    };
+  }).filter(Boolean);
+
+  return {
+    prevKey: prev,
+    isCurrentMonth, dayNow,
+    cash: {now: cur.netCash, before: old.netCash, deltaPct: delta(cur.netCash, old.netCash)},
+    pace: isCurrentMonth ? {now: cur.netCash, before: Math.round(prevAtSameDay), deltaPct: delta(cur.netCash, prevAtSameDay)} : null,
+    plan: {now: cur.totalPlan, before: old.totalPlan, deltaPct: delta(cur.totalPlan, old.totalPlan)},
+    planPct: {now: cur.planPct, before: old.planPct},
+    depts,
+  };
+}
+
 function monthEndProjection(monthKey, netCash, totalPlan){
   if(monthKey !== currentMonthKey()) return null; // прогноз имеет смысл только для текущего месяца
   const today = new Date();
@@ -2785,6 +3053,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     const doerCol = findCol(['кто делает']);
     const statusCol = findCol(['статус']);
     const grossCol = findCol(['сумма общая','сумма']);
+    const prepayCol = findCol(['предоплат']);
     const netCol = findCol(['заработок']);
     const pendingCol = findCol(['остаток']);
     const dateCol = findCol(['дата оформления','дата']);
@@ -2817,6 +3086,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       // «Сумма общая» → грязная касса; «Сумма общая» при статусе «успешно завершено» → чистая;
       // готовая колонка «Остаток» → остаток (ещё войдёт). Ничего дополнительно не выводим.
       let ledgerGross = 0, ledgerNet = 0, ledgerPending = 0, ledgerCount = 0, ledgerUnmatched = 0;
+      let ledgerPrepaid = 0; // «Предоплата» — деньги, которые реально зашли
       const unmatchedNames = new Set();
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
@@ -2827,19 +3097,22 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const isDone = statusText.includes('успешно');
         const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
         const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]) : 0;
+        const prepayVal = prepayCol>=0 ? parseNum(row[prepayCol]) : 0;
         ledgerGross += grossVal;
         if(isDone) ledgerNet += grossVal;
         ledgerPending += pendingVal;
+        ledgerPrepaid += prepayVal;
         ledgerCount++;
         if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)){
           ledgerUnmatched++;
           if(unmatchedNames.size<5) unmatchedNames.add((row[actorCol]||'').trim());
         }
       }
+      diag.prepay = colInfo(prepayCol);
       diag.rowsInMonth = ledgerCount;
       diag.unmatchedNames = Array.from(unmatchedNames);
       if(!ledgerTotals[targetMonth]) ledgerTotals[targetMonth] = {};
-      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, count: ledgerCount, unmatched: ledgerUnmatched, diag};
+      ledgerTotals[targetMonth][dept] = {net: ledgerNet, pending: ledgerPending, gross: ledgerGross, prepaid: ledgerPrepaid, count: ledgerCount, unmatched: ledgerUnmatched, diag};
 
       // deadlineCol уже объявлен ниже в блоке парсинга ordersData — объявляем здесь заранее для ТО KPI
       const _deadlineColForKpi = dept==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
@@ -3757,15 +4030,104 @@ function renderAdminView(){
     `<option value="${e.id}" ${e.id===scheduleEmpId?'selected':''}>${escapeHtml(e.name)} · ${DEPARTMENTS[e.department].label}</option>`
   ).join('');
 
+  const ovOp = deptOverview('op', editingMonth);
+  const ovTo = deptOverview('to', editingMonth);
+  const att = attentionItems(editingMonth);
+  const onShiftNow = employees.filter(e=>isCheckedIn(e.id)).length;
+  const pctClass = (p)=> p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low';
+
+  const renderDeptCol = (ov)=>{
+    if(!ov) return '';
+    const fmtAvg = (t)=> t ? fmtOrderTime(t.ms) : '—';
+    return `
+    <div class="ov-dept">
+      <div class="ov-dept-head">
+        <span class="dname">${ov.label}</span>
+        <span class="dshift">${ov.onShiftCount} из ${ov.people.length} на смене</span>
+      </div>
+      <div class="ov-dept-total">
+        <div class="tl">${escapeHtml(ov.numLabel)}</div>
+        <div class="tv">${fmtMoney(ov.totalNum)}</div>
+        <div class="ov-bar ${pctClass(ov.totalPct)==='ok'?'ok':pctClass(ov.totalPct)==='low'?'low':''}"><i style="width:${Math.min(100, ov.totalPct||0)}%"></i></div>
+        <div class="tp">${ov.totalPct!=null ? `${ov.totalPct}% от плана ${fmtMoney(ov.totalPlan)}` : 'план не задан'}${ov.deptAvgTime ? ` · среднее время ${fmtAvg(ov.deptAvgTime)}` : ''}</div>
+      </div>
+      ${ov.people.map(p=>`
+        <div class="ov-person ${p.best?'is-best':''}">
+          <div class="ov-person-top">
+            <span class="pdot ${p.onShift?'on':''}"></span>
+            <span class="pname">${escapeHtml(p.name)}${p.best?'<span class="best-tag">лучший</span>':''}</span>
+            <span class="pval">${fmtMoney(p.value)}</span>
+            <span class="ppct ${pctClass(p.pct)}">${p.pct!=null?p.pct+'%':'—'}</span>
+          </div>
+          <div class="ov-person-sub">
+            <span>${p.avgTime ? `⏱ ${fmtAvg(p.avgTime)} · ${p.avgTime.count} зак.` : '⏱ нет завершённых'}</span>
+            ${p.trend ? `<span class="ptrend ${pctClass(p.trend.pct)}">тенденция ${p.trend.pct}%</span>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+  };
+
+  const attRows = [
+    ...att.overdue.slice(0,6).map(o=>`
+      <div class="ov-att-row">
+        <span class="who">${escapeHtml(o.emp)}</span>
+        <span class="what">${escapeHtml(o.client||'без имени')}</span>
+        <span class="when">просрочен на ${o.days} дн.</span>
+      </div>`),
+    ...att.paused.slice(0,4).map(p=>`
+      <div class="ov-att-row pausedrow">
+        <span class="who">${escapeHtml(p.emp)}</span>
+        <span class="what">${escapeHtml(p.client||'без имени')}${p.reason?` · ${escapeHtml(p.reason)}`:''}</span>
+        <span class="when">на паузе ${Math.round((Date.now()-p.since)/86400000)} дн.</span>
+      </div>`),
+  ].join('');
+
   return `
     <div class="admin-dashboard-grid">
     <div class="admin-col-left">
 
     <div class="card">
       <h2 style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="display:flex;align-items:center;gap:10px;">Статус команды сейчас <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
+        <span style="display:flex;align-items:center;gap:10px;">Обзор · ${monthLabel(editingMonth)} <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
         <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Заблокировать</span>
       </h2>
+
+      <div class="ov-strip">
+        <div class="ov-stat good">
+          <div class="label">Касса</div>
+          <div class="value">${fmtMoney(finance.netCash)}</div>
+          <div class="sub">${finance.planPct}% от плана</div>
+        </div>
+        <div class="ov-stat">
+          <div class="label">Общий план</div>
+          <div class="value">${fmtMoney(finance.totalPlan)}</div>
+          <div class="sub">осталось ${fmtMoney(finance.pendingCash)}</div>
+        </div>
+        <div class="ov-stat ${finance.trendPct>=100?'good':finance.trendPct<70?'bad':''}">
+          <div class="label">Тенденция</div>
+          <div class="value">${finance.trendPct}%</div>
+          <div class="sub">${finance.trendPct>=100?'идём с опережением':'отстаём от графика'}</div>
+        </div>
+        <div class="ov-stat">
+          <div class="label">На смене</div>
+          <div class="value">${onShiftNow}</div>
+          <div class="sub">из ${employees.length} сотрудников</div>
+        </div>
+      </div>
+
+      <div class="ov-depts">
+        ${renderDeptCol(ovOp)}
+        ${renderDeptCol(ovTo)}
+      </div>
+
+      <div class="ov-attention">
+        <div class="ov-attention-head">${icon('hourglass',14)} Требует внимания${(att.overdue.length+att.paused.length)>0?` · ${att.overdue.length+att.paused.length}`:''}</div>
+        ${attRows || '<div class="ov-att-empty">Просроченных и зависших заказов нет</div>'}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Статус команды сейчас</h2>
       <table><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th></tr></thead><tbody>${rows}</tbody></table>
     </div>
 
@@ -3789,9 +4151,14 @@ function renderAdminView(){
       <div class="finance-grid">
         <div class="finance-box accent"><div class="fi-icon">${icon('cash')}</div><div class="label">Сумма</div><div class="value">${fmtMoney(finance.netCash)}</div></div>
         <div class="finance-box warn"><div class="fi-icon">${icon('hourglass')}</div><div class="label">Остаток до плана</div><div class="value">${fmtMoney(finance.pendingCash)}</div></div>
+        ${finance.sheetPrepaid!=null ? `
+        <div class="finance-box accent"><div class="fi-icon">${icon('cash')}</div><div class="label">Чистая касса</div><div class="value">${fmtMoney(finance.sheetPrepaid)}</div></div>` : ''}
+        ${finance.sheetOutstanding!=null ? `
+        <div class="finance-box warn"><div class="fi-icon">${icon('hourglass')}</div><div class="label">Висит остаток</div><div class="value">${fmtMoney(finance.sheetOutstanding)}</div></div>` : ''}
         <div class="finance-box" style="grid-column:1/-1"><div class="fi-icon">${icon('target')}</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
         <div class="finance-box trend-box wide"><div class="fi-icon">${icon('trend')}</div><div class="label">Тенденция</div><div class="value">${finance.trendPct}%</div></div>
       </div>
+      ${finance.sheetPrepaid!=null ? `<div class="hint" style="margin-top:8px;">Чистая касса — сумма колонки «Предоплата», висит остаток — сумма колонки «Остаток» листа ТО за ${monthLabel(editingMonth)}.</div>` : ''}
       ${finance.source==='tracker' ? `
         <div class="hint" style="margin-top:10px;">Цифры взяты из трекера тенденции: «Сейчас сумма» → чистая касса, «Сумма» (сколько ещё нужно до цели) → остаток.</div>` :
         finance.source==='ledger' ? `
@@ -3820,6 +4187,43 @@ function renderAdminView(){
         </div>` : `
         <div class="hint" style="margin-top:12px;">Прогноз к концу месяца показывается только для текущего активного месяца.</div>`; })()}
     </div>
+
+    ${(()=>{
+      const cmp = monthComparison(editingMonth);
+      if(!cmp) return '';
+      const dcls = (d)=> d==null ? 'flat' : d>2 ? 'up' : d<-2 ? 'down' : 'flat';
+      const dtxt = (d)=> d==null ? '—' : (d>0?'+':'') + d + '%';
+      const line = (label, before, now, deltaPct, fmt)=>{
+        const f = fmt || fmtMoney;
+        return `<div class="cmp-row">
+          <span class="cmp-label">${label}</span>
+          <span class="cmp-nums"><span class="cmp-before">${f(before)}</span><span class="cmp-arrow">→</span><span class="cmp-now">${f(now)}</span></span>
+          <span class="cmp-delta ${dcls(deltaPct)}">${dtxt(deltaPct)}</span>
+        </div>`;
+      };
+      return `
+      <div class="card">
+        <h2>${icon('trend',16)} ${monthLabel(cmp.prevKey)} → ${monthLabel(editingMonth)}</h2>
+
+        ${cmp.pace ? `
+          <div class="cmp-section">Темп на ${cmp.dayNow}-е число</div>
+          ${line('Касса к этому дню', cmp.pace.before, cmp.pace.now, cmp.pace.deltaPct)}
+          <div class="cmp-pace-note">Сравниваем с тем, сколько прошлый месяц собрал к ${cmp.dayNow}-му числу. Это честнее, чем сравнивать незакрытый месяц с полным.</div>
+        ` : ''}
+
+        <div class="cmp-section">Итоги месяца</div>
+        ${line('Касса', cmp.cash.before, cmp.cash.now, cmp.cash.deltaPct)}
+        ${line('План', cmp.plan.before, cmp.plan.now, cmp.plan.deltaPct)}
+        ${line('Выполнение плана', cmp.planPct.before, cmp.planPct.now, cmp.planPct.now-cmp.planPct.before, (v)=>v+'%')}
+
+        ${cmp.depts.length ? `<div class="cmp-section">По отделам</div>` : ''}
+        ${cmp.depts.map(d=>line(d.label, d.before, d.now, d.deltaPct)).join('')}
+        ${cmp.depts.filter(d=>d.avgNow!=null && d.avgBefore!=null).map(d=>
+          line(`${d.label} · среднее время заказа`, d.avgBefore, d.avgNow,
+               Math.round((d.avgNow-d.avgBefore)/d.avgBefore*100)*-1, fmtOrderTime)
+        ).join('')}
+      </div>`;
+    })()}
 
     <div class="card">
       <h2>Календарь и выходные</h2>
