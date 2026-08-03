@@ -1580,10 +1580,10 @@ async function pollSharedData(){
     if(freshLogs) logs = freshLogs;
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
-    if(freshSheetUrls) sheetUrls = freshSheetUrls;
+    if(freshSheetUrls) sheetUrls = Object.assign({}, sheetUrls, freshSheetUrls);
     if(freshSchedules) schedules = freshSchedules;
     if(freshLedger) ledgerTotals = freshLedger;
-    if(freshTrackerUrl) trackerUrls = freshTrackerUrl;
+    if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshTrackerData) trackerData = freshTrackerData;
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
@@ -2893,20 +2893,24 @@ function parseGvizJson(text){
   return rows;
 }
 
-// Универсальный fetch: сначала пробует gviz JSON, при неудаче — CSV
-async function fetchSheetRows(url){
-  const gvizUrl = toGvizUrl(url);
-  if(gvizUrl){
-    try{
-      const res = await fetch(gvizUrl, {cache:'no-store'});
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      return parseGvizJson(text);
-    }catch(e){
-      console.warn('gviz failed, falling back to CSV:', e.message);
+// Универсальный fetch: сначала пробует gviz JSON, при неудаче — CSV.
+// forceCsv=true для «дашборд»-листов (трекер): там нет шапки таблицы,
+// подписи разбросаны по ячейкам, и gviz съедает первую строку как заголовок.
+async function fetchSheetRows(url, forceCsv){
+  if(!forceCsv){
+    const gvizUrl = toGvizUrl(url);
+    if(gvizUrl){
+      try{
+        const res = await fetch(gvizUrl, {cache:'no-store'});
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        return parseGvizJson(text);
+      }catch(e){
+        console.warn('gviz failed, falling back to CSV:', e.message);
+      }
     }
   }
-  // Fallback: CSV
+  // Fallback / принудительный путь: CSV — он отдаёт сетку ячеек как есть
   const csvUrl = toCsvUrl(url);
   const text = await fetchCsvWithRetry(csvUrl);
   return parseCSV(text);
@@ -2991,7 +2995,7 @@ async function syncTracker(mk, silent){
   if(!rawUrl){ if(!silent){ trackerStatus[mk] = 'Сначала вставьте ссылку на трекер'; showToast(trackerStatus[mk], 'error'); } return; }
   if(!silent){ trackerSyncing[mk] = true; trackerStatus[mk] = ''; render(); }
   try{
-    const rows = await fetchSheetRows(rawUrl);
+    const rows = await fetchSheetRows(rawUrl, true); // трекер — сетка ячеек, читаем через CSV
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
     const grid = rows.map(r=>r.map(c=>String(c||'').trim()));
     const parsed = parseTrackerGrid(grid);
@@ -3472,9 +3476,29 @@ function _doRender(){
   }
   const viewKey = currentViewKey();
   const scrollY = window.scrollY; // запоминаем позицию до перезаписи DOM
+
+  // Запоминаем то, что админ уже набрал в полях ссылок, но ещё не сохранил.
+  // Без этого фоновая синхронизация перерисовывала экран и стирала вставку.
+  const pendingInputs = [];
+  document.querySelectorAll('.sheet-url-input, .tracker-url-input').forEach(inp=>{
+    pendingInputs.push({
+      cls: inp.classList.contains('sheet-url-input') ? 'sheet-url-input' : 'tracker-url-input',
+      month: inp.dataset.month, dept: inp.dataset.dept || '', value: inp.value,
+    });
+  });
+
   if(mode==='employee')       main.innerHTML = renderEmployeeArea();
   else if(mode==='sales')     main.innerHTML = renderSalesView();
   else                         main.innerHTML = renderAdminView();
+
+  // Возвращаем несохранённый ввод обратно в поля
+  pendingInputs.forEach(p=>{
+    const sel = p.dept
+      ? `.${p.cls}[data-month="${p.month}"][data-dept="${p.dept}"]`
+      : `.${p.cls}[data-month="${p.month}"]`;
+    const el = main.querySelector(sel);
+    if(el && el.value !== p.value && p.value) el.value = p.value;
+  });
   // Включаем split-scroll только для дашборда сотрудника на десктопе
   const isEmpDash = mode==='employee' && myEmployeeId && employees.find(e=>e.id===myEmployeeId);
   const isDesktop = window.innerWidth >= 900;
@@ -4652,10 +4676,26 @@ function attachDelegatedHandlers(){
     }
   });
 
-  document.addEventListener('change', (ev)=>{
+  document.addEventListener('change', async (ev)=>{
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'empMonthSelect'){ empViewMonth = ev.target.value; renderNow(); }
+
+    // Ссылки на листы сохраняются сразу, как только поле потеряло фокус —
+    // не дожидаясь нажатия «Обновить». Иначе фоновая синхронизация могла
+    // перерисовать экран и стереть вставленную, но ещё не сохранённую ссылку.
+    if(ev.target.classList.contains('sheet-url-input')){
+      const mk = ev.target.dataset.month, dept = ev.target.dataset.dept;
+      setSheetUrl(dept, mk, ev.target.value.trim());
+      try{ await storeSet('app:sheetUrls', sheetUrls, SHARED); }catch(e){ console.error(e); }
+      return;
+    }
+    if(ev.target.classList.contains('tracker-url-input')){
+      const mk = ev.target.dataset.month;
+      trackerUrls[mk] = ev.target.value.trim();
+      try{ await storeSet('app:trackerUrls', trackerUrls, SHARED); }catch(e){ console.error(e); }
+      return;
+    }
   });
 
   // Автосохранение комментариев к заказам (debounce 800ms)
