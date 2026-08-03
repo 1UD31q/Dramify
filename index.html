@@ -2261,11 +2261,7 @@ let empViewMonth = null; // выбранный сотрудником месяц
 
 let logsExpanded = false;
 
-let sheetUrls = {}; // { monthKey: {op:'', to:''} }
-
-// Хелперы для работы с sheetUrls по месяцу
-function getSheetUrl(dept, monthKey){ const mk = monthKey||editingMonth; return (sheetUrls[mk]&&sheetUrls[mk][dept])||''; }
-function setSheetUrl(dept, monthKey, url){ const mk = monthKey||editingMonth; if(!sheetUrls[mk]) sheetUrls[mk]={}; sheetUrls[mk][dept]=url; }
+let sheetUrls = {op:'', to:''}; // просто две ссылки, gid в них определяет лист
 let syncStatus = {op:'', to:''};
 let syncing = {op:false, to:false};
 
@@ -2318,13 +2314,15 @@ async function loadAll(){
   try {
     const storedSheetUrls = await storeGet('app:sheetUrls', SHARED);
     if(storedSheetUrls){
-      // Миграция: старый формат {op,to} → новый {monthKey:{op,to}}
+      // Миграция: per-month формат {monthKey:{op,to}} → плоский {op,to}
       if(typeof storedSheetUrls.op === 'string' || typeof storedSheetUrls.to === 'string'){
-        sheetUrls = {};
-        if(storedSheetUrls.op) setSheetUrl('op', activeMonth, storedSheetUrls.op);
-        if(storedSheetUrls.to) setSheetUrl('to', activeMonth, storedSheetUrls.to);
-      } else {
         sheetUrls = storedSheetUrls;
+      } else {
+        // старый per-month — берём последний месяц
+        const lastMk = Object.keys(storedSheetUrls).sort().reverse()[0];
+        if(lastMk && storedSheetUrls[lastMk]){
+          sheetUrls = { op: storedSheetUrls[lastMk].op||'', to: storedSheetUrls[lastMk].to||'' };
+        }
       }
     }
   } catch(e) { console.error(e); }
@@ -2705,7 +2703,7 @@ async function fetchCsvWithRetry(url, attempts){
 
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
-  const rawUrl = getSheetUrl(dept, targetMonth);
+  const rawUrl = (sheetUrls[dept]||'').trim();
   if(!rawUrl){ if(!silent) syncStatus[dept] = 'Сначала вставьте ссылку на таблицу'; return; }
   if(!silent){ syncing[dept] = true; syncStatus[dept] = ''; render(); }
   try{
@@ -3058,8 +3056,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
 async function silentAutoSync(){
   try{
-    if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
-    if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
+    if((sheetUrls.op||'').trim()) await syncFromGoogleSheet('op', activeMonth, true);
+    if((sheetUrls.to||'').trim()) await syncFromGoogleSheet('to', activeMonth, true);
     if((trackerUrl||'').trim()) await syncTracker(true);
   }catch(e){ console.error('auto-sync failed', e); }
 }
@@ -3774,11 +3772,11 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Google Таблица</h2>
-      <div class="hint" style="margin-top:0;">Ссылки привязаны к выбранному месяцу (<b>${monthLabel(editingMonth)}</b>). Переключите месяц — вставьте другую ссылку. Таблица подтягивается автоматически каждые несколько минут.</div>
+      <div class="hint" style="margin-top:0;">Таблица подтягивается автоматически каждые несколько минут. При смене месяца вставьте ссылку с нужным gid листа и нажмите «Обновить сейчас».</div>
       <div style="margin-top:12px;">
         <label class="field-label">Лист «ОП»</label>
         <div class="row">
-          <input type="text" id="sheetUrlOp" value="${escapeHtml(getSheetUrl('op', editingMonth))}" placeholder="Ссылка на опубликованный CSV">
+          <input type="text" id="sheetUrlOp" value="${escapeHtml(sheetUrls.op||'')}" placeholder="Ссылка на опубликованный CSV">
           <button class="btn small ${syncing.op?'secondary':''}" id="syncOpBtn" ${syncing.op?'disabled':''}>${syncing.op?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.op ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.op)}</div>` : ''}
@@ -3787,7 +3785,7 @@ function renderAdminView(){
       <div style="margin-top:16px;">
         <label class="field-label">Лист «ТО»</label>
         <div class="row">
-          <input type="text" id="sheetUrlTo" value="${escapeHtml(getSheetUrl('to', editingMonth))}" placeholder="Ссылка на опубликованный CSV">
+          <input type="text" id="sheetUrlTo" value="${escapeHtml(sheetUrls.to||'')}" placeholder="Ссылка на опубликованный CSV">
           <button class="btn small ${syncing.to?'secondary':''}" id="syncToBtn" ${syncing.to?'disabled':''}>${syncing.to?'Обновляю…':'Обновить сейчас'}</button>
         </div>
         ${syncStatus.to ? `<div class="hint" style="margin-top:0;">${escapeHtml(syncStatus.to)}</div>` : ''}
@@ -4034,12 +4032,14 @@ function attachDelegatedHandlers(){
     }
 
     if(el.closest('#syncOpBtn')){
-      setSheetUrl('op', editingMonth, document.getElementById('sheetUrlOp').value.trim());
+      sheetUrls.op = document.getElementById('sheetUrlOp').value.trim();
+      await storeSet('app:sheetUrls', sheetUrls, SHARED);
       await syncFromGoogleSheet('op');
       return;
     }
     if(el.closest('#syncToBtn')){
-      setSheetUrl('to', editingMonth, document.getElementById('sheetUrlTo').value.trim());
+      sheetUrls.to = document.getElementById('sheetUrlTo').value.trim();
+      await storeSet('app:sheetUrls', sheetUrls, SHARED);
       await syncFromGoogleSheet('to');
       return;
     }
@@ -4231,7 +4231,7 @@ let orderTimerHandle = null;
   lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrl, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
   timerHandle = setInterval(tickEmployeeClock, 15000); // часы/счётчик обновляются точечно, без полного renderNow()
   orderTimerHandle = setInterval(tickOrderTimers, 30000); // таймеры заказов обновляются каждые 30с
-  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrl||'').trim()){
+  if((sheetUrls.op||'').trim() || (sheetUrls.to||'').trim() || (trackerUrl||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
