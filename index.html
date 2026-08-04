@@ -39,6 +39,9 @@
     --brass: var(--p5);
     --brass-tint: var(--p1);
     --ink-soft: var(--ink2);
+    /* ИСПРАВЛЕНО: --border использовался в 3 местах (аккордеоны «Google Таблица»,
+       «Лист Касса», «Трекер»), но нигде не был объявлен → рамка просто не рисовалась. */
+    --border: var(--line);
 
     --radius: 14px;
     --radius-sm: 8px; --radius-md: 12px; --radius-lg: 18px; --radius-xl: 24px;
@@ -1514,7 +1517,9 @@ async function showTgNotif(payload){
   const timerEl = document.getElementById('tgNotifTimer');
   const fillEl  = document.getElementById('tgNotifTimerFill');
   const copyBtn = document.getElementById('tgCopyBtn');
-  if(!overlay) return;
+  // ИСПРАВЛЕНО: проверялся только overlay, а обращались к copyBtn/textEl/timerEl/fillEl.
+  // Если разметку модалки поменять — падало с TypeError уже после успешной отправки заявки.
+  if(!overlay || !textEl || !timerEl || !fillEl || !copyBtn) return;
 
   // Сброс
   if(_tgTimerInterval) clearInterval(_tgTimerInterval);
@@ -1800,6 +1805,10 @@ const DEPARTMENTS = {
   op: { label: 'ОП', ratio: {num:'revenue', den:'plan', label:'Выполнение плана'}, fields: OP_FIELDS },
   to: { label: 'ТО', ratio: {num:'netAmount', den:'plan', label:'Выполнение плана'}, fields: TO_FIELDS }
 };
+
+// ИСПРАВЛЕНО: DEPARTMENTS[dept].label падал, если у сотрудника отдел не 'op'/'to'
+// (например 'os'). Одна такая запись роняла всю админку целиком.
+function deptLabel(dept){ return (DEPARTMENTS[dept] && DEPARTMENTS[dept].label) || String(dept||'—').toUpperCase(); }
 
 function zeroKpi(dept){
   const o = {};
@@ -2166,20 +2175,7 @@ const PAUSE_REASONS = ['Жду ОС от клиента','Нужны новые 
 // Порог «зависшего» заказа — 8 часов
 const ORDER_OVERDUE_MS = 8 * 60 * 60 * 1000;
 
-const SEED_ORDERS = {
-  e1: [
-    {id:'001', client:'Иванова Марина', status:'В работе', statusSince: Date.now() - 3*3600000, paused:false, pauseReason:'', pausedAt:null, comment:''},
-    {id:'002', client:'Петров Сергей', status:'Ждёт оплату', statusSince: Date.now() - 1*3600000, paused:false, pauseReason:'', pausedAt:null, comment:'Клиент обещал оплатить до вечера'},
-  ],
-  e2: [
-    {id:'003', client:'Асанова Гульнара', status:'Проверка', statusSince: Date.now() - 9*3600000, paused:false, pauseReason:'', pausedAt:null, comment:''},
-    {id:'004', client:'Ким Алексей', status:'В работе', statusSince: Date.now() - 2*3600000, paused:true, pauseReason:'Жду клиента', pausedAt: Date.now() - 30*60000, comment:'Не берёт трубку'},
-  ],
-  e3: [
-    {id:'005', client:'Нурсеит Дамир', status:'Новый', statusSince: Date.now() - 20*60000, paused:false, pauseReason:'', pausedAt:null, comment:''},
-  ],
-  e4: [],
-};
+// (SEED_ORDERS удалён — демо-заказы нигде не использовались)
 
 // ordersData — данные из CSV (обновляются при каждом синке):
 //   { monthKey: { empId: [{id, client, status, statusSince, gross, pending, payMethod, deadline, dateCreated}, ...] } }
@@ -2244,7 +2240,6 @@ function getOrdersForEmp(empId, monthKey){
 }
 
 function orderElapsed(order){
-  const since = order.paused ? (order.pausedAt||Date.now()) : (order.statusSince||Date.now());
   // если на паузе — время замораживаем (показываем сколько было до паузы)
   if(order.paused){
     return (order.pausedAt||Date.now()) - (order.statusSince||Date.now());
@@ -2264,6 +2259,28 @@ function timerClass(ms){
   if(ms >= ORDER_OVERDUE_MS) return 'overdue';
   if(ms >= ORDER_OVERDUE_MS * 0.6) return 'warn';
   return '';
+}
+
+// ИСПРАВЛЕНО (и вынесено из двух копий в одну функцию):
+//  1) ссылки вида «wa.me/7700…» без протокола вставлялись в href как есть и
+//     открывались как путь на самом сайте — теперь подставляется https://
+//  2) href не экранировался: кавычка в ячейке таблицы ломала вёрстку карточки
+//     и позволяла вставить произвольный HTML. Теперь экранируется.
+function renderPhoneLink(raw){
+  raw = String(raw||'').trim();
+  if(!raw) return '';
+  const hasProto = /^https?:\/\//i.test(raw);
+  const bareDomain = /^(wa\.me|t\.me|vk\.com|instagram\.com|tiktok\.com)/i.test(raw);
+  if(hasProto || bareDomain){
+    const fullUrl = hasProto ? raw : 'https://' + raw;
+    const short = fullUrl.replace(/^https?:\/\//i,'').split('/')[0].replace(/^www\./,'');
+    return `\ud83d\udcde <a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(short)}</a>`;
+  }
+  const tel = raw.replace(/[^+\d]/g,'');
+  if(tel.length >= 7){
+    return `\ud83d\udcde <a href="tel:${escapeHtml(tel)}" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(raw)}</a>`;
+  }
+  return `\ud83d\udcde ${escapeHtml(raw)}`;
 }
 
 // Рендер одной карточки заказа
@@ -2310,26 +2327,9 @@ function renderOrderCard(o, empId, showTimer){
     return parts.length ? parts.join('  ·  ') : '';
   }
 
-  // Телефон / ссылка — если выглядит как URL, делаем кликабельной
-  function renderPhone(raw){
-    if(!raw) return '';
-    const isUrl = /^https?:\/\//i.test(raw) || /^(wa\.me|t\.me|vk\.com|instagram\.com|tiktok\.com)/i.test(raw);
-    const fullUrl = isUrl ? raw : null;
-    if(fullUrl){
-      // Сокращённый текст: домен без протокола
-      const short = fullUrl.replace(/^https?:\/\//i,'').split('/')[0].replace(/^www\./,'');
-      return `📞 <a href="${fullUrl}" target="_blank" rel="noopener" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${short}</a>`;
-    }
-    // Просто номер телефона
-    const tel = raw.replace(/[^+\d]/g,'');
-    if(tel.length >= 7){
-      return `📞 <a href="tel:${tel}" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(raw)}</a>`;
-    }
-    return `📞 ${escapeHtml(raw)}`;
-  }
 
   const contactLine = renderContactLine(o);
-  const phoneHtml   = renderPhone(o.phone||'');
+  const phoneHtml   = renderPhoneLink(o.phone||'');
 
   const timerHtml = showTimer
     ? `<span class="order-timer ${tc}" data-order-timer="${o.id}" data-timer-start="${o.statusSince||Date.now()}" data-paused="${o.paused?'1':'0'}" data-paused-at="${o.pausedAt||''}">${timerLabel}</span>`
@@ -2344,7 +2344,7 @@ function renderOrderCard(o, empId, showTimer){
     ${contactLine ? `<div class="order-contact-line">${contactLine}</div>` : ''}
     ${phoneHtml ? `<div class="order-phone-line">${phoneHtml}</div>` : ''}
     <div class="order-status-row">
-      <span class="order-status-badge">${escapeHtml(o.status||'—')}</span>
+      <button type="button" class="order-status-badge" data-order-status="${o.id}" data-emp-id="${empId}" title="Нажмите, чтобы сменить статус" style="cursor:pointer;font-family:inherit;">${escapeHtml(o.status||'—')} ▾</button>
       ${pauseInfo}
       ${!isFinalStatus && isOverdue ? '<span class="order-pause-reason" style="background:#FDEAE4;color:var(--rust);">⚠️ Завис более 8ч</span>' : ''}
       ${finalTimeInfo}
@@ -2434,23 +2434,9 @@ function renderOrderCardOP(o, empId){
     return '';
   }
 
-  function renderPhone(raw){
-    if(!raw) return '';
-    const isUrl = /^https?:\/\//i.test(raw) || /^(wa\.me|t\.me|vk\.com|instagram\.com|tiktok\.com)/i.test(raw);
-    const fullUrl = isUrl ? raw : null;
-    if(fullUrl){
-      const short = fullUrl.replace(/^https?:\/\//i,'').split('/')[0].replace(/^www\./,'');
-      return `📞 <a href="${fullUrl}" target="_blank" rel="noopener" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${short}</a>`;
-    }
-    const tel = raw.replace(/[^+\d]/g,'');
-    if(tel.length >= 7){
-      return `📞 <a href="tel:${tel}" style="color:var(--teal-dark);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(raw)}</a>`;
-    }
-    return `📞 ${escapeHtml(raw)}`;
-  }
 
   const contactLine = renderContactLine(o);
-  const phoneHtml   = renderPhone(o.phone||'');
+  const phoneHtml   = renderPhoneLink(o.phone||'');
 
   const toWorkerHtml = o.toWorker
     ? `<div class="order-to-worker">🎬 ТО: <b>${escapeHtml(o.toWorker)}</b></div>`
@@ -2503,33 +2489,7 @@ function renderOrdersBlockOP(empId, monthKey){
     </div>`;
 }
 
-// Рендер блока заказов для сотрудников ТО (без таймеров, 3 секции)
-function renderOrdersBlockTO(empId, monthKey){
-  const allOrders = getOrdersForEmp(empId, monthKey);
-
-  const isSuccessful = o => o.status.toLowerCase().includes('успешно') || o.status === 'Выполнен';
-  const isPayWait    = o => o.status.toLowerCase().includes('оплат');
-
-  // Висит — всё что не успешно и не ждём оплату
-  const hanging = allOrders.filter(o => !isSuccessful(o) && !isPayWait(o));
-  const paying  = allOrders.filter(o => isPayWait(o) && !isSuccessful(o));
-  const done    = allOrders.filter(o => isSuccessful(o));
-
-  if(allOrders.length === 0){
-    return `<div class="card" id="orders-card-${empId}">
-      <h2>Текущие заказы</h2>
-      <div class="orders-empty">Нет активных заказов</div>
-    </div>`;
-  }
-
-  return `
-    <div class="card" id="orders-card-${empId}">
-      <h2>Текущие заказы</h2>
-      ${renderOrdersSection('hanging-'+empId, 'sec-working', '📌', 'Висит', hanging, empId, false, false)}
-      ${renderOrdersSection('topay-'+empId,   'sec-pay',     '💰', 'Ждём оплату', paying, empId, false, true)}
-      ${renderOrdersSection('done-'+empId,    'sec-done',    '✅', 'Успешно завершено', done, empId, false, true)}
-    </div>`;
-}
+// (renderOrdersBlockTO удалён — функция никогда не вызывалась; ТО использует renderOrdersBlock)
 
 
 function tickOrderTimers(){
@@ -2658,7 +2618,7 @@ function showStatusModal(currentStatus){
 // сопоставилась ли строка с конкретным сотрудником) — на них теперь опирается
 // касса компании. ledgerTotals[monthKey][dept] = {net, pending, gross, count, unmatched}
 let ledgerTotals = {};
-let lastSheetSyncAt = {op:null, to:null}; // время последней успешной синхронизации с таблицей
+let lastSheetSyncAt = {}; // ключи вида 'op_2026-08' — время последней успешной синхронизации
 
 // «Трекер тенденции» — отдельная гугл-таблица (одна на всю компанию), где уже
 // посчитаны цель месяца, факт, тенденция % и сколько нужно делать в день.
@@ -3253,7 +3213,8 @@ async function syncCashSheet(mk, silent){
     if(pIdx>=0) prepaidIdx = pIdx;
     if(oIdx>=0) pendingIdx = oIdx;
 
-    const colLetter = (i)=> String.fromCharCode(65+i);
+    // ИСПРАВЛЕНО: String.fromCharCode(65+i) ломался на колонке 27+ (выдавал «[», «\\»…)
+    const colLetter = (i)=>{ let s='', n=i; while(n>=0){ s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26)-1; } return s; };
     let prepaid = 0, pending = 0, counted = 0;
     for(let r=1;r<rows.length;r++){
       const row = rows[r] || [];
@@ -3355,7 +3316,17 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
     const header = rows[0].map(h=>h.trim());
     const hl = header.map(h=>h.toLowerCase());
-    const findCol = (patterns)=> hl.findIndex(h=> patterns.some(p=>h.includes(p)));
+    // ИСПРАВЛЕНО: раньше искали первую КОЛОНКУ, подходящую под ЛЮБОЙ шаблон.
+    // Из-за этого findCol(['дата оформления','дата']) мог поймать «Дата сдачи»,
+    // если она стоит в таблице левее «Даты оформления» — и весь месяц считался не по той дате.
+    // Теперь шаблоны перебираются по приоритету: сначала ищем точный, потом общий.
+    const findCol = (patterns)=>{
+      for(const p of patterns){
+        const i = hl.findIndex(h=> h.includes(p));
+        if(i>=0) return i;
+      }
+      return -1;
+    };
 
     const sellerCol = findCol(['кто продал']);
     const doerCol = findCol(['кто делает']);
@@ -3371,7 +3342,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     const deptEmployees = employees.filter(e=>e.department===dept);
     let matched = 0;
 
-    const colLetter = (idx)=> idx<0 ? null : String.fromCharCode(65 + idx);
+    const colLetter = (idx)=>{ if(idx<0) return null; let s='', n=idx; while(n>=0){ s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26)-1; } return s; };
     const colInfo = (idx)=> idx<0 ? 'не найдена' : `«${header[idx]}» (кол. ${colLetter(idx)})`;
 
     if(isRawLedger){
@@ -3783,6 +3754,9 @@ function currentViewKey(){
     if(selectingEmpId) return 'emp-pingate';
     return 'emp-list';
   }
+  // ИСПРАВЛЕНО: вкладка «Продажа» отдавала тот же ключ, что и админка, поэтому
+  // при переключении вкладок не срабатывали ни прокрутка вверх, ни анимация появления.
+  if(mode==='sales') return 'sales-view';
   return adminUnlocked ? 'admin-view' : 'admin-pingate';
 }
 
@@ -3881,11 +3855,16 @@ function renderEmployeeArea(){
 
 // Инициалы считаются один раз на сотрудника и кэшируются на самом объекте —
 // раньше split/join выполнялись заново при каждом render(), даже если имя не менялось.
+// ИСПРАВЛЕНО: кэш писался прямо в объект сотрудника (e._initials, e._initialsSrc),
+// а объект целиком уходил в Supabase — мусорные поля копились в общем хранилище.
+// Теперь кэш живёт отдельно, в памяти вкладки.
+const _initialsCache = new Map(); // id -> {src, val}
 function initialsFor(e){
-  if(e._initials && e._initialsSrc === e.name) return e._initials;
-  e._initials = e.name.trim().split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase() || '?';
-  e._initialsSrc = e.name;
-  return e._initials;
+  const hit = _initialsCache.get(e.id);
+  if(hit && hit.src === e.name) return hit.val;
+  const val = e.name.trim().split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase() || '?';
+  _initialsCache.set(e.id, {src: e.name, val});
+  return val;
 }
 
 function renderEmployeeList(){
@@ -3895,7 +3874,7 @@ function renderEmployeeList(){
   function renderCol(dept){
     const list = groups[dept] || [];
     if(!list.length) return '';
-    const label = DEPARTMENTS[dept] ? DEPARTMENTS[dept].label : dept;
+    const label = deptLabel(dept);
     let col = `<div class="emp-col">
       <div class="dept-col-title">${label}</div>`;
     list.forEach(e=>{
@@ -3927,6 +3906,9 @@ function renderEmployeeList(){
 
 function renderEmpPinGate(){
   const emp = employees.find(e=>e.id===selectingEmpId);
+  // ИСПРАВЛЕНО: если сотрудника удалили с другого устройства, emp.name падал с ошибкой
+  // и весь экран оставался пустым. Теперь просто возвращаемся к списку.
+  if(!emp){ selectingEmpId = null; return renderEmployeeList(); }
   const slots = Array.from({length:EMP_PIN_LEN}).map((_,i)=>`<div class="slot ${i<empPinInput.length?'filled':''}"></div>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
   return `
@@ -3945,7 +3927,7 @@ function renderEmpPinGate(){
 function renderEmployeeDashboard(){
   const emp = employees.find(e=>e.id===myEmployeeId);
   if(!emp){ myEmployeeId = null; return renderEmployeeList(); }
-  const dept = DEPARTMENTS[emp.department];
+  const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op; // ИСПРАВЛЕНО: страховка от неизвестного отдела
   const checkedIn = isCheckedIn(emp.id);
   const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
 
@@ -4091,6 +4073,25 @@ const PAY_METHODS = ['Lava top','Halyk Gani','Halyk Mars','FREEDOM GANI','Kaspi 
 const DURATION_OPTIONS = ['1,5 мин','2 мин','2,5 мин','3 мин','3,5 мин','4 мин','4,5 мин','5 мин','6 мин','Другое'];
 const ADDON_OPTIONS = ['', '+Диктор', '+ЛЮКС', 'Другое'];
 
+// ИСПРАВЛЕНО: раньше набранное в форме продажи жило только в DOM и попадало в
+// salesForm лишь в момент отправки. Любая фоновая синхронизация (раз в 8 с)
+// перерисовывала экран и стирала всё, что менеджер уже набрал.
+// Теперь каждое изменение поля сразу оседает в salesForm и переживает перерисовку.
+const SALES_FIELDS = {
+  sf_clientName:'clientName', sf_date:'date', sf_target:'target', sf_source:'source',
+  sf_phone:'phone', sf_total:'total', sf_prepayment:'prepayment',
+  sf_duration:'duration', sf_duration_custom:'durationCustom',
+  sf_addon:'addon', sf_addon_custom:'addonCustom',
+  sf_payMethod:'payMethod', sf_earnings:'earnings',
+  sf_deliveryDate:'deliveryDate', sf_sheetMonth:'sheetMonth',
+};
+function syncSalesFormFromDom(){
+  Object.keys(SALES_FIELDS).forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) salesForm[SALES_FIELDS[id]] = el.value.trim();
+  });
+}
+
 function salesEmpName(){
   if(!myEmployeeId) return '';
   const e = employees.find(e=>e.id===myEmployeeId);
@@ -4204,6 +4205,10 @@ function renderSalesView(){
           <input type="text" id="sf_deliveryDate" value="${escapeHtml(salesForm.deliveryDate)}" placeholder="дд.мм.гггг">
         </div>
         <div class="field-item">
+          <label class="field-label">Заработок (₸)</label>
+          <input type="number" id="sf_earnings" value="${escapeHtml(salesForm.earnings)}" placeholder="0">
+        </div>
+        <div class="field-item">
           <label class="field-label">Месяц отчёта (лист таблицы) *</label>
           <select id="sf_sheetMonth" style="border:2px solid var(--p5);">${monthOpts}</select>
         </div>
@@ -4229,25 +4234,7 @@ async function submitSalesForm(){
   if(!url){ showToast('Не указан URL скрипта отчёта (Админ → Отчёт продаж)','error'); return; }
 
   // Читаем поля формы
-  const get = id => {
-    const el = document.getElementById(id);
-    return el ? el.value.trim() : '';
-  };
-  salesForm.clientName   = get('sf_clientName');
-  salesForm.date         = get('sf_date');
-  salesForm.target       = get('sf_target');
-  salesForm.source       = get('sf_source');
-  salesForm.phone        = get('sf_phone');
-  salesForm.total        = get('sf_total');
-  salesForm.prepayment   = get('sf_prepayment');
-  salesForm.duration     = get('sf_duration');
-  salesForm.durationCustom = get('sf_duration_custom');
-  salesForm.addon        = get('sf_addon');
-  salesForm.addonCustom  = get('sf_addon_custom');
-  salesForm.payMethod    = get('sf_payMethod');
-  salesForm.earnings     = get('sf_earnings');
-  salesForm.deliveryDate = get('sf_deliveryDate');
-  salesForm.sheetMonth   = get('sf_sheetMonth');
+  syncSalesFormFromDom();
 
   // Финальная длительность: если "Другое" — берём кастомное значение
   const durationFinal = salesForm.duration === 'Другое'
@@ -4350,14 +4337,18 @@ function renderAdminView(){
 
   let kpiEditor = '';
   Object.keys(groups).forEach(dept=>{
-    kpiEditor += `<div class="dept-group-title">${DEPARTMENTS[dept].label}</div>`;
+    // ИСПРАВЛЕНО: DEPARTMENTS[dept].fields падал для отдела вне 'op'/'to' (например 'os')
+    // и роняла ВСЮ админку — экран оставался пустым. Теперь такой отдел просто пропускается.
+    const deptDef = DEPARTMENTS[dept];
+    if(!deptDef) return;
+    kpiEditor += `<div class="dept-group-title">${deptLabel(dept)}</div>`;
     groups[dept].forEach(e=>{
       const k = getKpi(e.id, editingMonth);
       const autoPlan = planShareFor(dept, editingMonth);
       kpiEditor += `<div class="emp-edit-block">
         <div class="emp-edit-name">${escapeHtml(e.name)}</div>
         <div class="field-grid">
-          ${DEPARTMENTS[dept].fields.filter(f=>!f.computed).map(f=>{
+          ${deptDef.fields.filter(f=>!f.computed).map(f=>{
             if(f.key==='plan' && autoPlan!=null){
               return `<div class="field-item">
                 <label>${f.label} <span style="font-weight:400;color:var(--muted);">(авто, поровну по трекеру)</span></label>
@@ -4392,7 +4383,7 @@ function renderAdminView(){
     scheduleEmpId = employees[0] ? employees[0].id : null;
   }
   const scheduleOptions = employees.map(e=>
-    `<option value="${e.id}" ${e.id===scheduleEmpId?'selected':''}>${escapeHtml(e.name)} · ${DEPARTMENTS[e.department].label}</option>`
+    `<option value="${e.id}" ${e.id===scheduleEmpId?'selected':''}>${escapeHtml(e.name)} · ${deptLabel(e.department)}</option>`
   ).join('');
 
   const ovOp = deptOverview('op', editingMonth);
@@ -4589,6 +4580,16 @@ function renderAdminView(){
         ).join('')}
       </div>`;
     })()}
+
+    <div class="card">
+      <h2>Ручная правка KPI · ${monthLabel(editingMonth)}</h2>
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted);user-select:none;">Открыть редактор</summary>
+        <div class="hint" style="margin-top:8px;">Значения перезапишутся при следующей синхронизации с Google Таблицей. Используйте только для разовых правок.</div>
+        ${kpiEditor}
+        <button class="btn small" id="saveKpiBtn" style="margin-top:10px;">Сохранить KPI</button>
+      </details>
+    </div>
 
     <div class="card">
       <h2>Календарь и выходные</h2>
@@ -4852,6 +4853,7 @@ function attachDelegatedHandlers(){
           const emp = employees.find(e=>e.id===empId);
           if(!emp) continue;
           const dept = DEPARTMENTS[emp.department];
+          if(!dept) continue; // ИСПРАВЛЕНО: неизвестный отдел больше не роняет сохранение
           const values = {};
           dept.fields.forEach(f=>{
             if(f.computed) return;
@@ -5055,6 +5057,9 @@ function attachDelegatedHandlers(){
   });
 
   document.addEventListener('change', async (ev)=>{
+    if(mode==='sales' && ev.target.id && SALES_FIELDS[ev.target.id]){
+      salesForm[SALES_FIELDS[ev.target.id]] = ev.target.value;
+    }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'empMonthSelect'){ empViewMonth = ev.target.value; renderNow(); }
@@ -5085,14 +5090,15 @@ function attachDelegatedHandlers(){
   // Автосохранение комментариев к заказам (debounce 800ms)
   const commentSaveTimers = {};
   document.addEventListener('input', (ev)=>{
-    // Живое обновление «Остаток» в форме продажи
-    if(mode==='sales' && (ev.target.id==='sf_total' || ev.target.id==='sf_prepayment')){
-      salesForm.total      = (document.getElementById('sf_total')||{}).value||'';
-      salesForm.prepayment = (document.getElementById('sf_prepayment')||{}).value||'';
-      const total = parseFloat(salesForm.total)||0;
-      const prep  = parseFloat(salesForm.prepayment)||0;
-      const rem = document.getElementById('sf_remainder_display');
-      if(rem) rem.value = '₸' + Math.max(0,total-prep).toLocaleString('ru-RU');
+    // Форма продажи: любое изменение сразу запоминаем, чтобы фоновый рендер его не стёр
+    if(mode==='sales' && ev.target.id && SALES_FIELDS[ev.target.id]){
+      salesForm[SALES_FIELDS[ev.target.id]] = ev.target.value;
+      if(ev.target.id==='sf_total' || ev.target.id==='sf_prepayment'){
+        const total = parseFloat(salesForm.total)||0;
+        const prep  = parseFloat(salesForm.prepayment)||0;
+        const rem = document.getElementById('sf_remainder_display');
+        if(rem) rem.value = '₸' + Math.max(0,total-prep).toLocaleString('ru-RU');
+      }
     }
     const ta = ev.target.closest('[data-order-comment]');
     if(!ta) return;
@@ -5166,10 +5172,12 @@ let orderTimerHandle = null;
   }
 
   renderNow();
-  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrls, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay});
+  // ИСПРАВЛЕНО: в снимке не хватало cashUrls/cashTotals — набор ключей не совпадал
+  // с pollSharedData, поэтому первый фоновый опрос всегда считал данные изменившимися.
+  lastSyncSnapshot = JSON.stringify({freshEmployees:employees, freshKpi:kpiData, freshLogs:logs, freshActiveMonth:activeMonth, freshAdminPin:adminPin, freshSheetUrls:sheetUrls, freshSchedules:schedules, freshLedger:ledgerTotals, freshTrackerUrl:trackerUrls, freshTrackerData:trackerData, freshOrdersCsv:ordersData, freshOrdersOv:ordersOverlay, freshCashUrls:cashUrls, freshCashTotals:cashTotals});
   timerHandle = setInterval(tickEmployeeClock, 15000);
   orderTimerHandle = setInterval(tickOrderTimers, 30000);
-  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrls[activeMonth]||'').trim()){
+  if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrls[activeMonth]||'').trim() || (cashUrls[activeMonth]||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
@@ -5251,10 +5259,13 @@ window.addEventListener('pagehide', ()=>{
   document.addEventListener('keydown', function(e){
     // e.key === 'A' (uppercase) means Shift is held AND the key is A
     // e.getModifierState('CapsLock') checks CapsLock state
+    // ИСПРАВЛЕНО: при включённом CapsLock + Shift браузер отдаёт e.key === 'a'
+    // (регистр инвертируется), поэтому проверка на 'A' почти никогда не срабатывала.
+    // Сверяемся с физической клавишей через e.code.
     if(
       e.shiftKey &&
       e.getModifierState('CapsLock') &&
-      e.key === 'A'
+      e.code === 'KeyA'
     ){
       e.preventDefault();
       mode = 'admin';
