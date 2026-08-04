@@ -1391,6 +1391,22 @@ async function storeSet(key, value, shared){
       console.warn('storeSet заблокирован — состояние ещё не загружено:', key);
       return false;
     }
+    // Щит от обнуления: не отправляем пустые цифры, если локально
+    // сохранена хорошая копия. Иначе нули разлетятся на все устройства.
+    const shields = {
+      'app:kpiData': kpiHasNumbers,
+      'app:ledgerTotals': ledgerHasNumbers,
+      'app:trackerData': trackerHasNumbers,
+      'app:cashTotals': cashHasNumbers,
+    };
+    if(shields[key]){
+      const good = cacheRead(key);
+      if(good !== undefined && shields[key](good) && !shields[key](value)){
+        console.warn('storeSet отклонён — попытка записать нули поверх живых данных:', key);
+        return false;
+      }
+      if(shields[key](value)) cacheWrite(key, value); // запоминаем как последнее хорошее
+    }
     for(let attempt=0; attempt<2; attempt++){
       try{
         const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?on_conflict=key`, {
@@ -1613,6 +1629,63 @@ function isEditingSomething(){
   return (tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') && document.getElementById('main').contains(a);
 }
 
+// =========================================================================
+// ЩИТ ОТ ОБНУЛЕНИЯ
+// Проверяем не «текущее против нового», а «последнее хорошее против нового».
+// Если новые данные пустые там, где раньше были цифры — это регресс: мы его
+// не принимаем и возвращаем в базу свою хорошую копию, чтобы вылечить остальных.
+// =========================================================================
+function kpiHasNumbers(obj){
+  if(!obj) return false;
+  return Object.keys(obj).some(mk=>{
+    const month = obj[mk];
+    if(!month || typeof month !== 'object') return false;
+    return Object.keys(month).some(empId=>{
+      const k = month[empId];
+      if(!k || typeof k !== 'object') return false;
+      return ['orders','netAmount','deals','revenue','completed','actualCash']
+        .some(f => (Number(k[f])||0) > 0);
+    });
+  });
+}
+function ledgerHasNumbers(obj){
+  if(!obj) return false;
+  return Object.keys(obj).some(mk=>{
+    const m = obj[mk] || {};
+    return ['op','to'].some(d=>{
+      const e = m[d];
+      return e && ((Number(e.gross)||0)>0 || (Number(e.allGross)||0)>0 || (Number(e.allPrepaid)||0)>0);
+    });
+  });
+}
+function trackerHasNumbers(obj){
+  if(!obj) return false;
+  return Object.keys(obj).some(mk=>{
+    const t = obj[mk];
+    return t && ((Number(t.effectivePlan)||0)>0 || (Number(t.currentSum)||0)>0);
+  });
+}
+function cashHasNumbers(obj){
+  if(!obj) return false;
+  return Object.keys(obj).some(mk=>{
+    const t = obj[mk];
+    return t && ((Number(t.prepaid)||0)>0 || (Number(t.pending)||0)>0);
+  });
+}
+
+// Принять входящие данные, только если они не «хуже» текущих.
+// Возвращает true, если наши данные лучше и их стоит записать обратно.
+function guardRegression(incoming, current, hasNumbers, label){
+  if(!incoming) return false;
+  const incomingGood = hasNumbers(incoming);
+  const currentGood = hasNumbers(current);
+  if(!incomingGood && currentGood){
+    console.warn('Отклонил обнулённые данные:', label);
+    return true; // наши лучше — вернём их в базу
+  }
+  return false;
+}
+
 async function pollSharedData(){
   if(isPolling || document.visibilityState==='hidden') return;
   isPolling = true;
@@ -1653,17 +1726,32 @@ async function pollSharedData(){
     lastSyncSnapshot = snapshot;
 
     if(freshEmployees) employees = freshEmployees;
-    if(freshKpi) kpiData = freshKpi;
+
+    // Щит: не принимаем обнулённые данные поверх живых, а свои — возвращаем в базу
+    const healBack = [];
+    if(guardRegression(freshKpi, kpiData, kpiHasNumbers, 'kpiData')) healBack.push(['app:kpiData', ()=>kpiData]);
+    else if(freshKpi) kpiData = freshKpi;
+
+    if(guardRegression(freshLedger, ledgerTotals, ledgerHasNumbers, 'ledgerTotals')) healBack.push(['app:ledgerTotals', ()=>ledgerTotals]);
+    else if(freshLedger) ledgerTotals = freshLedger;
+
+    if(guardRegression(freshTrackerData, trackerData, trackerHasNumbers, 'trackerData')) healBack.push(['app:trackerData', ()=>trackerData]);
+    else if(freshTrackerData) trackerData = freshTrackerData;
+
+    if(guardRegression(freshCashTotals, cashTotals, cashHasNumbers, 'cashTotals')) healBack.push(['app:cashTotals', ()=>cashTotals]);
+    else if(freshCashTotals) cashTotals = Object.assign({}, cashTotals, freshCashTotals);
+
+    if(healBack.length && stateLoaded){
+      for(const [key, get] of healBack){ storeSet(key, get(), SHARED); }
+    }
+
     if(freshLogs) logs = freshLogs;
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = Object.assign({}, sheetUrls, freshSheetUrls);
     if(freshSchedules) schedules = freshSchedules;
-    if(freshLedger) ledgerTotals = freshLedger;
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
-    if(freshTrackerData) trackerData = freshTrackerData;
     if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
-    if(freshCashTotals) cashTotals = Object.assign({}, cashTotals, freshCashTotals);
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
@@ -2625,6 +2713,7 @@ const SEED_MONTH_DATA = {
 };
 
 async function loadAll(){
+  const needsHeal = []; // ключи, которые надо вернуть в базу после загрузки
   try {
     const loadedEmp = await storeGet('app:employees', SHARED);
     if(loadedEmp){ employees = loadedEmp; }
@@ -2639,7 +2728,18 @@ async function loadAll(){
 
   try {
     const loadedKpi = await storeGet('app:kpiData', SHARED);
-    if(loadedKpi){ kpiData = loadedKpi; }
+    if(loadedKpi){
+      // Если из базы пришли нули, а локально сохранена хорошая копия —
+      // берём её и возвращаем цифры в базу, вылечивая остальные устройства.
+      const good = cacheRead('app:kpiData');
+      if(!kpiHasNumbers(loadedKpi) && good !== undefined && kpiHasNumbers(good)){
+        console.warn('В базе нули — восстанавливаю KPI из локальной копии');
+        kpiData = good;
+        needsHeal.push('app:kpiData');
+      } else {
+        kpiData = loadedKpi;
+      }
+    }
     else if(!storeReadFailed){
       kpiData = { [currentMonthKey()]: SEED_MONTH_DATA };
       await storeSet('app:kpiData', kpiData, SHARED);
@@ -2691,7 +2791,13 @@ async function loadAll(){
 
   try {
     const storedLedger = await storeGet('app:ledgerTotals', SHARED);
-    if(storedLedger) ledgerTotals = storedLedger;
+    if(storedLedger){
+      const good = cacheRead('app:ledgerTotals');
+      if(!ledgerHasNumbers(storedLedger) && good !== undefined && ledgerHasNumbers(good)){
+        console.warn('В базе нули — восстанавливаю итоги из локальной копии');
+        ledgerTotals = good; needsHeal.push('app:ledgerTotals');
+      } else { ledgerTotals = storedLedger; }
+    }
   } catch(e) { console.error(e); }
 
   try {
@@ -2705,17 +2811,48 @@ async function loadAll(){
     const storedCashUrls = await storeGet('app:cashUrls', SHARED);
     if(storedCashUrls) cashUrls = storedCashUrls;
     const storedCashTotals = await storeGet('app:cashTotals', SHARED);
-    if(storedCashTotals) cashTotals = storedCashTotals;
+    if(storedCashTotals){
+      const good = cacheRead('app:cashTotals');
+      if(!cashHasNumbers(storedCashTotals) && good !== undefined && cashHasNumbers(good)){
+        console.warn('В базе нули — восстанавливаю кассу из локальной копии');
+        cashTotals = good; needsHeal.push('app:cashTotals');
+      } else { cashTotals = storedCashTotals; }
+    }
     const storedTrackerData = await storeGet('app:trackerData', SHARED);
     if(storedTrackerData){
       // миграция: старый формат был одним объектом, не per-month
       if(storedTrackerData.effectivePlan !== undefined){
         trackerData[activeMonth] = storedTrackerData;
       } else {
-        trackerData = storedTrackerData;
+        const good = cacheRead('app:trackerData');
+        if(!trackerHasNumbers(storedTrackerData) && good !== undefined && trackerHasNumbers(good)){
+          console.warn('В базе нули — восстанавливаю трекер из локальной копии');
+          trackerData = good; needsHeal.push('app:trackerData');
+        } else { trackerData = storedTrackerData; }
       }
     }
   } catch(e) { console.error(e); }
+
+  // Возвращаем восстановленные цифры в базу — лечим остальные устройства.
+  // Делаем это после установки stateLoaded, поэтому откладываем на init().
+  pendingHeal = needsHeal;
+}
+
+// Ключи, восстановленные из локальной копии и ждущие записи обратно в базу
+let pendingHeal = [];
+async function flushHeal(){
+  if(!pendingHeal.length || !stateLoaded) return;
+  const map = {
+    'app:kpiData': ()=>kpiData,
+    'app:ledgerTotals': ()=>ledgerTotals,
+    'app:trackerData': ()=>trackerData,
+    'app:cashTotals': ()=>cashTotals,
+  };
+  for(const key of pendingHeal){
+    if(map[key]) await storeSet(key, map[key](), SHARED);
+  }
+  showToast('Цифры восстановлены из локальной копии', 'success');
+  pendingHeal = [];
 }
 
 function ensureMonth(monthKey){
@@ -5024,6 +5161,8 @@ let orderTimerHandle = null;
   stateLoaded = !storeReadFailed;
   if(!stateLoaded){
     showToast('Нет связи с базой — данные не сохраняются. Пробую переподключиться…', 'error');
+  } else {
+    await flushHeal(); // если что-то восстановили из локальной копии — вернём в базу
   }
 
   renderNow();
