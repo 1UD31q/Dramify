@@ -1399,10 +1399,12 @@ async function storeGet(key, shared){
       if(!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if(!data || !data.length){
-        // Ключа правда нет. Но если локально есть последнее хорошее значение —
-        // значит данные когда-то были, и «пусто» подозрительно: отдаём кэш.
+        // Ключа в базе нет. Если локально есть последнее хорошее значение —
+        // отдаём его, но НЕ помечаем чтение как упавшее: связь-то в порядке.
+        // Раньше этот флаг обрывал весь цикл синхронизации и блокировал запись,
+        // из-за чего показатели то появлялись, то исчезали.
         const cached = cacheRead(key);
-        if(cached !== undefined){ storeReadFailed = true; return cached; }
+        if(cached !== undefined) return cached;
         return null;
       }
       const parsed = JSON.parse(data[0].value);
@@ -1764,7 +1766,14 @@ async function pollSharedData(){
     if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
-    if(freshEmployees) employees = freshEmployees;
+    // Пустой массив — не повод стирать людей. Раньше проверка if(freshEmployees)
+    // пропускала [] (пустой массив в JS истинный), и все имена исчезали.
+    if(Array.isArray(freshEmployees) && freshEmployees.length > 0){
+      employees = freshEmployees;
+    } else if(Array.isArray(freshEmployees) && freshEmployees.length === 0 && employees.length > 0){
+      console.warn('Отклонил пустой список сотрудников — возвращаю свой в базу');
+      if(stateLoaded) storeSet('app:employees', employees, SHARED);
+    }
 
     // Щит: не принимаем обнулённые данные поверх живых, а свои — возвращаем в базу
     const healBack = [];
@@ -1784,11 +1793,11 @@ async function pollSharedData(){
       for(const [key, get] of healBack){ storeSet(key, get(), SHARED); }
     }
 
-    if(freshLogs) logs = freshLogs;
+    if(freshLogs && (!Array.isArray(freshLogs) || freshLogs.length > 0 || !Array.isArray(logs) || logs.length === 0)) logs = freshLogs;
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = Object.assign({}, sheetUrls, freshSheetUrls);
-    if(freshSchedules) schedules = freshSchedules;
+    if(freshSchedules && Object.keys(freshSchedules).length > 0) schedules = freshSchedules;
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
@@ -4087,6 +4096,7 @@ let salesForm = {
   clientName: '',
   date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
   target: 'Беларусь',
+  targetCustom: '',
   source: '',
   phone: '',
   total: '',
@@ -4103,7 +4113,7 @@ let salesResult = '';   // '' | 'ok' | 'err'
 let salesResultMsg = '';
 
 // Список стран для «Таргет»
-const TARGET_OPTIONS = ['Беларусь','Грузия','Азербайджан','Армения','Казахстан','Россия','Другое'];
+const TARGET_OPTIONS = ['Беларусь','Грузия','Азербайджан','Армения','Израиль','Казахстан','Россия','Другое'];
 
 // Методы оплаты (берём из реальных значений в таблице)
 const PAY_METHODS = ['Lava top','Halyk Gani','Halyk Mars','FREEDOM GANI','Kaspi gani','СБЕР НИКИТА Л','DM GANI вестерн юнион','Другое'];
@@ -4117,7 +4127,7 @@ const ADDON_OPTIONS = ['', '+Диктор', '+ЛЮКС', 'Другое'];
 // перерисовывала экран и стирала всё, что менеджер уже набрал.
 // Теперь каждое изменение поля сразу оседает в salesForm и переживает перерисовку.
 const SALES_FIELDS = {
-  sf_clientName:'clientName', sf_date:'date', sf_target:'target', sf_source:'source',
+  sf_clientName:'clientName', sf_date:'date', sf_target:'target', sf_target_custom:'targetCustom', sf_source:'source',
   sf_phone:'phone', sf_total:'total', sf_prepayment:'prepayment',
   sf_duration:'duration', sf_duration_custom:'durationCustom',
   sf_addon:'addon', sf_addon_custom:'addonCustom',
@@ -4183,7 +4193,10 @@ function renderSalesView(){
         </div>
         <div class="field-item">
           <label class="field-label">Таргет (страна)</label>
-          <select id="sf_target">${targetOpts}</select>
+          <select id="sf_target" onchange="(function(){const v=document.getElementById('sf_target').value;const c=document.getElementById('sf_target_custom_wrap');if(c)c.style.display=v==='Другое'?'block':'none';})()">${targetOpts}</select>
+          <div id="sf_target_custom_wrap" style="display:${salesForm.target==='Другое'?'block':'none'};margin-top:6px;">
+            <input type="text" id="sf_target_custom" value="${escapeHtml(salesForm.targetCustom||'')}" placeholder="Введите страну">
+          </div>
         </div>
         <div class="field-item">
           <label class="field-label">Номер для связи</label>
@@ -4279,6 +4292,10 @@ async function submitSalesForm(){
   const durationFinal = salesForm.duration === 'Другое'
     ? (salesForm.durationCustom || 'Другое')
     : salesForm.duration;
+  // Страна: если выбрано "Другое" — берём то что вписали руками
+  const targetFinal = salesForm.target === 'Другое'
+    ? (salesForm.targetCustom || 'Другое')
+    : salesForm.target;
   // Доп. услуга
   const addonFinal = salesForm.addon === 'Другое'
     ? (salesForm.addonCustom || '')
@@ -4297,7 +4314,7 @@ async function submitSalesForm(){
   const payload = {
     clientName:   salesForm.clientName,
     date:         salesForm.date,
-    target:       salesForm.target,
+    target:       targetFinal,
     source:       salesForm.source,
     phone:        salesForm.phone,
     total:        total,
@@ -4335,6 +4352,7 @@ async function submitSalesForm(){
       salesForm = {
         clientName:'', date: new Date().toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.'),
         target: salesForm.target, source:'', phone:'', total:'', prepayment:'',
+        targetCustom:'',
         duration: salesForm.duration, durationCustom:'',
         addon:'', addonCustom:'',
         payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
