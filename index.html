@@ -497,6 +497,30 @@
   .cmp-delta.flat{background:var(--bg1);color:var(--ink4);}
   .cmp-section{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink4);margin:14px 0 2px 0;padding-top:12px;border-top:1px solid var(--bg2);}
   .cmp-section:first-child{margin-top:0;padding-top:0;border-top:none;}
+  /* ── Время продаж ОП ── */
+  .st-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+  .st-stat{padding:12px 14px;border:1px solid var(--bg2);border-radius:var(--radius-md);background:var(--bg0);}
+  .st-stat .l{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink4);}
+  .st-stat .v{font-size:18px;font-weight:700;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums;}
+  .st-stat .s{font-size:11.5px;color:var(--ink3);margin-top:2px;}
+  .st-stat.peak{background:linear-gradient(135deg,var(--p1),transparent);border-color:var(--p2);}
+  .st-part{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--bg2);font-size:13px;}
+  .st-part:last-child{border-bottom:none;}
+  .st-part .nm{width:118px;flex:none;font-weight:500;color:var(--ink2);}
+  .st-part .nm small{display:block;font-size:10.5px;color:var(--ink4);font-weight:400;}
+  .st-part .br{flex:1;height:8px;background:var(--bg2);border-radius:6px;overflow:hidden;}
+  .st-part .br i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--p4),var(--p5));transition:width .4s;}
+  .st-part.top .br i{background:linear-gradient(90deg,#f5b33b,var(--amber));}
+  .st-part .ct{flex:none;min-width:92px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;}
+  .st-part .ct small{display:block;font-size:10.5px;color:var(--ink4);font-weight:500;}
+  .st-hours{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:6px;padding-top:16px;}
+  .st-hour{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;}
+  .st-hour i{display:block;width:100%;min-height:2px;border-radius:4px 4px 0 0;background:var(--p3);transition:height .4s;}
+  .st-hour.top i{background:var(--amber);}
+  .st-hour b{position:absolute;top:-2px;font-size:9.5px;font-weight:700;color:var(--ink3);font-variant-numeric:tabular-nums;}
+  .st-hlabels{display:flex;gap:3px;margin-top:4px;}
+  .st-hlabels span{flex:1;text-align:center;font-size:9px;color:var(--ink4);font-variant-numeric:tabular-nums;}
+  @media (max-width:720px){ .st-strip{grid-template-columns:1fr;} .st-hlabels span:nth-child(odd){visibility:hidden;} }
   .cmp-pace-note{font-size:11.5px;color:var(--ink4);line-height:1.5;margin-top:10px;padding:9px 12px;background:var(--bg1);border-radius:var(--radius-sm);}
 
   /* ---------- мобильная адаптация ---------- */
@@ -1809,7 +1833,12 @@ async function pollSharedData(){
 
     if(!isEditingSomething()) render();
   }catch(e){ console.error('pollSharedData failed', e); }
-  finally{ isPolling = false; }
+  finally{
+    // хвосты времени продаж — отправляем, если были проблемы со связью
+    if(stateLoaded) flushSaleTimeQueue();
+    if(mode==='admin' && adminUnlocked) ensureSaleTimes(editingMonth);
+    isPolling = false;
+  }
 }
 
 function startBackgroundSync(){
@@ -3775,6 +3804,7 @@ function icon(name, size){
     clipboard: '<rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.9"/><path d="M8.5 11h7M8.5 14.5h5"/>',
     pin: '<path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10Z"/><circle cx="12" cy="11" r="2.1"/>',
     sparkle: '<path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8Z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/>',
   };
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${paths[name]||''}</svg>`;
 }
@@ -4280,6 +4310,199 @@ function renderSalesView(){
   `;
 }
 
+// =========================================================================
+// ВРЕМЯ ПРОДАЖ ОП
+// Каждая оформленная продажа пишется отдельной строкой в kv_store с ключом
+// saletime:ГГГГ-ММ:<id>. Отдельная строка на продажу — чтобы два менеджера,
+// оформившие продажу одновременно, не затёрли записи друг друга.
+// Время считается по Алматы (UTC+5), независимо от часового пояса телефона.
+// =========================================================================
+const SALE_TZ = 'Asia/Almaty';
+const SALE_PARTS = [
+  {key:'night',   label:'Ночь',  range:'00:00–06:00', from:0,  to:6},
+  {key:'morning', label:'Утро',  range:'06:00–12:00', from:6,  to:12},
+  {key:'day',     label:'День',  range:'12:00–18:00', from:12, to:18},
+  {key:'evening', label:'Вечер', range:'18:00–24:00', from:18, to:24},
+];
+const SALE_QUEUE_KEY = 'pending:saletimes';
+let saleTimes = {};           // mk -> [записи]
+let saleTimesFetchedAt = {};  // mk -> ms
+let saleTimesLoading = {};
+let saleTimesEmpFilter = 'all';
+
+function saleZoned(ts){
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALE_TZ, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', hourCycle:'h23',
+  }).formatToParts(new Date(ts));
+  const g = t => (parts.find(p=>p.type===t)||{}).value || '00';
+  return { mk: g('year')+'-'+g('month'), hour: Number(g('hour'))%24, hhmm: g('hour')+':'+g('minute') };
+}
+
+function readSaleQueue(){
+  try{ return JSON.parse(localStorage.getItem(SALE_QUEUE_KEY)||'[]') || []; }catch(e){ return []; }
+}
+function writeSaleQueue(q){
+  try{ localStorage.setItem(SALE_QUEUE_KEY, JSON.stringify(q)); }catch(e){}
+}
+
+// Отправляем накопленные записи. Если связи нет — они ждут в localStorage
+// и уйдут при следующей синхронизации.
+let saleQueueFlushing = false;
+async function flushSaleTimeQueue(){
+  if(saleQueueFlushing) return;
+  const q = readSaleQueue();
+  if(!q.length) return;
+  saleQueueFlushing = true;
+  const left = [];
+  for(const item of q){
+    const ok = await storeSet(item.key, item.rec, SHARED);
+    if(!ok) left.push(item);
+  }
+  // за время отправки могли добавиться новые — сохраняем и их
+  const added = readSaleQueue().filter(n=>!q.some(o=>o.key===n.key));
+  writeSaleQueue(left.concat(added));
+  saleQueueFlushing = false;
+}
+
+function recordSaleTime(payload){
+  const ts = Date.now();
+  const z = saleZoned(ts);
+  const id = ts.toString(36) + Math.random().toString(36).slice(2,7);
+  const rec = {
+    id, ts, mk: z.mk, hour: z.hour, time: z.hhmm,
+    empId: myEmployeeId || '', empName: payload.whoSold || '',
+    client: payload.clientName || '', total: Number(payload.total)||0,
+    saleDate: payload.date || '',
+  };
+  const key = `saletime:${z.mk}:${id}`;
+  // сразу показываем локально, не дожидаясь базы
+  (saleTimes[z.mk] = saleTimes[z.mk] || []).push(rec);
+  const q = readSaleQueue(); q.push({key, rec}); writeSaleQueue(q);
+  flushSaleTimeQueue();
+  return rec;
+}
+
+async function loadSaleTimes(mk){
+  if(saleTimesLoading[mk]) return;
+  saleTimesLoading[mk] = true;
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('saletime:'+mk+':')}*&select=value&limit=10000`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = await res.json();
+    const list = [];
+    rows.forEach(r=>{ try{ const v = JSON.parse(r.value); if(v && v.ts) list.push(v); }catch(e){} });
+    // добавляем то, что ещё не долетело до базы с этого устройства
+    readSaleQueue().forEach(it=>{
+      if(it.rec && it.rec.mk===mk && !list.some(x=>x.id===it.rec.id)) list.push(it.rec);
+    });
+    const before = JSON.stringify(saleTimes[mk]||[]);
+    saleTimes[mk] = list;
+    saleTimesFetchedAt[mk] = Date.now();
+    if(before !== JSON.stringify(list) && mode==='admin' && adminUnlocked && !isEditingSomething()) render();
+  }catch(e){
+    console.error('loadSaleTimes failed', e);
+    saleTimesFetchedAt[mk] = Date.now(); // не долбим базу при ошибке
+  }finally{ saleTimesLoading[mk] = false; }
+}
+
+function ensureSaleTimes(mk){
+  const age = Date.now() - (saleTimesFetchedAt[mk]||0);
+  if(age > 20000) loadSaleTimes(mk);
+}
+
+function saleTimeStats(mk, empFilter){
+  const all = saleTimes[mk] || [];
+  const list = empFilter && empFilter!=='all'
+    ? all.filter(r => r.empId===empFilter || (!r.empId && r.empName===(employees.find(e=>e.id===empFilter)||{}).name))
+    : all;
+  const hours = Array.from({length:24}, ()=>({count:0, sum:0}));
+  list.forEach(r=>{
+    const h = Number.isFinite(r.hour) ? r.hour : saleZoned(r.ts).hour;
+    hours[h].count++; hours[h].sum += Number(r.total)||0;
+  });
+  const parts = SALE_PARTS.map(p=>{
+    let count=0, sum=0;
+    for(let h=p.from; h<p.to; h++){ count+=hours[h].count; sum+=hours[h].sum; }
+    return Object.assign({}, p, {count, sum, pct: list.length ? Math.round(count/list.length*100) : 0});
+  });
+  const topPart = parts.reduce((a,b)=> b.count>a.count ? b : a, parts[0]);
+  let topHour = 0;
+  hours.forEach((h,i)=>{ if(h.count > hours[topHour].count) topHour = i; });
+  // лучшее окно из 3 часов подряд — полезнее одиночного часа
+  let topWin = 0, topWinCount = -1;
+  for(let i=0;i<24;i++){
+    const c = hours[i].count + hours[(i+1)%24].count + hours[(i+2)%24].count;
+    if(c > topWinCount){ topWinCount = c; topWin = i; }
+  }
+  return { total:list.length, sum:list.reduce((s,r)=>s+(Number(r.total)||0),0), hours, parts, topPart, topHour, topWin, topWinCount };
+}
+
+function renderSaleTimesCard(mk){
+  ensureSaleTimes(mk);
+  const opEmps = employees.filter(e=>e.department==='op');
+  if(saleTimesEmpFilter!=='all' && !opEmps.some(e=>e.id===saleTimesEmpFilter)) saleTimesEmpFilter = 'all';
+  const st = saleTimeStats(mk, saleTimesEmpFilter);
+  const loaded = saleTimesFetchedAt[mk] != null;
+  const pad = n => String(n%24).padStart(2,'0') + ':00';
+  const maxHour = Math.max(1, ...st.hours.map(h=>h.count));
+  const maxPart = Math.max(1, ...st.parts.map(p=>p.count));
+  const empOptions = [`<option value="all">Все менеджеры ОП</option>`]
+    .concat(opEmps.map(e=>`<option value="${e.id}" ${e.id===saleTimesEmpFilter?'selected':''}>${escapeHtml(e.name)}</option>`)).join('');
+
+  const body = !st.total ? `
+    <div class="ov-att-empty" style="border-radius:var(--radius-md);border:1px solid var(--bg2);">
+      ${loaded ? `За ${monthLabel(mk)} продаж с отметкой времени пока нет. Время записывается автоматически при оформлении продажи через вкладку «Продажа».` : 'Загружаю…'}
+    </div>` : `
+    <div class="st-strip">
+      <div class="st-stat peak">
+        <div class="l">Больше всего продаж</div>
+        <div class="v">${st.topPart.label}</div>
+        <div class="s">${st.topPart.range} · ${st.topPart.pct}%</div>
+      </div>
+      <div class="st-stat">
+        <div class="l">Лучшее окно (3 ч)</div>
+        <div class="v">${pad(st.topWin)}–${pad(st.topWin+3)}</div>
+        <div class="s">${st.topWinCount} из ${st.total} продаж</div>
+      </div>
+      <div class="st-stat">
+        <div class="l">Пиковый час</div>
+        <div class="v">${pad(st.topHour)}</div>
+        <div class="s">${st.hours[st.topHour].count} прод. · ${fmtMoney(st.hours[st.topHour].sum)}</div>
+      </div>
+    </div>
+
+    <div class="cmp-section" style="margin-top:0;padding-top:0;border-top:none;">По времени суток</div>
+    ${st.parts.map(p=>`
+      <div class="st-part ${p===st.topPart && p.count>0 ? 'top':''}">
+        <span class="nm">${p.label}<small>${p.range}</small></span>
+        <span class="br"><i style="width:${Math.round(p.count/maxPart*100)}%"></i></span>
+        <span class="ct">${p.count} · ${p.pct}%<small>${fmtMoney(p.sum)}</small></span>
+      </div>`).join('')}
+
+    <div class="cmp-section">По часам</div>
+    <div class="st-hours">
+      ${st.hours.map((h,i)=>`
+        <div class="st-hour ${i===st.topHour && h.count>0 ? 'top':''}" title="${pad(i)}–${pad(i+1)}: ${h.count} прод., ${fmtMoney(h.sum)}">
+          ${h.count ? `<b style="bottom:calc(${Math.round(h.count/maxHour*100)}% + 2px);top:auto;">${h.count}</b>` : ''}
+          <i style="height:${Math.round(h.count/maxHour*100)}%"></i>
+        </div>`).join('')}
+    </div>
+    <div class="st-hlabels">${st.hours.map((_,i)=>`<span>${String(i).padStart(2,'0')}</span>`).join('')}</div>
+    <div class="cmp-pace-note">Всего ${st.total} прод. на ${fmtMoney(st.sum)}. Время — момент нажатия «Добавить в отчёт», по Алматы. Продажи, оформленные до этой функции, здесь не учитываются.</div>`;
+
+  return `
+    <div class="card">
+      <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:8px;">${icon('clock',16)} Время продаж ОП · ${monthLabel(mk)}</span>
+        ${opEmps.length > 1 ? `<select id="saleTimesEmpSelect" style="width:auto;min-width:160px;font-size:13px;">${empOptions}</select>` : ''}
+      </h2>
+      ${body}
+    </div>`;
+}
+
 async function submitSalesForm(){
   if(salesSubmitting) return;
   const url = salesScriptUrl.trim();
@@ -4327,6 +4550,9 @@ async function submitSalesForm(){
     earnings:     parseFloat(salesForm.earnings)||0,
     deliveryDate: salesForm.deliveryDate,
     sheetMonth:   salesForm.sheetMonth,
+    // время оформления (по Алматы) — Apps Script может записать его в отдельную колонку
+    saleTime:     saleZoned(Date.now()).hhmm,
+    createdAt:    new Date().toISOString(),
   };
 
   salesSubmitting = true;
@@ -4346,6 +4572,8 @@ async function submitSalesForm(){
     if(ok){
       salesResult = 'ok';
       salesResultMsg = 'Запись добавлена в отчёт!';
+      // Фиксируем время продажи для статистики в админке
+      try{ recordSaleTime(payload); }catch(e){ console.error('recordSaleTime', e); }
       // Показываем TG-уведомление
       showTgNotif(payload);
       // Сброс формы (кроме таргета и метода оплаты)
@@ -4637,6 +4865,8 @@ function renderAdminView(){
         ).join('')}
       </div>`;
     })()}
+
+    ${renderSaleTimesCard(editingMonth)}
 
     <div class="card">
       <h2>Ручная правка KPI · ${monthLabel(editingMonth)}</h2>
@@ -5119,6 +5349,7 @@ function attachDelegatedHandlers(){
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
+    if(ev.target.id === 'saleTimesEmpSelect'){ saleTimesEmpFilter = ev.target.value; ev.target.blur(); renderNow(); }
     if(ev.target.id === 'empMonthSelect'){ empViewMonth = ev.target.value; renderNow(); }
 
     // Ссылки на листы сохраняются сразу, как только поле потеряло фокус —
