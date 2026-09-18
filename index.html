@@ -498,6 +498,17 @@
   .cmp-section{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink4);margin:14px 0 2px 0;padding-top:12px;border-top:1px solid var(--bg2);}
   .cmp-section:first-child{margin-top:0;padding-top:0;border-top:none;}
   /* ── Время продаж ОП ── */
+  .st-manage{margin-top:14px;border:1px solid rgba(229,72,77,.25);border-radius:var(--radius-md);overflow:hidden;}
+  .st-manage-head{padding:9px 12px;background:var(--rust-tint);font-size:11.5px;font-weight:700;color:var(--rust-dark);display:flex;align-items:center;gap:8px;}
+  .st-manage-close{margin-left:auto;cursor:pointer;font-weight:600;text-decoration:underline;}
+  .st-manage-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--bg2);font-size:12.5px;background:var(--bg0);}
+  .st-manage-row .t{font-variant-numeric:tabular-nums;font-weight:700;flex:none;}
+  .st-manage-row .d{font-size:11px;color:var(--ink4);flex:none;}
+  .st-manage-row .c{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .st-manage-row .s{font-variant-numeric:tabular-nums;color:var(--ink3);flex:none;font-size:11.5px;}
+  .st-del{flex:none;border:none;background:var(--rust-tint);color:var(--rust-dark);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:12px;line-height:1;}
+  .st-del:hover{background:var(--rust);color:#fff;}
+  .st-manage-tag{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--rust);color:#fff;border-radius:20px;padding:2px 7px;}
   .st-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
   .st-stat{padding:12px 14px;border:1px solid var(--bg2);border-radius:var(--radius-md);background:var(--bg0);}
   .st-stat .l{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink4);}
@@ -4329,6 +4340,9 @@ let saleTimes = {};           // mk -> [записи]
 let saleTimesFetchedAt = {};  // mk -> ms
 let saleTimesLoading = {};
 let saleTimesEmpFilter = 'all';
+let saleTimesManage = false;   // скрытый режим удаления записей
+let saleTimesTitleClicks = 0;
+let saleTimesTitleTimer = null;
 
 function saleZoned(ts){
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -4393,7 +4407,7 @@ async function loadSaleTimes(mk){
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
     const list = [];
-    rows.forEach(r=>{ try{ const v = JSON.parse(r.value); if(v && v.ts) list.push(v); }catch(e){} });
+    rows.forEach(r=>{ try{ const v = JSON.parse(r.value); if(v && v.ts && !v.deleted) list.push(v); }catch(e){} });
     // добавляем то, что ещё не долетело до базы с этого устройства
     readSaleQueue().forEach(it=>{
       if(it.rec && it.rec.mk===mk && !list.some(x=>x.id===it.rec.id)) list.push(it.rec);
@@ -4406,6 +4420,25 @@ async function loadSaleTimes(mk){
     console.error('loadSaleTimes failed', e);
     saleTimesFetchedAt[mk] = Date.now(); // не долбим базу при ошибке
   }finally{ saleTimesLoading[mk] = false; }
+}
+
+// Удаление записи (например, тестовой продажи). Если база запрещает DELETE —
+// перезаписываем строку меткой deleted, при чтении такие записи пропускаются.
+async function deleteSaleTime(mk, id){
+  const key = `saletime:${mk}:${id}`;
+  // убираем из локальной очереди, если ещё не улетела
+  writeSaleQueue(readSaleQueue().filter(it=>it.key!==key));
+  let ok = false;
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}`, {
+      method:'DELETE',
+      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Prefer':'return=minimal' }
+    });
+    ok = res.ok;
+  }catch(e){ console.error('deleteSaleTime', e); }
+  if(!ok) ok = await storeSet(key, {id, mk, ts: Date.now(), deleted:true}, SHARED);
+  if(ok) saleTimes[mk] = (saleTimes[mk]||[]).filter(r=>r.id!==id);
+  return ok;
 }
 
 function ensureSaleTimes(mk){
@@ -4449,6 +4482,25 @@ function renderSaleTimesCard(mk){
   const pad = n => String(n%24).padStart(2,'0') + ':00';
   const maxHour = Math.max(1, ...st.hours.map(h=>h.count));
   const maxPart = Math.max(1, ...st.parts.map(p=>p.count));
+  const manage = !saleTimesManage ? '' : (()=>{
+    const list = (saleTimes[mk]||[]).slice().sort((a,b)=>b.ts-a.ts);
+    return `
+    <div class="st-manage">
+      <div class="st-manage-head">Удаление записей · ${list.length}
+        <span class="st-manage-close" id="saleTimesManageClose">закрыть</span>
+      </div>
+      ${list.length ? list.map(r=>`
+        <div class="st-manage-row">
+          <span class="t">${escapeHtml(r.time||'')}</span>
+          <span class="d">${escapeHtml(r.saleDate||'')}</span>
+          <span class="c">${escapeHtml(r.client||'без имени')}${r.empName?` · ${escapeHtml(r.empName)}`:''}</span>
+          <span class="s">${fmtMoney(r.total)}</span>
+          <button class="st-del" data-saletime-del="${r.id}" data-mk="${mk}" title="Удалить запись">✕</button>
+        </div>`).join('') : '<div class="ov-att-empty">Записей нет</div>'}
+      <div class="hint" style="margin-top:8px;">Удаляется только отметка времени в приложении. Строка в Google Таблице остаётся — её нужно удалить вручную.</div>
+    </div>`;
+  })();
+
   const empOptions = [`<option value="all">Все менеджеры ОП</option>`]
     .concat(opEmps.map(e=>`<option value="${e.id}" ${e.id===saleTimesEmpFilter?'selected':''}>${escapeHtml(e.name)}</option>`)).join('');
 
@@ -4496,10 +4548,11 @@ function renderSaleTimesCard(mk){
   return `
     <div class="card">
       <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="display:flex;align-items:center;gap:8px;">${icon('clock',16)} Время продаж ОП · ${monthLabel(mk)}</span>
+        <span id="saleTimesTitle" style="display:flex;align-items:center;gap:8px;cursor:default;user-select:none;-webkit-user-select:none;">${icon('clock',16)} Время продаж ОП · ${monthLabel(mk)}${saleTimesManage?'<span class="st-manage-tag">режим удаления</span>':''}</span>
         ${opEmps.length > 1 ? `<select id="saleTimesEmpSelect" style="width:auto;min-width:160px;font-size:13px;">${empOptions}</select>` : ''}
       </h2>
       ${body}
+      ${manage}
     </div>`;
 }
 
@@ -5074,6 +5127,33 @@ function attachDelegatedHandlers(){
 
     const tab = el.closest('.tab');
     if(tab){ mode = tab.dataset.mode; renderNow(); return; }
+
+    // Скрытый режим удаления отметок времени: 5 быстрых нажатий по заголовку карточки
+    if(el.closest('#saleTimesTitle')){
+      saleTimesTitleClicks++;
+      clearTimeout(saleTimesTitleTimer);
+      saleTimesTitleTimer = setTimeout(()=>{ saleTimesTitleClicks = 0; }, 1500);
+      if(saleTimesTitleClicks >= 5){
+        saleTimesTitleClicks = 0;
+        saleTimesManage = !saleTimesManage;
+        renderNow();
+        showToast(saleTimesManage ? 'Режим удаления записей включён' : 'Режим удаления выключен', saleTimesManage ? 'error' : 'success');
+      }
+      return;
+    }
+    if(el.closest('#saleTimesManageClose')){ saleTimesManage = false; renderNow(); return; }
+    const stDelBtn = el.closest('[data-saletime-del]');
+    if(stDelBtn){
+      const id = stDelBtn.dataset.saletimeDel, mk = stDelBtn.dataset.mk;
+      const rec = (saleTimes[mk]||[]).find(r=>r.id===id);
+      const okConfirm = await showConfirm('Удалить отметку времени?', (rec ? `«${rec.client||'без имени'}» в ${rec.time}. ` : '') + 'Строка в Google Таблице останется — её нужно удалить вручную.', 'Удалить');
+      if(!okConfirm) return;
+      stDelBtn.disabled = true;
+      const ok = await deleteSaleTime(mk, id);
+      renderNow();
+      showToast(ok ? 'Запись удалена' : 'Не удалось удалить — нет связи с базой', ok ? 'success' : 'error');
+      return;
+    }
 
     const pickBtn = el.closest('[data-pick]');
     if(pickBtn){ selectingEmpId = pickBtn.dataset.pick; empPinInput=''; empPinError=''; renderNow(); return; }
