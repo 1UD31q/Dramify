@@ -243,6 +243,44 @@
   .hint{font-size:12px;color:var(--ink4);line-height:1.55;margin-top:10px;}
   .empty{color:var(--ink4);font-size:13px;text-align:center;padding:22px 0;}
 
+  /* ── Вкладки админки ── */
+  .admin-tabs{
+    display:flex; gap:2px; margin-bottom:18px;
+    background:var(--bg1); padding:3px; border-radius:12px;
+    border:1px solid var(--line); overflow-x:auto;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  }
+  .admin-tabs::-webkit-scrollbar{display:none;}
+  .admin-tab{
+    flex:1; min-width:max-content; padding:9px 16px; border-radius:9px;
+    font-size:13px; font-weight:600; color:var(--muted);
+    text-align:center; cursor:pointer; user-select:none; white-space:nowrap;
+    transition:background .15s ease, color .15s ease;
+  }
+  .admin-tab:hover{color:var(--ink);}
+  .admin-tab.active{background:var(--bg0); color:var(--p6); box-shadow:var(--shadow-sm);}
+  .admin-pane{display:none;}
+  .admin-pane.active{display:block;}
+  .settings-group{
+    border:1px solid var(--line); border-radius:var(--radius-md);
+    margin-bottom:10px; background:var(--bg0); overflow:hidden;
+  }
+  .settings-group > summary{
+    padding:13px 16px; cursor:pointer; user-select:none;
+    font-size:13.5px; font-weight:600; color:var(--ink);
+    display:flex; align-items:center; justify-content:space-between;
+    list-style:none;
+  }
+  .settings-group > summary::-webkit-details-marker{display:none;}
+  .settings-group > summary::after{
+    content:'\25BE'; font-size:11px; color:var(--muted);
+    transition:transform .2s ease;
+  }
+  .settings-group[open] > summary::after{transform:rotate(180deg);}
+  .settings-group[open] > summary{border-bottom:1px solid var(--line);}
+  .settings-group .group-body{padding:14px 16px 16px;}
+  .settings-group .group-hint{font-size:11.5px; font-weight:400; color:var(--muted); margin-left:8px;}
+  .kpi-emp-select{margin-bottom:14px;}
   .switch-user{font-size:12px;color:var(--p5);text-align:center;margin-top:12px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-weight:500;}
 
   /* ── PIN ── */
@@ -2751,7 +2789,9 @@ let syncing = {};     // ключи: 'op_2025-08', 'to_2025-08', ...
 // Ручной график: schedules[monthKey][empId] = { '5': true, '12': true, ... } — номера дней, помеченных выходными.
 // По умолчанию (нет записи) день считается рабочим.
 let schedules = {};
-let scheduleEmpId = null; // какого сотрудника сейчас редактирует админ
+let scheduleEmpId = null;
+let adminTab = 'summary';      // активная вкладка админки
+let kpiEditEmpId = null;       // чей KPI правим сейчас // какого сотрудника сейчас редактирует админ
 
 const SEED_MONTH_DATA = {
   e1: {orders:15, completed:15, netAmount:983979, avgCheck:65599, pending:0, plan:0},
@@ -4676,37 +4716,49 @@ function renderAdminView(){
   const groups = {};
   employees.forEach(e=>{ (groups[e.department]=groups[e.department]||[]).push(e); });
 
+  // Редактор KPI показывает ОДНОГО сотрудника за раз.
+  // Раньше на экран вываливались поля всех сразу — десятки инпутов,
+  // из которых в момент нужны два-три.
+  const editableEmps = employees.filter(e => DEPARTMENTS[e.department]);
+  if(!kpiEditEmpId || !editableEmps.find(e=>e.id===kpiEditEmpId)){
+    kpiEditEmpId = editableEmps[0] ? editableEmps[0].id : null;
+  }
+
   let kpiEditor = '';
-  Object.keys(groups).forEach(dept=>{
-    // ИСПРАВЛЕНО: DEPARTMENTS[dept].fields падал для отдела вне 'op'/'to' (например 'os')
-    // и роняла ВСЮ админку — экран оставался пустым. Теперь такой отдел просто пропускается.
-    const deptDef = DEPARTMENTS[dept];
-    if(!deptDef) return;
-    kpiEditor += `<div class="dept-group-title">${deptLabel(dept)}</div>`;
-    groups[dept].forEach(e=>{
-      const k = getKpi(e.id, editingMonth);
-      const autoPlan = planShareFor(dept, editingMonth);
-      kpiEditor += `<div class="emp-edit-block">
-        <div class="emp-edit-name">${escapeHtml(e.name)}</div>
-        <div class="field-grid">
-          ${deptDef.fields.filter(f=>!f.computed).map(f=>{
-            if(f.key==='plan' && autoPlan!=null){
-              return `<div class="field-item">
-                <label>${f.label} <span style="font-weight:400;color:var(--muted);">(авто, поровну по трекеру)</span></label>
-                <input type="number" value="${autoPlan}" disabled style="opacity:.65;">
-              </div>`;
-            }
-            return `
-            <div class="field-item">
-              <label>${f.label}</label>
-              <input type="${f.type}" ${f.type==='number'?'min="0" step="any"':''} data-emp="${e.id}" data-field="${f.key}" value="${escapeHtml(k[f.key])}">
-            </div>
-          `;
-          }).join('')}
-        </div>
-      </div>`;
-    });
-  });
+  if(!editableEmps.length){
+    kpiEditor = '<div class="empty">Нет сотрудников с настроенным отделом</div>';
+  } else {
+    const sel = `<div class="kpi-emp-select">
+      <select id="kpiEmpSelect">
+        ${editableEmps.map(e=>
+          `<option value="${e.id}" ${e.id===kpiEditEmpId?'selected':''}>${escapeHtml(e.name)} · ${deptLabel(e.department)}</option>`
+        ).join('')}
+      </select>
+    </div>`;
+
+    const e = editableEmps.find(x=>x.id===kpiEditEmpId);
+    const deptDef = DEPARTMENTS[e.department];
+    const k = getKpi(e.id, editingMonth);
+    const autoPlan = planShareFor(e.department, editingMonth);
+
+    kpiEditor = sel + `<div class="emp-edit-block">
+      <div class="field-grid">
+        ${deptDef.fields.filter(f=>!f.computed).map(f=>{
+          if(f.key==='plan' && autoPlan!=null){
+            return `<div class="field-item">
+              <label>${f.label} <span style="font-weight:400;color:var(--muted);">(авто, поровну по трекеру)</span></label>
+              <input type="number" value="${autoPlan}" disabled style="opacity:.65;">
+            </div>`;
+          }
+          return `
+          <div class="field-item">
+            <label>${f.label}</label>
+            <input type="${f.type}" ${f.type==='number'?'min="0" step="any"':''} data-emp="${e.id}" data-field="${f.key}" value="${escapeHtml(k[f.key])}">
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
 
   const logLine = (l)=>{
     const emp = employees.find(e=>e.id===l.empId);
@@ -4779,7 +4831,23 @@ function renderAdminView(){
       </div>`),
   ].join('');
 
+  const tabs = [
+    ['summary',  'Сводка'],
+    ['team',     'Команда'],
+    ['data',     'Данные'],
+    ['settings', 'Настройки'],
+  ];
+  const tabsHtml = `<div class="admin-tabs">${
+    tabs.map(([id,label])=>
+      `<div class="admin-tab${adminTab===id?' active':''}" data-admin-tab="${id}">${label}</div>`
+    ).join('')
+  }</div>`;
+
   return `
+    ${tabsHtml}
+
+    <!-- ══════════ СВОДКА ══════════ -->
+    <div class="admin-pane${adminTab==='summary'?' active':''}" data-pane="summary">
     <div class="admin-dashboard-grid">
     <div class="admin-col-left">
 
@@ -4900,7 +4968,7 @@ function renderAdminView(){
       };
       return `
       <div class="card">
-        <h2>${icon('trend',16)} ${monthLabel(cmp.prevKey)} → ${monthLabel(editingMonth)}</h2>
+        <h2>${monthLabel(cmp.prevKey)} → ${monthLabel(editingMonth)}</h2>
 
         ${cmp.pace ? `
           <div class="cmp-section">Темп на ${cmp.dayNow}-е число</div>
@@ -4924,8 +4992,24 @@ function renderAdminView(){
 
     ${renderSaleTimesCard(editingMonth)}
 
+    </div><!-- /admin-col-left -->
+    <div class="admin-col-right">
+
+    <div class="card">
+      <h2>Журнал посещений · сегодня</h2>
+      ${todayLogRows || '<div class="empty">Сегодня отметок не было</div>'}
+    </div>
+
+    </div><!-- /admin-col-right -->
+    </div><!-- /admin-dashboard-grid -->
+    </div><!-- /pane summary -->
+
+    <!-- ══════════ КОМАНДА ══════════ -->
+    <div class="admin-pane${adminTab==='team'?' active':''}" data-pane="team">
+
     <div class="card">
       <h2>Ручная правка KPI · ${monthLabel(editingMonth)}</h2>
+      <p class="hint" style="margin:-4px 0 12px;">Обычно показатели подтягиваются из таблиц автоматически. Правьте вручную только если данные разошлись.</p>
       <details>
         <summary style="cursor:pointer;font-size:13px;color:var(--muted);user-select:none;">Открыть редактор</summary>
         <div class="hint" style="margin-top:8px;">Значения перезапишутся при следующей синхронизации с Google Таблицей. Используйте только для разовых правок.</div>
@@ -4948,8 +5032,18 @@ function renderAdminView(){
       </div>
     </div>
 
+    </div><!-- /pane team -->
+
+    <!-- ══════════ ДАННЫЕ ══════════ -->
+    <div class="admin-pane${adminTab==='data'?' active':''}" data-pane="data">
+
     <div class="card">
-      <h2>Google Таблица</h2>
+      <h2>Источники данных</h2>
+      <p class="hint" style="margin-bottom:14px;">Ссылки на Google-таблицы, из которых подтягиваются показатели. Настраивается один раз.</p>
+
+    <details class="settings-group">
+      <summary>Google Таблица<span class="group-hint">KPI отделов</span></summary>
+      <div class="group-body">
       <div class="hint" style="margin-top:0;">Для каждого месяца своя ссылка на лист. Вставьте обычную ссылку из браузера — приложение само возьмёт нужный лист по gid.</div>
       ${Object.keys(kpiData).sort().reverse().map(mk => {
         const opUrl = getSheetUrl('op', mk);
@@ -4985,10 +5079,13 @@ function renderAdminView(){
           </div>
         </details>`;
       }).join('')}
-    </div>
 
-    <div class="card">
-      <h2>Лист «Касса»</h2>
+      </div>
+    </details>
+
+    <details class="settings-group">
+      <summary>Лист «Касса»<span class="group-hint">фактические поступления</span></summary>
+      <div class="group-body">
       <div class="hint" style="margin-top:0;">Отдельная ссылка на месяц. Просто складывает колонку <b>G</b> → чистая касса и колонку <b>H</b> → висит остаток. Никакой фильтрации.</div>
       ${Object.keys(kpiData).sort().reverse().map(mk => {
         const cUrl = cashUrls[mk]||'';
@@ -5013,10 +5110,13 @@ function renderAdminView(){
           </div>
         </details>`;
       }).join('')}
-    </div>
 
-    <div class="card">
-      <h2>Трекер тенденции</h2>
+      </div>
+    </details>
+
+    <details class="settings-group">
+      <summary>Трекер тенденции<span class="group-hint">план и динамика</span></summary>
+      <div class="group-body">
       <div class="hint" style="margin-top:0;">Для каждого месяца своя ссылка на трекер.</div>
       ${Object.keys(kpiData).sort().reverse().map(mk => {
         const tUrl = trackerUrls[mk]||'';
@@ -5040,20 +5140,30 @@ function renderAdminView(){
           </div>
         </details>`;
       }).join('')}
-    </div>
 
-    <div class="card">
-      <h2>Отчёт продаж (форма ОП)</h2>
+      </div>
+    </details>
+
+    <details class="settings-group">
+      <summary>Отчёт продаж<span class="group-hint">форма для ОП</span></summary>
+      <div class="group-body">
       <div class="hint" style="margin-top:0;">Сотрудники ОП заполняют форму прямо в приложении — данные отправляются в Google-таблицу через Apps Script. Вставьте ссылку на задеплоенный Web App (Выполнить как: я; Доступ: все).</div>
       <div class="row" style="margin-top:12px;">
         <input type="text" id="salesScriptUrlInput" value="${escapeHtml(salesScriptUrl||'')}" placeholder="https://script.google.com/macros/s/…/exec">
         <button class="btn small" id="saveSalesScriptBtn">Сохранить</button>
       </div>
       <div class="hint" style="margin-top:8px;">После деплоя Google Apps Script вставьте сюда URL вида <span class="mono" style="font-size:11px;">https://script.google.com/macros/s/…/exec</span></div>
-    </div>
 
-    </div><!-- /admin-col-left -->
-    <div class="admin-col-right">
+      </div>
+    </details>
+
+    </div><!-- /card Источники данных -->
+    </div><!-- /pane data -->
+
+    <!-- ══════════ НАСТРОЙКИ ══════════ -->
+    <div class="admin-pane${adminTab==='settings'?' active':''}" data-pane="settings">
+    <div class="admin-dashboard-grid">
+    <div class="admin-col-left">
 
     <div class="card">
       <h2>Сотрудники и PIN</h2>
@@ -5081,10 +5191,8 @@ function renderAdminView(){
       </div>
     </div>
 
-    <div class="card">
-      <h2>Журнал посещений · сегодня</h2>
-      ${todayLogRows.length===0? '<div class="empty">Логов пока нет</div>' : todayLogRows}
-    </div>
+    </div><!-- /admin-col-left -->
+    <div class="admin-col-right">
 
     <div class="card">
       <h2 id="toggleLogsBtn" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
@@ -5104,6 +5212,7 @@ function renderAdminView(){
 
     </div><!-- /admin-col-right -->
     </div><!-- /admin-dashboard-grid -->
+    </div><!-- /pane settings -->
   `;
 }
 
@@ -5126,6 +5235,10 @@ async function runOnce(fn){
 
 function attachDelegatedHandlers(){
   document.addEventListener('click', async (ev)=>{
+    // ---- Вкладки админки ----
+    const tabEl = ev.target.closest('[data-admin-tab]');
+    if(tabEl){ adminTab = tabEl.dataset.adminTab; renderNow(); return; }
+
     const el = ev.target;
 
     const tab = el.closest('.tab');
@@ -5432,6 +5545,7 @@ function attachDelegatedHandlers(){
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
+    if(ev.target.id === 'kpiEmpSelect'){ kpiEditEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'saleTimesEmpSelect'){ saleTimesEmpFilter = ev.target.value; ev.target.blur(); renderNow(); }
     if(ev.target.id === 'empMonthSelect'){ empViewMonth = ev.target.value; renderNow(); }
 
