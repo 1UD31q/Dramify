@@ -2201,7 +2201,6 @@ function deptOverview(dept, monthKey){
       plan: den,
       pct: den>0 ? Math.round(num/den*100) : null,
       rate: den>0 ? rateFor(num/den*100) : null,
-      pay: den>0 ? Math.round(num*rateFor(num/den*100)/100) : null,
       orders: dept==='to' ? (Number(k.orders)||0) : (Number(k.deals)||0),
       avgTime: avgCompletionTime(e.id, monthKey),
       trend: personalTrend(e.id, monthKey, num, den),
@@ -4872,7 +4871,7 @@ function renderAdminView(){
             <span>${p.avgTime ? `⏱ ${fmtAvg(p.avgTime)} · ${p.avgTime.count} зак.` : '⏱ нет завершённых'}</span>
             ${p.trend ? `<span class="ptrend ${pctClass(p.trend.pct)}">тенденция ${p.trend.pct}%</span>` : ''}
           </div>
-          ${p.rate!=null ? `<div class="ov-person-pay"><span>ставка ${p.rate}%</span><b>ЗП ${fmtMoney(p.pay)}</b></div>` : ''}
+          ${p.rate!=null ? `<div class="ov-person-pay"><span>ставка ${p.rate}%</span></div>` : ''}
         </div>`).join('')}
       ${ov.unassigned>0 ? `<div class="ov-person unassigned"><div class="ov-person-top"><span class="pname">Основатели и продажи без имени</span><span class="pval">${fmtMoney(ov.unassigned)}</span></div><div class="ov-person-sub"><span>Разница между кассой и суммой по сотрудникам</span></div></div>` : ''}
     </div>`;
