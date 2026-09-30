@@ -243,7 +243,6 @@
   .hint{font-size:12px;color:var(--ink4);line-height:1.55;margin-top:10px;}
   .empty{color:var(--ink4);font-size:13px;text-align:center;padding:22px 0;}
 
-  select.employee-picker{margin-bottom:14px;}
   .switch-user{font-size:12px;color:var(--p5);text-align:center;margin-top:12px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-weight:500;}
 
   /* ── PIN ── */
@@ -664,7 +663,6 @@
      ========================================================================= */
 
   /* Сводка статусов сверху карточки */
-  .order-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
   .order-stat{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:12.5px;font-weight:600;background:var(--paper);}
   .order-stat.work{background:var(--teal-tint);color:var(--teal-dark);}
   .order-stat.paused{background:rgba(245,158,11,.1);color:#92400e;}
@@ -678,7 +676,6 @@
 
   /* Верхняя строка заказа: номер + имя + таймер */
   .order-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
-  .order-num{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;flex:none;}
   .order-client{font-size:14px;font-weight:600;flex:1;color:var(--ink);}
   .order-timer{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--teal-dark);background:var(--teal-tint);border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .order-timer.warn{background:rgba(245,158,11,.12);color:#92400e;}
@@ -696,7 +693,6 @@
   .order-btn.pause-btn{border-color:rgba(245,158,11,.35);color:#92400e;background:rgba(245,158,11,.08);}
   .order-btn.pause-btn:hover{background:rgba(245,158,11,.14);}
   .order-btn.resume-btn{border-color:rgba(29,185,84,.3);color:var(--teal-dark);background:var(--teal-tint);}
-  .order-btn.status-btn{border-color:rgba(124,82,200,.25);color:var(--p6);background:var(--p1);}
 
   /* Поле комментария */
   .order-comment-wrap{margin-top:8px;}
@@ -777,8 +773,6 @@
   /* Successful orders */
   .order-item.done-item{opacity:.88;background:rgba(29,185,84,.04);border-color:rgba(29,185,84,.18);}
   .order-item.done-item .order-client{color:var(--teal-dark);}
-
-
 
   /* =========================================================================
      DESKTOP PREMIUM REDESIGN — wide layout, sidebar nav, elevated feel
@@ -1399,6 +1393,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // состояние не прочитано успешно, запись важных ключей запрещена.
 // =========================================================================
 let storeReadFailed = false;   // была ли ошибка чтения в текущей серии
+let pollFailStreak  = 0;       // сколько опросов подряд не прочитались
 let stateLoaded = false;       // общее состояние успешно прочитано хотя бы раз
 
 // Ключи, потеря которых необратима — их нельзя писать «вслепую»
@@ -1786,9 +1781,19 @@ async function pollSharedData(){
     // Если чтение упало — данные могли прийти из локального кэша.
     // Применять их поверх текущих не нужно: в памяти уже актуальнее.
     if(storeReadFailed){
-      if(stateLoaded){ stateLoaded = false; showToast('Нет связи с базой — сохранение приостановлено', 'error'); }
+      // Одна сетевая ошибка из четырнадцати запросов — ещё не потеря связи.
+      // Раньше любой единичный сбой сразу выключал сохранение и показывал
+      // тревожный тост, а следующий успешный опрос возвращал всё обратно —
+      // отсюда мигание «нет связи / связь восстановлена».
+      // Теперь переходим в режим только чтения лишь после двух подряд.
+      pollFailStreak++;
+      if(pollFailStreak >= 2 && stateLoaded){
+        stateLoaded = false;
+        showToast('Нет связи с базой — сохранение приостановлено', 'error');
+      }
       return;
     }
+    pollFailStreak = 0;
 
     // Чтение прошло успешно — если раньше сидели в режиме «только чтение»,
     // связь вернулась, можно снова сохранять.
@@ -2392,7 +2397,7 @@ function renderOrderCard(o, empId, showTimer){
     ? `<button class="order-btn resume-btn" data-order-resume="${o.id}" data-emp-id="${empId}">▶ Возобновить</button>`
     : `<button class="order-btn pause-btn" data-order-pause="${o.id}" data-emp-id="${empId}">⏸ Пауза</button>`;
 
-  const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
+  const commentSaved = `<div class="order-comment-saved" id="saved-${empId}-${o.id}">✓ сохранено</div>`;
 
   const metaLine = [
     o.gross     ? `💰 ${fmtMoney(o.gross)}`              : '',
@@ -2494,7 +2499,7 @@ function renderOrdersBlock(empId, monthKey){
 
 // Рендер карточки заказа для ОП (без таймера, без паузы, с ТО-специалистом)
 function renderOrderCardOP(o, empId){
-  const commentSaved = `<div class="order-comment-saved" id="saved-${o.id}">✓ сохранено</div>`;
+  const commentSaved = `<div class="order-comment-saved" id="saved-${empId}-${o.id}">✓ сохранено</div>`;
 
   // Строка 1: финансы
   const financeLine = [
@@ -3649,8 +3654,6 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         Object.assign(ordersData[targetMonth], newOrdersData);
         await storeSet('app:ordersData', ordersData, SHARED);
       }
-
-
 
     } else {
       const nameIdx = header.findIndex(h=>/имя|name/i.test(h));
@@ -5477,7 +5480,7 @@ function attachDelegatedHandlers(){
       if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
       ordersOverlay[orderId].comment = ta.value;
       await saveOverlay();
-      const saved = document.getElementById('saved-' + orderId);
+      const saved = document.getElementById('saved-' + empId + '-' + orderId);
       if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
     }, 800);
   });
