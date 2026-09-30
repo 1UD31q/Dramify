@@ -2253,8 +2253,10 @@ function attentionItems(monthKey){
   const PAUSE_ALERT_MS = 24*3600000; // пауза дольше суток
 
   employees.forEach(e=>{
+    if(e.department!=='to') return; // задерживать заказы может только ТО
     getOrdersForEmp(e.id, monthKey).forEach(o=>{
       if(o.isDone) return;
+      if(String(o.status||'').toLowerCase().includes('оплат')) return; // «Ждёт оплату» — не задержка
       if(o.paused && o.pausedAt && (Date.now()-o.pausedAt) > PAUSE_ALERT_MS){
         paused.push({emp:e.name, client:o.client, reason:o.pauseReason, since:o.pausedAt});
         return;
