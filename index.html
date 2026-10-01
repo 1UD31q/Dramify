@@ -1076,11 +1076,9 @@
       margin-bottom: 0;
       flex-shrink: 0;
     }
-
-
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 14px;
-    }
+    /* (здесь была осиротевшая строка без селектора «grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }» —
+       её скобка закрывала весь десктопный блок @media (min-width: 900px) на 160 строк раньше времени,
+       и правила для широкого экрана действовали на телефонах) */
     .kpi-box {
       padding: 18px 16px;
       border-radius: 14px;
@@ -1447,6 +1445,27 @@
   .log-fold[open]>summary h2::after{transform:rotate(-135deg);}
   .log-fold[open]>summary{margin-bottom:10px;}
   .log-count{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg2);color:var(--ink3);}
+
+  /* ── Сотрудники и доступ: карточка с подписями вместо тесной строки ── */
+  .emp-access-card{border:1px solid var(--bg3);border-radius:var(--radius-md);padding:14px;margin-top:12px;}
+  .emp-access-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+  .emp-access-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .emp-access-dept{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);
+    background:var(--bg2);border-radius:20px;padding:3px 9px;}
+  .emp-access-role{font-size:11px;font-weight:600;color:var(--p6);background:var(--p1);border-radius:20px;padding:3px 9px;}
+  .emp-access-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .emp-access-grid .full{grid-column:1 / -1;}
+  .emp-access-grid .fld{min-width:0;}
+  .emp-access-grid label.field-label{margin-bottom:6px;}
+  .emp-save-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
+
+  /* Опасная кнопка. Раньше мелкая «Удалить» была зелёной (стиль мелких кнопок перебивал
+     красный) и выглядела как «подтвердить». Теперь контурная красная. */
+  .btn.small.danger{
+    background:transparent;color:var(--red);border:1px solid rgba(229,72,77,.5);box-shadow:none;filter:none;
+  }
+  .btn.small.danger:hover{background:rgba(229,72,77,.12);filter:none;}
+  .emp-del{min-height:34px !important;padding:5px 12px !important;font-size:13px;}
 </style>
 </head>
 <body>
@@ -5689,33 +5708,60 @@ function renderAdminView(){
     <div class="card">
       <h2>Сотрудники и доступ</h2>
       ${employees.map(e=>`
-        <div class="row" style="margin-top:8px;flex-wrap:wrap;">
-          <input type="text" data-nameemp="${e.id}" value="${escapeHtml(e.name)}" style="flex:2;">
-          <input type="email" data-emailemp="${e.id}" value="${escapeHtml(e.email||'')}" placeholder="почта для входа" autocomplete="off" style="flex:2;">
-          <select data-roleemp="${e.id}" style="flex:1.3;">
-            <option value="" ${e.role!=='teamlead'?'selected':''}>Сотрудник</option>
-            <option value="teamlead" ${e.role==='teamlead'?'selected':''}>Тимлид</option>
-          </select>
-          <input type="number" min="0" max="100" step="0.5" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="Фикс %" style="flex:.9;">
-          <button class="btn danger small" data-delemp="${e.id}" style="flex:none;">Удалить</button>
+        <div class="emp-access-card">
+          <div class="emp-access-top">
+            <div class="emp-access-badges">
+              <span class="emp-access-dept">${escapeHtml(deptLabel(e.department))}</span>
+              ${e.role==='teamlead' ? '<span class="emp-access-role">Тимлид</span>' : ''}
+            </div>
+            <button class="btn small danger emp-del" data-delemp="${e.id}">Удалить</button>
+          </div>
+          <div class="emp-access-grid">
+            <div class="fld full">
+              <label class="field-label">Имя</label>
+              <input type="text" data-nameemp="${e.id}" value="${escapeHtml(e.name)}">
+            </div>
+            <div class="fld full">
+              <label class="field-label">Почта для входа</label>
+              <input type="email" data-emailemp="${e.id}" value="${escapeHtml(e.email||'')}" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email">
+            </div>
+            <div class="fld">
+              <label class="field-label">Роль</label>
+              <select data-roleemp="${e.id}">
+                <option value="" ${e.role!=='teamlead'?'selected':''}>Сотрудник</option>
+                <option value="teamlead" ${e.role==='teamlead'?'selected':''}>Тимлид</option>
+              </select>
+            </div>
+            <div class="fld">
+              <label class="field-label">Фикс. ставка, %</label>
+              <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="по плану">
+            </div>
+          </div>
         </div>`).join('')}
-      <button class="btn small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
+      <div class="emp-save-row"><button class="btn small" id="savePinsBtn">Сохранить</button></div>
       <div class="hint" style="margin-top:10px;">Чтобы дать доступ: сначала пригласите человека в Supabase (Authentication → Users → Invite user), затем впишите здесь ту же почту и нажмите «Сохранить».</div>
     </div>
 
     <div class="card">
       <h2>Добавить сотрудника</h2>
-      <div class="row">
-        <input type="text" id="newEmpName" placeholder="Имя">
-        <select id="newEmpDept">
-          <option value="op">ОП</option>
-          <option value="to">ТО</option>
-        </select>
+      <div class="emp-access-grid" style="margin-top:6px;">
+        <div class="fld">
+          <label class="field-label">Имя</label>
+          <input type="text" id="newEmpName" placeholder="Например, Алишер">
+        </div>
+        <div class="fld">
+          <label class="field-label">Отдел</label>
+          <select id="newEmpDept">
+            <option value="op">ОП</option>
+            <option value="to">ТО</option>
+          </select>
+        </div>
+        <div class="fld full">
+          <label class="field-label">Почта для входа</label>
+          <input type="email" id="newEmpEmail" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email">
+        </div>
       </div>
-      <div class="row">
-        <input type="email" id="newEmpEmail" placeholder="Почта для входа">
-        <button class="btn small" id="addEmpBtn">Добавить</button>
-      </div>
+      <div class="emp-save-row"><button class="btn small" id="addEmpBtn">Добавить</button></div>
     </div>
 
     </div><!-- /admin-col-left -->
