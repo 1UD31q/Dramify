@@ -1408,6 +1408,19 @@
   .ov-person-pay{display:flex;justify-content:space-between;font-size:12px;color:var(--ink3);margin-top:4px;}
   .ov-person-pay b{color:var(--ink);font-weight:600;}
   .ov-person.unassigned{border-top:1px dashed var(--bg3);margin-top:6px;padding-top:8px;}
+
+  /* ── Вход по почте ── */
+  .auth-out .tabs, .auth-out #salesTab{display:none !important;}
+  .auth-wrap{max-width:400px;margin:36px auto 0;}
+  .auth-card h2{margin-bottom:6px;}
+  .auth-card .field-label{display:block;margin:12px 0 4px;}
+  .auth-card input{width:100%;box-sizing:border-box;}
+  .auth-msg{min-height:18px;margin-top:10px;font-size:12.5px;line-height:1.4;color:var(--red);}
+  .auth-msg.ok{color:var(--green);}
+  .auth-links{margin-top:14px;text-align:center;font-size:12.5px;}
+  .auth-links a{color:var(--p6);cursor:pointer;text-decoration:underline;}
+  .auth-or{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:12px;}
+  .auth-or::before,.auth-or::after{content:'';flex:1;height:1px;background:var(--line);}
 </style>
 </head>
 <body>
@@ -1452,6 +1465,319 @@ const EMP_PIN_LEN = 4;
 const SUPABASE_URL = 'https://wujcylwtjwbnpqjupslp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1amN5bHd0andibnBxanVwc2xwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDkyMDAsImV4cCI6MjA5OTA4NTIwMH0.uq8FPREpqeXxZH8oAuDZNeLaP9ZstoFh_KaW-3StTII';
 
+
+// =========================================================================
+// ВХОД ПО ПОЧТЕ (Supabase Auth). Работает напрямую через REST, без SDK.
+// Сессия хранится в localStorage; токен доступа обновляется сам.
+// Роль администратора берётся из app_metadata.role === 'admin' — её нельзя
+// изменить из браузера, её выставляет только владелец проекта в Supabase.
+// =========================================================================
+const AUTH_STORE = 'dramify-auth-v1';
+const AUTH_FLASH = 'dramify-auth-msg';
+let authSession = null;      // {access_token, refresh_token, expires_at(сек), user, needPw}
+let authRefreshing = null;
+let authBusy = false;
+
+function authLoadSession(){
+  try{ const raw = localStorage.getItem(AUTH_STORE); authSession = raw ? JSON.parse(raw) : null; }
+  catch(e){ authSession = null; }
+  return authSession;
+}
+function authSaveSession(sess){
+  authSession = sess;
+  try{ if(sess) localStorage.setItem(AUTH_STORE, JSON.stringify(sess)); else localStorage.removeItem(AUTH_STORE); }catch(e){}
+}
+function authFromResponse(j, keep){
+  if(!j || !j.access_token) return null;
+  return {
+    access_token: j.access_token,
+    refresh_token: j.refresh_token,
+    expires_at: j.expires_at || (Math.floor(Date.now()/1000) + (j.expires_in || 3600)),
+    user: j.user || (keep && keep.user) || null,
+    needPw: keep ? !!keep.needPw : false
+  };
+}
+function authEmail(){
+  const u = authSession && authSession.user;
+  return u && u.email ? String(u.email).trim().toLowerCase() : '';
+}
+function authIsAdmin(){
+  const u = authSession && authSession.user;
+  return !!(u && u.app_metadata && u.app_metadata.role === 'admin');
+}
+
+async function authRequest(path, method, body, token){
+  const res = await fetch(SUPABASE_URL + '/auth/v1' + path, {
+    method: method,
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (token || SUPABASE_ANON_KEY)
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null;
+  try{ data = await res.json(); }catch(e){}
+  return { ok: res.ok, status: res.status, data: data };
+}
+function authErrText(r){
+  const m = String((r.data && (r.data.error_description || r.data.msg || r.data.message || r.data.error)) || '');
+  if(/invalid login credentials/i.test(m)) return 'Неверная почта или пароль';
+  if(/email not confirmed/i.test(m)) return 'Почта не подтверждена. Откройте письмо-приглашение';
+  if(/rate limit|too many|security purposes/i.test(m)) return 'Слишком много попыток. Подождите несколько минут';
+  if(/at least \d+ char/i.test(m)) return 'Пароль слишком короткий — минимум 8 символов';
+  if(/different from the old/i.test(m)) return 'Новый пароль должен отличаться от прежнего';
+  if(/weak|easy to guess|pwned/i.test(m)) return 'Слишком простой пароль — придумайте посложнее';
+  return m || ('Ошибка ' + r.status);
+}
+
+async function authSignIn(email, password){
+  const r = await authRequest('/token?grant_type=password', 'POST', { email: String(email).trim(), password: password });
+  if(!r.ok) return { error: authErrText(r) };
+  authSaveSession(authFromResponse(r.data));
+  return { ok: true };
+}
+
+// → 'ok' | 'denied' (сервер отказал: войти заново) | 'offline' (нет связи: сессию не трогаем)
+function authRefresh(){
+  if(authRefreshing) return authRefreshing;
+  authRefreshing = (async function(){
+    try{
+      // другая вкладка могла уже обновить токен — берём её результат
+      let stored = null;
+      try{ stored = JSON.parse(localStorage.getItem(AUTH_STORE) || 'null'); }catch(e){}
+      if(stored && stored.access_token && authSession && stored.access_token !== authSession.access_token
+         && stored.expires_at * 1000 - Date.now() > 60000){
+        authSession = stored; return 'ok';
+      }
+      const rt = authSession && authSession.refresh_token;
+      if(!rt) return 'denied';
+      const r = await authRequest('/token?grant_type=refresh_token', 'POST', { refresh_token: rt });
+      if(r.ok){ authSaveSession(authFromResponse(r.data, authSession)); return 'ok'; }
+      return (r.status === 400 || r.status === 401 || r.status === 403) ? 'denied' : 'offline';
+    }catch(e){ return 'offline'; }
+    finally{ authRefreshing = null; }
+  })();
+  return authRefreshing;
+}
+async function authToken(){
+  if(!authSession) return SUPABASE_ANON_KEY;
+  if(authSession.expires_at * 1000 - Date.now() < 60000) await authRefresh();
+  return authSession ? authSession.access_token : SUPABASE_ANON_KEY;
+}
+async function sbHeaders(extra){
+  const t = await authToken();
+  return Object.assign({ 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + t }, extra || {});
+}
+let authUnauthHandling = false;
+async function authOnUnauthorized(){
+  if(authUnauthHandling || !authSession) return;
+  authUnauthHandling = true;
+  try{
+    const st = await authRefresh();
+    if(st === 'denied'){
+      authSaveSession(null);
+      try{ sessionStorage.setItem(AUTH_FLASH, 'Сессия истекла. Войдите снова'); }catch(e){}
+      location.reload();
+    }
+  } finally { authUnauthHandling = false; }
+}
+async function authSignOut(){
+  try{ if(authSession) await authRequest('/logout?scope=local', 'POST', null, authSession.access_token); }catch(e){}
+  authSaveSession(null);
+  // чужие закэшированные данные на общем устройстве не оставляем
+  try{
+    Object.keys(localStorage).forEach(function(k){ if(k.indexOf('lastgood:') === 0) localStorage.removeItem(k); });
+  }catch(e){}
+  location.reload();
+}
+async function authSendReset(email){
+  const redirect = encodeURIComponent(location.origin + location.pathname);
+  const r = await authRequest('/recover?redirect_to=' + redirect, 'POST', { email: String(email).trim() });
+  return r.ok ? { ok: true } : { error: authErrText(r) };
+}
+async function authSetPassword(pw){
+  const token = await authToken();
+  const r = await authRequest('/user', 'PUT', { password: pw }, token);
+  if(!r.ok) return { error: authErrText(r) };
+  if(r.data && r.data.email && authSession){ authSession.user = r.data; }
+  return { ok: true };
+}
+
+// Вход через Google: уводим на Supabase, он проведёт через Google и вернёт на этот же адрес
+function authGoogleUrl(){
+  return SUPABASE_URL + '/auth/v1/authorize?provider=google&redirect_to=' +
+         encodeURIComponent(location.origin + location.pathname);
+}
+
+// Разбор ссылки из письма или возврата из Google. Токены приходят в #hash,
+// а ошибки — то в #hash, то в ?query, поэтому смотрим оба места.
+function authParseHash(){
+  const h = (location.hash || '').replace(/^#/, '');
+  const q = (location.search || '').replace(/^\?/, '');
+  const clean = function(){ try{ history.replaceState(null, '', location.pathname); }catch(e){} };
+  const pq = new URLSearchParams(q);
+  if(pq.get('error') || pq.get('error_code')){
+    const out = { error: pq.get('error_description') || pq.get('error') || 'Не удалось войти' };
+    clean(); return out;
+  }
+  if(!h) return null;
+  const p = new URLSearchParams(h);
+  if(p.get('error') || p.get('error_code')){
+    const out = { error: p.get('error_description') || p.get('error') || 'Ссылка недействительна' };
+    clean(); return out;
+  }
+  if(p.get('access_token')){
+    const sess = {
+      access_token: p.get('access_token'),
+      refresh_token: p.get('refresh_token'),
+      expires_at: Number(p.get('expires_at')) || (Math.floor(Date.now()/1000) + Number(p.get('expires_in') || 3600)),
+      user: null, needPw: false
+    };
+    const type = p.get('type') || '';
+    clean(); return { session: sess, type: type };
+  }
+  return null;
+}
+
+// true → можно запускать приложение; false → показан экран входа / задания пароля
+async function authBoot(){
+  authLoadSession();
+  let flash = '';
+  try{ flash = sessionStorage.getItem(AUTH_FLASH) || ''; sessionStorage.removeItem(AUTH_FLASH); }catch(e){}
+  const landing = authParseHash();
+
+  if(landing && landing.error){
+    const err = String(landing.error);
+    const msg = /signup|sign up|not allowed|database error|unable to exchange/i.test(err)
+      ? 'Этот Google-аккаунт не приглашён. Войдите с той почты, на которую вам дали доступ, или обратитесь к администратору.'
+      : (/expired|invalid|otp/i.test(err)
+        ? 'Ссылка устарела или уже использована. Нажмите «Забыли пароль?», чтобы получить новую.'
+        : err);
+    showAuthScreen('login', msg); return false;
+  }
+  if(landing && landing.session){
+    const r = await authRequest('/user', 'GET', null, landing.session.access_token).catch(function(){ return { ok:false }; });
+    if(!r.ok){ showAuthScreen('login', 'Не удалось открыть ссылку. Запросите новую через «Забыли пароль?».'); return false; }
+    landing.session.user = r.data;
+    landing.session.needPw = (landing.type === 'invite' || landing.type === 'recovery');
+    authSaveSession(landing.session);
+  }
+  if(!authSession){ showAuthScreen('login', flash); return false; }
+  if(authSession.needPw){ showAuthScreen('setpw'); return false; }
+  if(authSession.expires_at * 1000 - Date.now() < 60000){
+    const st = await authRefresh();
+    if(st === 'denied'){ authSaveSession(null); showAuthScreen('login', 'Сессия истекла. Войдите снова'); return false; }
+  }
+  return true;
+}
+
+function showAuthScreen(kind, msg){
+  document.body.classList.add('auth-out');
+  const main = document.getElementById('main');
+  if(!main) return;
+  let html;
+  if(kind === 'setpw'){
+    const em = authSession && authSession.user ? authSession.user.email : '';
+    html = '<div class="card auth-card">' +
+      '<h2>Придумайте пароль</h2>' +
+      '<p class="hint">Аккаунт: <b>' + escapeHtml(em || '') + '</b>. Пароль — минимум 8 символов.</p>' +
+      '<label class="field-label">Новый пароль</label>' +
+      '<input type="password" id="authPw1" autocomplete="new-password">' +
+      '<label class="field-label">Повторите пароль</label>' +
+      '<input type="password" id="authPw2" autocomplete="new-password">' +
+      '<div class="auth-msg" id="authMsg"></div>' +
+      '<button class="btn" id="authSetPwBtn" style="width:100%;margin-top:12px;">Сохранить и войти</button>' +
+      '</div>';
+  } else {
+    html = '<div class="card auth-card">' +
+      '<h2>Вход</h2>' +
+      '<p class="hint">Войдите с той почтой, на которую вам дали доступ.</p>' +
+      '<label class="field-label">Почта</label>' +
+      '<input type="email" id="authEmail" autocomplete="username" inputmode="email" placeholder="name@example.com">' +
+      '<label class="field-label">Пароль</label>' +
+      '<input type="password" id="authPassword" autocomplete="current-password">' +
+      '<div class="auth-msg" id="authMsg">' + escapeHtml(msg || '') + '</div>' +
+      '<button class="btn" id="authLoginBtn" style="width:100%;margin-top:12px;">Войти</button>' +
+      '<div class="auth-links"><a id="authForgotBtn">Забыли пароль?</a></div>' +
+      '<div class="auth-or"><span>или</span></div>' +
+      '<button class="btn secondary" id="authGoogleBtn" style="width:100%;">Войти через Google</button>' +
+      '</div>';
+  }
+  main.innerHTML = '<div class="auth-wrap">' + html + '</div>';
+  const first = main.querySelector('input');
+  if(first) first.focus();
+}
+function authMsg(text, ok){
+  const m = document.getElementById('authMsg');
+  if(m){ m.textContent = text || ''; m.className = 'auth-msg' + (ok ? ' ok' : ''); }
+}
+function authVal(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+
+async function authDoLogin(){
+  if(authBusy) return;
+  const email = authVal('authEmail'), pw = authVal('authPassword');
+  if(!email.trim() || !pw){ authMsg('Введите почту и пароль'); return; }
+  authBusy = true;
+  const btn = document.getElementById('authLoginBtn'); if(btn) btn.disabled = true;
+  authMsg('Входим…', true);
+  try{
+    const r = await authSignIn(email, pw);
+    if(r.error){ authMsg(r.error); return; }
+    location.reload();
+  }catch(e){ authMsg('Нет связи. Проверьте интернет и попробуйте ещё раз'); }
+  finally{ authBusy = false; if(btn) btn.disabled = false; }
+}
+async function authDoForgot(){
+  const email = authVal('authEmail');
+  if(!email.trim()){ authMsg('Сначала впишите почту выше'); return; }
+  try{
+    const r = await authSendReset(email);
+    if(r.error){ authMsg(r.error); return; }
+    authMsg('Если такая почта есть в системе, мы отправили письмо со ссылкой для нового пароля.', true);
+  }catch(e){ authMsg('Нет связи. Попробуйте ещё раз'); }
+}
+async function authDoSetPw(){
+  if(authBusy) return;
+  const p1 = authVal('authPw1'), p2 = authVal('authPw2');
+  if(p1.length < 8){ authMsg('Пароль — минимум 8 символов'); return; }
+  if(p1 !== p2){ authMsg('Пароли не совпадают'); return; }
+  authBusy = true;
+  const btn = document.getElementById('authSetPwBtn'); if(btn) btn.disabled = true;
+  try{
+    const r = await authSetPassword(p1);
+    if(r.error){ authMsg(r.error); return; }
+    authSession.needPw = false; authSaveSession(authSession);
+    location.reload();
+  }catch(e){ authMsg('Нет связи. Попробуйте ещё раз'); }
+  finally{ authBusy = false; if(btn) btn.disabled = false; }
+}
+function attachAuthHandlers(){
+  document.addEventListener('click', function(ev){
+    const t = ev.target; if(!t || !t.closest) return;
+    if(t.closest('#authLoginBtn')) authDoLogin();
+    else if(t.closest('#authForgotBtn')) authDoForgot();
+    else if(t.closest('#authSetPwBtn')) authDoSetPw();
+    else if(t.closest('#authGoogleBtn')) location.assign(authGoogleUrl());
+  });
+  document.addEventListener('keydown', function(ev){
+    if(ev.key !== 'Enter') return;
+    const id = ev.target && ev.target.id;
+    if(id === 'authEmail' || id === 'authPassword'){ ev.preventDefault(); authDoLogin(); }
+    else if(id === 'authPw1' || id === 'authPw2'){ ev.preventDefault(); authDoSetPw(); }
+  });
+}
+
+// Сопоставление вошедшего аккаунта с сотрудником — по почте
+function linkAuthIdentity(first){
+  if(!authSession) return;
+  const email = authEmail();
+  const emp = email ? employees.find(function(e){ return e && e.email && String(e.email).trim().toLowerCase() === email; }) : null;
+  myEmployeeId = emp ? emp.id : null;
+  adminUnlocked = authIsAdmin();
+  if(first && !emp && adminUnlocked) mode = 'admin';
+}
+
 // =========================================================================
 // ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ
 // Раньше storeGet возвращал null и когда данных нет, и когда запрос упал.
@@ -1492,8 +1818,9 @@ async function storeGet(key, shared){
   if(shared){
     try{
       const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, {
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+        headers: await sbHeaders()
       });
+      if(res.status === 401) authOnUnauthorized();
       if(!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if(!data || !data.length){
@@ -1548,15 +1875,14 @@ async function storeSet(key, value, shared){
       try{
         const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?on_conflict=key`, {
           method: 'POST',
-          headers:{
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          headers: await sbHeaders({
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates,return=minimal'
-          },
+          }),
           body: JSON.stringify([{ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }])
         });
         if(res.ok) return true;
+        if(res.status === 401) authOnUnauthorized();
         console.error('storeSet статус', res.status, 'для', key);
       }catch(e){ console.error('storeSet failed', key, e); }
       if(attempt===0) await new Promise(r=>setTimeout(r, 600));
@@ -1878,6 +2204,7 @@ async function pollSharedData(){
     // пропускала [] (пустой массив в JS истинный), и все имена исчезали.
     if(Array.isArray(freshEmployees) && freshEmployees.length > 0){
       employees = normalizeEmployees(freshEmployees);
+      linkAuthIdentity(false);
     } else if(Array.isArray(freshEmployees) && freshEmployees.length === 0 && employees.length > 0){
       console.warn('Отклонил пустой список сотрудников — возвращаю свой в базу');
       if(stateLoaded) storeSet('app:employees', employees, SHARED);
@@ -1973,11 +2300,13 @@ function zeroKpi(dept){
   return o;
 }
 
+// Стартовый набор для пустой базы. Вход по PIN упразднён: доступ выдаётся по почте
+// в разделе «Сотрудники и доступ» (админка).
 const SEED_EMPLOYEES = [
-  {id:'e1', name:'Алишер А', department:'to', pin:'1111'},
-  {id:'e2', name:'Алишер С', department:'to', pin:'2222'},
-  {id:'e3', name:'Артём', department:'to', pin:'3333'},
-  {id:'e4', name:'Алихан', department:'to', pin:'4444', role:'teamlead', fixedRate:8},
+  {id:'e1', name:'Алишер А', department:'to', email:''},
+  {id:'e2', name:'Алишер С', department:'to', email:''},
+  {id:'e3', name:'Артём', department:'to', email:''},
+  {id:'e4', name:'Алихан', department:'to', email:'', role:'teamlead', fixedRate:8},
 ];
 
 function currentMonthKey(){
@@ -2857,7 +3186,7 @@ let mode = 'employee';
 let timerHandle = null;
 
 let adminUnlocked = false;
-let adminPin = '135790';
+let adminPin = '';   // устарело: вход по PIN упразднён, роль админа задаётся в Supabase
 let pinInput = '';
 let pinError = '';
 
@@ -2936,7 +3265,7 @@ async function loadAll(){
   try { logs = await storeGet('attendance:log', SHARED); } catch(e) { console.error(e); }
   if(!logs) logs = [];
 
-  try { myEmployeeId = await storeGet('app:myEmployeeId', false); } catch(e) { console.error(e); }
+  myEmployeeId = null;   // определяется по почте после входа (linkAuthIdentity)
 
   try {
     const storedAdminPin = await storeGet('app:adminPin', SHARED);
@@ -4052,6 +4381,7 @@ function renderNow(){
 
 function _doRender(){
   _renderScheduled = false;
+  if(!authSession) return;   // пока не вошли — экран входа не трогаем
   const main = mainEl || (mainEl = document.getElementById('main'));
   if(!main) return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
@@ -4125,8 +4455,17 @@ function tickEmployeeClock(){
 
 function renderEmployeeArea(){
   if(myEmployeeId && employees.find(e=>e.id===myEmployeeId)) return renderEmployeeDashboard();
-  if(selectingEmpId) return renderEmpPinGate();
-  return renderEmployeeList();
+  return renderNotLinked();
+}
+
+function renderNotLinked(){
+  const email = authEmail();
+  const text = authIsAdmin()
+    ? 'Вы вошли как администратор, но ваша почта не привязана к профилю сотрудника.'
+    : 'Аккаунт <b>' + escapeHtml(email) + '</b> пока не привязан к сотруднику. Попросите администратора добавить эту почту в раздел «Сотрудники».';
+  return '<div class="auth-wrap"><div class="card auth-card"><h2>Профиль не найден</h2><p class="hint">' + text + '</p>' +
+    (authIsAdmin() ? '<button class="btn" id="authOpenAdminBtn" style="margin-top:12px;margin-right:8px;">Открыть админку</button>' : '') +
+    '<button class="btn secondary" id="authLogoutBtn" style="margin-top:12px;">Выйти</button></div></div>';
 }
 
 // Инициалы считаются один раз на сотрудника и кэшируются на самом объекте —
@@ -4143,67 +4482,13 @@ function initialsFor(e){
   return val;
 }
 
-function renderEmployeeList(){
-  const groups = {};
-  employees.forEach(e=>{ (groups[e.department]=groups[e.department]||[]).push(e); });
 
-  function renderCol(dept){
-    const list = groups[dept] || [];
-    if(!list.length) return '';
-    const label = deptLabel(dept);
-    let col = `<div class="emp-col">
-      <div class="dept-col-title">${label}</div>`;
-    list.forEach(e=>{
-      const on = isCheckedIn(e.id);
-      col += `<div class="name-btn" data-pick="${e.id}">
-        <div class="avatar ${dept}${on?' online':''}">${escapeHtml(initialsFor(e))}</div>
-        <div class="meta">${escapeHtml(e.name)}${on?'<span class="dept" style="color:var(--green)">на смене</span>':''}</div>
-      </div>`;
-    });
-    col += `</div>`;
-    return col;
-  }
 
-  // Fixed two-column layout: OP left, TO right
-  const hasOp = groups['op'] && groups['op'].length;
-  const hasTo = groups['to'] && groups['to'].length;
-  // Any extra depts
-  const extraDepts = Object.keys(groups).filter(d=>d!=='op'&&d!=='to');
 
-  let html = `<div class="card"><h2>Кто вы?</h2><div class="name-cols">`;
-  if(hasOp || hasTo){
-    html += renderCol('op');
-    if(hasOp && hasTo) html += `<div class="emp-col-divider"></div>`;
-    html += renderCol('to');
-  }
-  extraDepts.forEach(d=>{ html += renderCol(d); });
-  html += `</div><div class="hint">Выберите себя и введите свой личный PIN. Он нужен, чтобы никто другой не открыл вашу страницу.</div></div>`;
-  return html;
-}
-
-function renderEmpPinGate(){
-  const emp = employees.find(e=>e.id===selectingEmpId);
-  // ИСПРАВЛЕНО: если сотрудника удалили с другого устройства, emp.name падал с ошибкой
-  // и весь экран оставался пустым. Теперь просто возвращаемся к списку.
-  if(!emp){ selectingEmpId = null; return renderEmployeeList(); }
-  const slots = Array.from({length:EMP_PIN_LEN}).map((_,i)=>`<div class="slot ${i<empPinInput.length?'filled':''}"></div>`).join('');
-  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
-  return `
-    <div class="card">
-      <div class="pin-wrap">
-        <h2 style="margin-bottom:0;">${escapeHtml(emp.name)}</h2>
-        <p>Введите свой PIN</p>
-        <div class="pin-dots${empPinError?' shake':''}">${slots}</div>
-        <div class="keypad">${keys.map(k=> k==='' ? `<div></div>` : `<button data-empkey="${k}">${k}</button>`).join('')}</div>
-        <div class="pin-error">${empPinError}</div>
-        <div class="switch-user" id="backToList">← Это не я, выбрать другого</div>
-      </div>
-    </div>`;
-}
 
 function renderEmployeeDashboard(){
   const emp = employees.find(e=>e.id===myEmployeeId);
-  if(!emp){ myEmployeeId = null; return renderEmployeeList(); }
+  if(!emp){ myEmployeeId = null; return renderNotLinked(); }
   const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op; // ИСПРАВЛЕНО: страховка от неизвестного отдела
   const checkedIn = isCheckedIn(emp.id);
   const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
@@ -4254,7 +4539,7 @@ function renderEmployeeDashboard(){
               </button>
             </div>
             <div class="elapsed">Сегодня отработано: <span id="elapsedText">${fmtDuration(todayHoursFor(emp.id))}</span></div>
-            <div class="switch-user" id="switchUser">Это не я</div>
+            <div class="switch-user" id="switchUser">Выйти</div>
           </div>
         </div>
 
@@ -4293,18 +4578,7 @@ function renderEmployeeDashboard(){
 }
 
 function renderPinGate(){
-  const slots = Array.from({length:ADMIN_PIN_LEN}).map((_,i)=>`<div class="slot ${i<pinInput.length?'filled':''}"></div>`).join('');
-  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
-  return `
-    <div class="card">
-      <div class="pin-wrap">
-        <h2 style="margin-bottom:0;">Доступ администратора</h2>
-        <p>Введите PIN-код (${ADMIN_PIN_LEN} цифр)</p>
-        <div class="pin-dots${pinError?' shake':''}">${slots}</div>
-        <div class="keypad">${keys.map(k=> k==='' ? `<div></div>` : `<button data-key="${k}">${k}</button>`).join('')}</div>
-        <div class="pin-error">${pinError}</div>
-      </div>
-    </div>`;
+  return '<div class="auth-wrap"><div class="card auth-card"><h2>Нет доступа</h2><p class="hint">Этот раздел только для администраторов.</p></div></div>';
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -4590,8 +4864,9 @@ async function loadSaleTimes(mk){
   saleTimesLoading[mk] = true;
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('saletime:'+mk+':')}*&select=value&limit=10000`, {
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+      headers: await sbHeaders()
     });
+    if(res.status === 401) authOnUnauthorized();
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
     const list = [];
@@ -4620,7 +4895,7 @@ async function deleteSaleTime(mk, id){
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}`, {
       method:'DELETE',
-      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Prefer':'return=minimal' }
+      headers: await sbHeaders({ 'Prefer':'return=minimal' })
     });
     ok = res.ok;
   }catch(e){ console.error('deleteSaleTime', e); }
@@ -5001,7 +5276,7 @@ function renderAdminView(){
     <div class="card">
       <h2 style="display:flex;justify-content:space-between;align-items:center;">
         <span style="display:flex;align-items:center;gap:10px;">Обзор · ${monthLabel(editingMonth)} <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
-        <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Заблокировать</span>
+        <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Выйти из админки</span> <span class="switch-user" id="authLogoutBtn" style="margin:0 0 0 14px;text-transform:none;letter-spacing:0;">Выйти из аккаунта</span>
       </h2>
 
       <div class="ov-strip">
@@ -5313,11 +5588,11 @@ function renderAdminView(){
     <div class="admin-col-left">
 
     <div class="card">
-      <h2>Сотрудники и PIN</h2>
+      <h2>Сотрудники и доступ</h2>
       ${employees.map(e=>`
-        <div class="row" style="margin-top:8px;">
+        <div class="row" style="margin-top:8px;flex-wrap:wrap;">
           <input type="text" data-nameemp="${e.id}" value="${escapeHtml(e.name)}" style="flex:2;">
-          <input type="text" data-pinemp="${e.id}" value="${escapeHtml(e.pin)}" maxlength="4" placeholder="PIN">
+          <input type="email" data-emailemp="${e.id}" value="${escapeHtml(e.email||'')}" placeholder="почта для входа" autocomplete="off" style="flex:2;">
           <select data-roleemp="${e.id}" style="flex:1.3;">
             <option value="" ${e.role!=='teamlead'?'selected':''}>Сотрудник</option>
             <option value="teamlead" ${e.role==='teamlead'?'selected':''}>Тимлид</option>
@@ -5326,6 +5601,7 @@ function renderAdminView(){
           <button class="btn danger small" data-delemp="${e.id}" style="flex:none;">Удалить</button>
         </div>`).join('')}
       <button class="btn small" id="savePinsBtn" style="margin-top:6px;">Сохранить</button>
+      <div class="hint" style="margin-top:10px;">Чтобы дать доступ: сначала пригласите человека в Supabase (Authentication → Users → Invite user), затем впишите здесь ту же почту и нажмите «Сохранить».</div>
     </div>
 
     <div class="card">
@@ -5338,7 +5614,7 @@ function renderAdminView(){
         </select>
       </div>
       <div class="row">
-        <input type="text" id="newEmpPin" placeholder="PIN (4 цифры)" maxlength="4">
+        <input type="email" id="newEmpEmail" placeholder="Почта для входа">
         <button class="btn small" id="addEmpBtn">Добавить</button>
       </div>
     </div>
@@ -5352,14 +5628,6 @@ function renderAdminView(){
         <span class="mono" style="color:var(--teal);letter-spacing:0;text-transform:none;font-size:12px;">${logsExpanded?'Свернуть ▲':'Показать ▾'}</span>
       </h2>
       ${logsExpanded ? `<div style="max-height:360px;overflow-y:auto;">${olderLogRows.length===0? '<div class="empty">Логов пока нет</div>' : olderLogRows}</div>` : ''}
-    </div>
-
-    <div class="card">
-      <h2>PIN администратора</h2>
-      <div class="row">
-        <input type="text" id="newAdminPin" placeholder="Новый PIN (${ADMIN_PIN_LEN} цифр)" maxlength="${ADMIN_PIN_LEN}">
-        <button class="btn small" id="changePinBtn">Изменить</button>
-      </div>
     </div>
 
     </div><!-- /admin-col-right -->
@@ -5423,48 +5691,12 @@ function attachDelegatedHandlers(){
       return;
     }
 
-    const pickBtn = el.closest('[data-pick]');
-    if(pickBtn){ selectingEmpId = pickBtn.dataset.pick; empPinInput=''; empPinError=''; renderNow(); return; }
-
-    if(el.closest('#backToList')){ selectingEmpId = null; renderNow(); return; }
-
-    const empKeyBtn = el.closest('.keypad button[data-empkey]');
-    if(empKeyBtn){
-      const k = empKeyBtn.dataset.empkey;
-      if(k==='⌫'){ empPinInput = empPinInput.slice(0,-1); empPinError=''; }
-      else if(empPinInput.length<EMP_PIN_LEN){ empPinInput += k; empPinError=''; }
-      if(empPinInput.length===EMP_PIN_LEN){
-        const emp = employees.find(e=>e.id===selectingEmpId);
-        if(emp && empPinInput===emp.pin){
-          myEmployeeId = emp.id;
-          await storeSet('app:myEmployeeId', emp.id, false);
-          selectingEmpId = null; empPinInput='';
-        } else { empPinError = 'Неверный PIN'; empPinInput=''; }
-      }
-      renderNow();
-      return;
-    }
-
-    const keyBtn = el.closest('.keypad button[data-key]');
-    if(keyBtn){
-      const k = keyBtn.dataset.key;
-      if(k==='⌫'){ pinInput = pinInput.slice(0,-1); pinError=''; }
-      else if(pinInput.length<ADMIN_PIN_LEN){ pinInput += k; pinError=''; }
-      if(pinInput.length===ADMIN_PIN_LEN){
-        if(pinInput===adminPin){ adminUnlocked=true; pinInput=''; }
-        else { pinError='Неверный PIN'; pinInput=''; }
-      }
-      renderNow();
-      return;
-    }
-
     if(el.closest('#punchBtn')){ await runOnce(()=>punch(myEmployeeId)); return; }
 
-    if(el.closest('#switchUser')){
-      myEmployeeId=null; empViewMonth=null; await storeSet('app:myEmployeeId', null, false); renderNow(); return;
-    }
+    if(el.closest('#authOpenAdminBtn')){ if(authIsAdmin()){ mode = 'admin'; renderNow(); } return; }
+    if(el.closest('#switchUser') || el.closest('#authLogoutBtn')){ await authSignOut(); return; }
 
-    if(el.closest('#lockAdminBtn')){ adminUnlocked = false; renderNow(); return; }
+    if(el.closest('#lockAdminBtn')){ mode = 'employee'; renderNow(); return; }
 
     if(el.closest('#addMonthBtn')){
       const now = new Date();
@@ -5508,10 +5740,19 @@ function attachDelegatedHandlers(){
           const val = i.value.trim();
           if(emp && val) emp.name = val;
         });
-        document.querySelectorAll('[data-pinemp]').forEach(i=>{
-          const emp = employees.find(e=>e.id===i.dataset.pinemp);
-          if(emp && /^\d{4}$/.test(i.value.trim())) emp.pin = i.value.trim();
+        // Почта для входа. Должна быть корректной и не повторяться у разных людей.
+        const seenEmails = {};
+        let emailProblem = '';
+        document.querySelectorAll('[data-emailemp]').forEach(i=>{
+          const emp = employees.find(e=>e.id===i.dataset.emailemp);
+          if(!emp) return;
+          const v = i.value.trim().toLowerCase();
+          if(v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){ emailProblem = 'Некорректная почта у «' + emp.name + '»'; return; }
+          if(v && seenEmails[v]){ emailProblem = 'Почта ' + v + ' указана у двух сотрудников'; return; }
+          if(v) seenEmails[v] = true;
+          emp.email = v;
         });
+        if(emailProblem){ showToast(emailProblem, 'error'); return; }
         // Роль и фиксированная ставка. Пустая роль сохраняется явно (''), чтобы
         // автоправило для Алихана больше не срабатывало.
         document.querySelectorAll('[data-roleemp]').forEach(i=>{
@@ -5534,10 +5775,11 @@ function attachDelegatedHandlers(){
       await runOnce(async ()=>{
         const name = document.getElementById('newEmpName').value.trim();
         const dept = document.getElementById('newEmpDept').value;
-        const pin = document.getElementById('newEmpPin').value.trim();
-        if(!name || !/^\d{4}$/.test(pin)){ showToast('Укажите имя и 4-значный PIN', 'error'); return; }
+        const email = document.getElementById('newEmpEmail').value.trim().toLowerCase();
+        if(!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Укажите имя и корректную почту', 'error'); return; }
+        if(employees.some(e=>(e.email||'').toLowerCase()===email)){ showToast('Сотрудник с такой почтой уже есть', 'error'); return; }
         const id = 'e' + Date.now();
-        await saveEmployee({id, name, department:dept, pin});
+        await saveEmployee({id, name, department:dept, email});
         renderNow();
       });
       return;
@@ -5555,13 +5797,6 @@ function attachDelegatedHandlers(){
         renderNow();
         showToast('Сотрудник удалён', 'success');
       });
-      return;
-    }
-
-    if(el.closest('#changePinBtn')){
-      const val = document.getElementById('newAdminPin').value.trim();
-      if(new RegExp('^\\d{'+ADMIN_PIN_LEN+'}$').test(val)){ await setAdminPin(val); renderNow(); showToast('PIN администратора обновлён', 'success'); }
-      else { showToast('PIN должен состоять из ' + ADMIN_PIN_LEN + ' цифр', 'error'); }
       return;
     }
 
@@ -5763,41 +5998,6 @@ function attachDelegatedHandlers(){
     }, 800);
   });
 
-  // Поддержка ввода PIN с физической клавиатуры (удобно на десктопе)
-  document.addEventListener('keydown', async (ev)=>{
-    const isDigit = /^[0-9]$/.test(ev.key);
-    if(!isDigit && ev.key!=='Backspace') return;
-    if(isEditingSomething()) return; // не мешаем вводу в обычные текстовые поля
-
-    if(mode==='employee' && selectingEmpId && !myEmployeeId){
-      if(ev.key==='Backspace'){ empPinInput = empPinInput.slice(0,-1); empPinError=''; renderNow(); return; }
-      if(empPinInput.length<EMP_PIN_LEN){
-        empPinInput += ev.key; empPinError='';
-        if(empPinInput.length===EMP_PIN_LEN){
-          const emp = employees.find(e=>e.id===selectingEmpId);
-          if(emp && empPinInput===emp.pin){
-            myEmployeeId = emp.id;
-            await storeSet('app:myEmployeeId', emp.id, false);
-            selectingEmpId = null; empPinInput='';
-          } else { empPinError = 'Неверный PIN'; empPinInput=''; }
-        }
-        renderNow();
-      }
-      return;
-    }
-    if(mode==='admin' && !adminUnlocked){
-      if(ev.key==='Backspace'){ pinInput = pinInput.slice(0,-1); pinError=''; renderNow(); return; }
-      if(pinInput.length<ADMIN_PIN_LEN){
-        pinInput += ev.key; pinError='';
-        if(pinInput.length===ADMIN_PIN_LEN){
-          if(pinInput===adminPin){ adminUnlocked=true; pinInput=''; }
-          else { pinError='Неверный PIN'; pinInput=''; }
-        }
-        renderNow();
-      }
-      return;
-    }
-  });
 }
 
 let sheetSyncTimer = null;
@@ -5806,8 +6006,13 @@ let orderTimerHandle = null;
 
 (async function init(){
   attachDelegatedHandlers();
+  attachAuthHandlers();
+  const authOk = await authBoot();
+  if(!authOk) return;                       // показан экран входа
+  document.body.classList.remove('auth-out');
   storeReadFailed = false;
   await loadAll();
+  linkAuthIdentity(true);
   await loadOrders();
 
   // Разрешаем запись в общее хранилище только если чтение прошло без ошибок.
@@ -5898,6 +6103,7 @@ window.addEventListener('pagehide', ()=>{
       tapTimer = setTimeout(function(){ tapCount = 0; }, 2000);
       if(tapCount >= 5){
         tapCount = 0;
+        if(!authIsAdmin()) return;
         mode = 'admin';
         renderNow();
       }
@@ -5918,6 +6124,7 @@ window.addEventListener('pagehide', ()=>{
       e.code === 'KeyA'
     ){
       e.preventDefault();
+      if(!authIsAdmin()) return;
       mode = 'admin';
       renderNow();
     }
