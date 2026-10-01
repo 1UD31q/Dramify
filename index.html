@@ -216,6 +216,7 @@
   .log-type{font-weight:600;}
   .log-type.in{color:var(--green);}
   .log-type.out{color:var(--red);}
+  .log-auto{font-size:10px;font-weight:600;color:var(--muted);background:var(--bg2);border-radius:20px;padding:1px 7px;margin:0 8px 0 6px;white-space:nowrap;}
 
   .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
   .row input, .row select{flex:1;}
@@ -3175,6 +3176,61 @@ async function punch(empId){
   renderNow();
 }
 
+// ── Автозакрытие забытых смен ──────────────────────────────────────────────
+// Смена, которую не закрыли, закрывается сама в 23:00 того дня, когда она началась
+// (а если её начали уже после 23:00 — в ближайшие следующие 23:00).
+// Время уходит в журнал именно как 23:00, а не как момент обнаружения, поэтому
+// отработанные часы не раздуваются, даже если приложение открыли только утром.
+// Время берётся с устройства (для команды в одном часовом поясе это то же самое).
+const AUTO_CLOSE_HOUR = 23;
+function autoCloseCutoffAfter(ts){
+  const d = new Date(ts);
+  d.setHours(AUTO_CLOSE_HOUR, 0, 0, 0);
+  if(d.getTime() <= ts) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+function staleOpenShifts(now){
+  const lastByEmp = {};
+  logs.forEach(l=>{
+    const p = lastByEmp[l.empId];
+    if(!p || l.ts >= p.ts) lastByEmp[l.empId] = l;
+  });
+  const res = [];
+  Object.keys(lastByEmp).forEach(empId=>{
+    const l = lastByEmp[empId];
+    if(l.type === 'in'){
+      const cutoff = autoCloseCutoffAfter(l.ts);
+      if(cutoff <= now) res.push({empId, ts: cutoff});
+    }
+  });
+  return res;
+}
+let autoCloseInFlight = false;
+async function autoCloseStaleShifts(){
+  if(autoCloseInFlight || !stateLoaded) return;
+  if(!staleOpenShifts(Date.now()).length) return;   // быстрая проверка без сети
+  autoCloseInFlight = true;
+  try{
+    // Перед записью берём самые свежие логи: смену мог закрыть другой экран.
+    // Если прочитать не удалось — ничего не пишем, чтобы не затереть данные.
+    if(SHARED){
+      const fresh = await storeGet('attendance:log', SHARED);
+      if(!Array.isArray(fresh)) return;
+      logs = fresh;
+    }
+    const stale = staleOpenShifts(Date.now());
+    if(!stale.length) return;
+    stale.forEach(x=> logs.push({empId:x.empId, type:'out', ts:x.ts, auto:true}));
+    await storeSet('attendance:log', logs, SHARED);
+    if(myEmployeeId && stale.some(x=>x.empId===myEmployeeId)){
+      showToast('Смена закрыта автоматически в 23:00. Не забывайте нажимать END', 'error');
+    }
+    renderNow();
+  } finally {
+    autoCloseInFlight = false;
+  }
+}
+
 async function saveKpiForMonth(monthKey, empId, values){
   ensureMonth(monthKey);
   kpiData[monthKey][empId] = values;
@@ -4058,6 +4114,7 @@ function _doRender(){
 // времени — раньше для этого пересобирался весь DOM целиком через render().
 // Точечное обновление textContent конкретных узлов дешевле и не мигает.
 function tickEmployeeClock(){
+  autoCloseStaleShifts();   // сначала закрываем забытые смены, потом рисуем часы
   if(mode!=='employee' || !myEmployeeId) return;
   const clockEl = document.getElementById('punchClock');
   const elapsedEl = document.getElementById('elapsedText');
@@ -4226,7 +4283,7 @@ function renderEmployeeDashboard(){
         <div class="card">
           <h2>Мои отметки сегодня</h2>
           ${todays.length===0 ? '<div class="empty">Пока нет отметок</div>' :
-            todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span><span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
+            todays.map(l=>`<div class="log-row"><span class="log-type ${l.type}">${l.type==='in'?'Приход':'Уход'}</span>${l.auto?'<span class="log-auto">авто</span>':''}<span class="mono">${fmtTime(l.ts)}</span></div>`).join('')}
         </div>
 
         ${emp.department === 'to' ? renderOrdersBlock(emp.id, viewMonth) : ''}
@@ -4850,7 +4907,7 @@ function renderAdminView(){
 
   const logLine = (l)=>{
     const emp = employees.find(e=>e.id===l.empId);
-    return `<div class="log-row"><span>${emp?escapeHtml(emp.name):'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}</span></span><span class="mono">${fmtDateTime(l.ts)}</span></div>`;
+    return `<div class="log-row"><span>${emp?escapeHtml(emp.name):'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}</span>${l.auto?' <span class="log-auto">автозакрытие</span>':''}</span><span class="mono">${fmtDateTime(l.ts)}</span></div>`;
   };
   const todayLogs = logs.filter(l=>isToday(l.ts)).sort((a,b)=>b.ts-a.ts);
   const olderLogs = logs.filter(l=>!isToday(l.ts)).sort((a,b)=>b.ts-a.ts);
@@ -5774,6 +5831,7 @@ let orderTimerHandle = null;
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
   }
   startBackgroundSync();
+  autoCloseStaleShifts();   // закрыть смены, которые остались открытыми с прошлых дней
 })();
 
 // Подчищаем все таймеры при уходе со страницы — без этого при частых
