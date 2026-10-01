@@ -1466,6 +1466,14 @@
   }
   .btn.small.danger:hover{background:rgba(229,72,77,.12);filter:none;}
   .emp-del{min-height:34px !important;padding:5px 12px !important;font-size:13px;}
+
+  /* ── Тимлид: доступ сотрудников отдела ── */
+  .tm-acc-row{padding:12px 0;border-bottom:1px solid var(--bg2);}
+  .tm-acc-name{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-bottom:8px;}
+  .tm-acc-mail{font-size:14px;color:var(--ink3);word-break:break-all;}
+  .tm-add{margin-top:18px;padding-top:16px;border-top:1px solid var(--bg3);}
+  .tm-add h3{font-size:13px;font-weight:700;margin-bottom:12px;}
+  .tm-name .role-tag, .tm-acc-name .role-tag{font-size:10px;font-weight:600;color:var(--p6);background:var(--p1);border-radius:20px;padding:2px 8px;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -4665,6 +4673,77 @@ function empKpiPct(e, mk){
   return { num, den, pct: den>0 ? Math.round(num/den*100) : null };
 }
 
+// ── Тимлид управляет сотрудниками ТОЛЬКО своего отдела ────────────────────────
+// Что можно: добавить сотрудника своего отдела и вписать/изменить его почту.
+// Чего нельзя: менять роль, фикс-ставку, отдел, имя, удалять, трогать чужой отдел
+// и свою собственную почту. Все проверки здесь, в коде действия, — не только в
+// интерфейсе, поэтому подмена полей в браузере не помогает.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function teamLeadMe(){
+  const me = employees.find(e=>e.id===myEmployeeId);
+  return (me && me.role==='teamlead' && DEPARTMENTS[me.department]) ? me : null;
+}
+// Читаем свежий список из базы, применяем правку, пишем назад: так мы не затираем
+// то, что админ изменил, пока у тимлида была открыта страница.
+async function teamMutateEmployees(mutator){
+  const fresh = await storeGet('app:employees', SHARED);
+  if(!Array.isArray(fresh)) return { error:'Не удалось прочитать список сотрудников. Проверьте связь и повторите' };
+  const list = normalizeEmployees(fresh);
+  const err = mutator(list);
+  if(err) return { error: err };
+  const ok = await storeSet('app:employees', list, SHARED);
+  if(!ok) return { error:'Не удалось сохранить: нет связи или нет прав на запись' };
+  employees = list;
+  return { ok:true };
+}
+async function teamSaveEmails(){
+  const me = teamLeadMe();
+  if(!me){ showToast('Нет прав на это действие', 'error'); return; }
+  const wanted = {};
+  document.querySelectorAll('[data-tmemail]').forEach(i=>{ wanted[i.dataset.tmemail] = i.value.trim().toLowerCase(); });
+  const r = await teamMutateEmployees(list=>{
+    for(const id of Object.keys(wanted)){
+      const emp = list.find(e=>e.id===id);
+      if(!emp) continue;
+      if(emp.department !== me.department) return 'Можно менять почты только сотрудников своего отдела';
+      if(emp.id === me.id) return 'Свою почту менять нельзя';
+      if(wanted[id] && !EMAIL_RE.test(wanted[id])) return 'Некорректная почта у «' + emp.name + '»';
+    }
+    const seen = {};
+    for(const e of list){
+      const v = (wanted[e.id] !== undefined) ? wanted[e.id] : String(e.email||'').toLowerCase();
+      if(!v) continue;
+      if(seen[v]) return 'Почта ' + v + ' уже используется';
+      seen[v] = true;
+    }
+    for(const id of Object.keys(wanted)){ const emp = list.find(e=>e.id===id); if(emp) emp.email = wanted[id]; }
+    return null;
+  });
+  if(r.error){ showToast(r.error, 'error'); return; }
+  showToast('Почты сохранены', 'success');
+  renderNow();
+}
+async function teamAddEmployee(){
+  const me = teamLeadMe();
+  if(!me){ showToast('Нет прав на это действие', 'error'); return; }
+  const nEl = document.getElementById('tmNewName'), eEl = document.getElementById('tmNewEmail');
+  const name = (nEl ? nEl.value : '').trim().replace(/\s+/g, ' ');
+  const email = (eEl ? eEl.value : '').trim().toLowerCase();
+  if(name.length < 2 || name.length > 40){ showToast('Укажите имя от 2 до 40 символов', 'error'); return; }
+  if(!EMAIL_RE.test(email)){ showToast('Укажите корректную почту', 'error'); return; }
+  const r = await teamMutateEmployees(list=>{
+    if(list.some(e=>String(e.name||'').trim().toLowerCase() === name.toLowerCase())) return 'Сотрудник с таким именем уже есть';
+    if(list.some(e=>String(e.email||'').toLowerCase() === email)) return 'Почта ' + email + ' уже используется';
+    // отдел — всегда свой; роль и фикс-ставку задаёт только админ
+    list.push({ id:'e' + Date.now(), name, department: me.department, email });
+    return null;
+  });
+  if(r.error){ showToast(r.error, 'error'); return; }
+  try{ ensureMonth(editingMonth); await storeSet('app:kpiData', kpiData, SHARED); }catch(e){}
+  showToast('Сотрудник добавлен', 'success');
+  renderNow();
+}
+
 function renderTeamView(){
   const me = employees.find(e=>e.id===myEmployeeId);
   if(!me || me.role!=='teamlead') return '<div class="card"><div class="empty">Раздел доступен только тимлидам</div></div>';
@@ -4683,7 +4762,42 @@ function renderTeamView(){
       <div class="tm-meta"><span>${isCheckedIn(e.id)?'на смене':'не на смене'} · ${fmtDuration(todayHoursFor(e.id))}</span><span>${fmtMoney(r.num)}</span><span class="ppct ${cls(r.pct)}">${r.pct!=null?r.pct+'%':'—'}</span><span>${t?'⏱ '+fmtOrderTime(t.ms):''}</span></div>
       <button class="btn small secondary" data-view-emp="${e.id}">Карточка</button>
     </div>`;}).join('');
+  const ov = deptOverview(dept, mk);
+  const plateCard = ov
+    ? `<div class="card"><h2>Мой отдел · ${monthLabel(mk)}</h2><div class="ov-depts" style="grid-template-columns:1fr;">${renderDeptPlate(ov)}</div></div>`
+    : '';
+  const mateIds = mates.map(e=>e.id);
+  const todayRows = logs.filter(l=>isToday(l.ts) && mateIds.includes(l.empId)).sort((a,b)=>b.ts-a.ts).map(l=>{
+    const emp = employees.find(e=>e.id===l.empId);
+    return `<div class="log-row"><span>${emp?escapeHtml(emp.name):'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}</span>${l.auto?' <span class="log-auto">автозакрытие</span>':''}</span><span class="mono">${fmtTime(l.ts)}</span></div>`;
+  }).join('');
+  const accessRows = mates.map(e=>{
+    const tag = empRoleLabel(e) ? `<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>` : '';
+    return `<div class="tm-acc-row">
+      <div class="tm-acc-name">${escapeHtml(e.name)}${tag}</div>
+      ${e.id===me.id
+        ? `<div class="tm-acc-mail">${escapeHtml(e.email||'—')} <span class="hint">(свою почту меняет админ)</span></div>`
+        : `<input type="email" data-tmemail="${e.id}" value="${escapeHtml(e.email||'')}" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email">`}
+    </div>`;
+  }).join('');
+  const accessCard = `<div class="card"><h2>Сотрудники ${escapeHtml(deptLabel(dept))} · доступ</h2>
+      ${accessRows || '<div class="empty">В отделе пока нет сотрудников</div>'}
+      <div class="emp-save-row"><button class="btn small" id="tmSaveEmailsBtn">Сохранить почты</button></div>
+      <div class="tm-add">
+        <h3>Добавить сотрудника ${escapeHtml(deptLabel(dept))}</h3>
+        <div class="emp-access-grid">
+          <div class="fld full"><label class="field-label">Имя</label>
+            <input type="text" id="tmNewName" placeholder="Так же, как в таблице заказов"></div>
+          <div class="fld full"><label class="field-label">Почта для входа</label>
+            <input type="email" id="tmNewEmail" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email"></div>
+        </div>
+        <div class="emp-save-row"><button class="btn small" id="tmAddBtn">Добавить</button></div>
+        <div class="hint" style="margin-top:10px;">Имя должно совпадать с колонкой «Кто делает» в таблице заказов: по нему заказы привязываются к сотруднику. Чтобы сотрудник смог войти, администратор должен открыть ему доступ по этой почте.</div>
+      </div>
+    </div>`;
+  const logCard = `<div class="card"><h2>Отметки сегодня · ${escapeHtml(deptLabel(dept))}</h2>${todayRows || '<div class="empty">Сегодня отметок не было</div>'}</div>`;
   return `<div class="admin-dashboard-grid"><div class="admin-col-left">
+    ${plateCard}
     <div class="card"><h2>Моя команда · ${deptLabel(dept)} · ${monthLabel(mk)}</h2>${rows || '<div class="empty">В отделе пока нет сотрудников</div>'}</div>
     <div class="card"><h2>Требует внимания</h2>${late.length ? late.map(o=>`<div class="ov-att-row"><span class="who">${escapeHtml(o.emp)}</span><span class="what">${escapeHtml(o.client||'без имени')}</span><span class="when">просрочен на ${o.days} дн.</span></div>`).join('') : '<div class="ov-att-empty">Просроченных заказов нет</div>'}</div>
   </div><div class="admin-col-right">
@@ -4692,7 +4806,10 @@ function renderTeamView(){
       <div class="hint" style="margin:8px 0 2px;">Нажимайте на дни, чтобы отметить выходной за ${monthLabel(mk)}.</div>
       ${renderCalendarGrid(teamSchedEmpId, mk, true)}
       <div class="cal-legend"><span><span class="sw work"></span>Рабочий день</span><span><span class="sw off"></span>Выходной</span><span><span class="sw today"></span>Сегодня</span></div>
-    </div></div></div>`;
+    </div>
+    ${accessCard}
+    ${logCard}
+  </div></div>`;
 }
 
 function renderPinGate(){
@@ -5232,6 +5349,42 @@ async function submitSalesForm(){
   renderNow();
 }
 
+function ovPctClass(p){ return p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low'; }
+// Плашка отдела: общая для сводки админа и вкладки «Команда» у тимлида
+function renderDeptPlate(ov){
+  const pctClass = ovPctClass;
+    if(!ov) return '';
+    const fmtAvg = (t)=> t ? fmtOrderTime(t.ms) : '—';
+    return `
+    <div class="ov-dept">
+      <div class="ov-dept-head">
+        <span class="dname">${ov.label}</span>
+        <span class="dshift">${ov.onShiftCount} из ${ov.people.length} на смене</span>
+      </div>
+      <div class="ov-dept-total">
+        <div class="tl">${escapeHtml(ov.numLabel)}</div>
+        <div class="tv">${fmtMoney(ov.totalNum)}</div>
+        <div class="ov-bar ${pctClass(ov.totalPct)==='ok'?'ok':pctClass(ov.totalPct)==='low'?'low':''}"><i style="width:${Math.min(100, ov.totalPct||0)}%"></i></div>
+        <div class="tp">${ov.totalPct!=null ? `${ov.totalPct}% ${ov.dept==='to'?'от выручки ОП':'от плана'} ${fmtMoney(ov.totalPlan)}` : 'план не задан'}${ov.deptAvgTime ? ` · среднее время ${fmtAvg(ov.deptAvgTime)}` : ''}</div>
+      </div>
+      ${ov.people.map(p=>`
+        <div class="ov-person ${p.best?'is-best':''}">
+          <div class="ov-person-top">
+            <span class="pdot ${p.onShift?'on':''}"></span>
+            <span class="pname">${escapeHtml(p.name)}${p.roleLabel?`<span class="role-tag">${escapeHtml(p.roleLabel)}</span>`:''}${p.best?'<span class="best-tag">лучший</span>':''}</span>
+            <span class="pval">${fmtMoney(p.value)}</span>
+            <span class="ppct ${pctClass(p.pct)}">${p.pct!=null?p.pct+'%':'—'}</span>
+          </div>
+          <div class="ov-person-sub">
+            <span>${p.avgTime ? `⏱ ${fmtAvg(p.avgTime)} · ${p.avgTime.count} зак.` : '⏱ нет завершённых'}</span>
+            ${p.trend ? `<span class="ptrend ${pctClass(p.trend.pct)}">тенденция ${p.trend.pct}%</span>` : ''}
+          </div>
+          ${p.rate!=null ? `<div class="ov-person-pay"><span>ставка ${p.rate}%${p.fixedRate!=null?' · фикс.':''}</span></div>` : ''}
+        </div>`).join('')}
+      ${ov.unassigned>0 ? `<div class="ov-person unassigned"><div class="ov-person-top"><span class="pname">Основатели и продажи без имени</span><span class="pval">${fmtMoney(ov.unassigned)}</span></div><div class="ov-person-sub"><span>Разница между кассой и суммой по сотрудникам</span></div></div>` : ''}
+    </div>`;
+  }
+
 function renderAdminView(){
   if(!adminUnlocked) return renderPinGate();
 
@@ -5324,38 +5477,7 @@ function renderAdminView(){
   const onShiftNow = employees.filter(e=>isCheckedIn(e.id)).length;
   const pctClass = (p)=> p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low';
 
-  const renderDeptCol = (ov)=>{
-    if(!ov) return '';
-    const fmtAvg = (t)=> t ? fmtOrderTime(t.ms) : '—';
-    return `
-    <div class="ov-dept">
-      <div class="ov-dept-head">
-        <span class="dname">${ov.label}</span>
-        <span class="dshift">${ov.onShiftCount} из ${ov.people.length} на смене</span>
-      </div>
-      <div class="ov-dept-total">
-        <div class="tl">${escapeHtml(ov.numLabel)}</div>
-        <div class="tv">${fmtMoney(ov.totalNum)}</div>
-        <div class="ov-bar ${pctClass(ov.totalPct)==='ok'?'ok':pctClass(ov.totalPct)==='low'?'low':''}"><i style="width:${Math.min(100, ov.totalPct||0)}%"></i></div>
-        <div class="tp">${ov.totalPct!=null ? `${ov.totalPct}% ${ov.dept==='to'?'от выручки ОП':'от плана'} ${fmtMoney(ov.totalPlan)}` : 'план не задан'}${ov.deptAvgTime ? ` · среднее время ${fmtAvg(ov.deptAvgTime)}` : ''}</div>
-      </div>
-      ${ov.people.map(p=>`
-        <div class="ov-person ${p.best?'is-best':''}">
-          <div class="ov-person-top">
-            <span class="pdot ${p.onShift?'on':''}"></span>
-            <span class="pname">${escapeHtml(p.name)}${p.roleLabel?`<span class="role-tag">${escapeHtml(p.roleLabel)}</span>`:''}${p.best?'<span class="best-tag">лучший</span>':''}</span>
-            <span class="pval">${fmtMoney(p.value)}</span>
-            <span class="ppct ${pctClass(p.pct)}">${p.pct!=null?p.pct+'%':'—'}</span>
-          </div>
-          <div class="ov-person-sub">
-            <span>${p.avgTime ? `⏱ ${fmtAvg(p.avgTime)} · ${p.avgTime.count} зак.` : '⏱ нет завершённых'}</span>
-            ${p.trend ? `<span class="ptrend ${pctClass(p.trend.pct)}">тенденция ${p.trend.pct}%</span>` : ''}
-          </div>
-          ${p.rate!=null ? `<div class="ov-person-pay"><span>ставка ${p.rate}%${p.fixedRate!=null?' · фикс.':''}</span></div>` : ''}
-        </div>`).join('')}
-      ${ov.unassigned>0 ? `<div class="ov-person unassigned"><div class="ov-person-top"><span class="pname">Основатели и продажи без имени</span><span class="pval">${fmtMoney(ov.unassigned)}</span></div><div class="ov-person-sub"><span>Разница между кассой и суммой по сотрудникам</span></div></div>` : ''}
-    </div>`;
-  };
+  const renderDeptCol = renderDeptPlate;
 
   const attRows = [
     ...att.overdue.slice(0,6).map(o=>`
@@ -5921,6 +6043,9 @@ function attachDelegatedHandlers(){
       });
       return;
     }
+
+    if(el.closest('#tmSaveEmailsBtn')){ await runOnce(teamSaveEmails); return; }
+    if(el.closest('#tmAddBtn')){ await runOnce(teamAddEmployee); return; }
 
     if(el.closest('#addEmpBtn')){
       await runOnce(async ()=>{
