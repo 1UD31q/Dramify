@@ -1475,6 +1475,464 @@
   .tm-add h3{font-size:13px;font-weight:700;margin-bottom:12px;}
   .tm-name .role-tag, .tm-acc-name .role-tag{font-size:10px;font-weight:600;color:var(--p6);background:var(--p1);border-radius:20px;padding:2px 8px;white-space:nowrap;}
 </style>
+<style>
+
+/* ========================================================================
+   DRAMIFY — DESKTOP UI PASS
+   Более взрослый / editorial SaaS-интерфейс.
+   Только desktop: мобильная версия остаётся без изменений.
+   ======================================================================== */
+@media (min-width: 900px) {
+  :root {
+    --desktop-sidebar: 224px;
+    --desktop-content-max: 1480px;
+  }
+
+  body {
+    background: var(--bg1) !important;
+  }
+
+  /* ---------- SHELL ---------- */
+  .app {
+    display: block !important;
+    max-width: none !important;
+    width: 100% !important;
+    min-height: 100vh;
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  header.cover {
+    width: var(--desktop-sidebar) !important;
+    min-width: var(--desktop-sidebar) !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    margin: 0 !important;
+    padding: 28px 18px 22px !important;
+    border-radius: 0 !important;
+    background: #111113 !important;
+    border-right: 1px solid rgba(255,255,255,.07) !important;
+    box-shadow: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  header.cover::before {
+    opacity: .18 !important;
+    background-image: radial-gradient(rgba(255,255,255,.18) 1px, transparent 1px) !important;
+    background-size: 22px 22px !important;
+    mask-image: linear-gradient(180deg, #000 0%, transparent 48%) !important;
+  }
+
+  header.cover::after {
+    width: 420px !important;
+    height: 420px !important;
+    top: -220px !important;
+    right: -260px !important;
+    background: radial-gradient(circle, rgba(124,82,200,.13), transparent 68%) !important;
+  }
+
+  .brand {
+    margin: 2px 6px 42px !important;
+    gap: 5px !important;
+  }
+
+  .brand-banner {
+    height: 31px !important;
+    filter: none !important;
+  }
+
+  .brand .subtitle {
+    font-size: 9px !important;
+    letter-spacing: .16em !important;
+    color: rgba(255,255,255,.30) !important;
+    margin-left: 0 !important;
+  }
+
+  /* ---------- NAV: no pill container, no childish bubbles ---------- */
+  .tabs {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .tabs::after {
+    display: none !important;
+  }
+
+  .tab {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    min-height: 42px !important;
+    padding: 0 12px 0 15px !important;
+    margin: 0 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    color: rgba(255,255,255,.48) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    box-shadow: none !important;
+    text-align: left !important;
+    transition: background .16s ease, color .16s ease !important;
+  }
+
+  .tab::before {
+    content: '' !important;
+    width: 3px !important;
+    height: 18px !important;
+    margin: 0 12px 0 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    opacity: 1 !important;
+    transform: none !important;
+    flex: none !important;
+  }
+
+  .tab:hover {
+    background: rgba(255,255,255,.045) !important;
+    color: rgba(255,255,255,.82) !important;
+  }
+
+  .tab.active {
+    background: rgba(255,255,255,.075) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-weight: 600 !important;
+  }
+
+  .tab.active::before {
+    background: var(--p4) !important;
+    opacity: 1 !important;
+  }
+
+  /* ---------- THEME BUTTON ---------- */
+  .theme-btn {
+    position: absolute !important;
+    top: 27px !important;
+    right: 18px !important;
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255,255,255,.09) !important;
+    background: rgba(255,255,255,.035) !important;
+    box-shadow: none !important;
+    font-size: 13px !important;
+  }
+
+  .theme-btn:hover {
+    background: rgba(255,255,255,.08) !important;
+  }
+
+  /* ---------- MAIN ---------- */
+  main#main {
+    width: calc(100% - var(--desktop-sidebar)) !important;
+    max-width: none !important;
+    min-height: 100vh !important;
+    margin-left: var(--desktop-sidebar) !important;
+    padding: 34px clamp(28px, 4vw, 64px) 56px !important;
+    background: var(--bg1) !important;
+    overflow-y: auto;
+  }
+
+  /* Keep the actual dashboard visually contained on huge monitors. */
+  main#main > * {
+    max-width: var(--desktop-content-max);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ---------- CARDS ---------- */
+  .card {
+    padding: 22px 24px !important;
+    margin-bottom: 14px !important;
+    border-radius: 13px !important;
+    border: 1px solid var(--bg2) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,.025) !important;
+    transition: border-color .16s ease, box-shadow .16s ease !important;
+  }
+
+  .card:hover {
+    transform: none !important;
+    box-shadow: 0 4px 18px rgba(0,0,0,.055) !important;
+    border-color: var(--bg3) !important;
+  }
+
+  .card::before {
+    display: none !important;
+  }
+
+  .card h2 {
+    font-size: 10px !important;
+    letter-spacing: .12em !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* ---------- KPI / SMALL CARDS ---------- */
+  .kpi-box,
+  .finance-box,
+  .ov-stat,
+  .st-stat {
+    border-radius: 10px !important;
+    box-shadow: none !important;
+  }
+
+  .kpi-box:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  /* ---------- INPUTS ---------- */
+  select,
+  input[type=text], input[type=number], input[type=email], input[type=password],
+  input[type=tel], input[type=search], input[type=url] {
+    border-radius: 9px !important;
+  }
+
+  /* ---------- BUTTONS ---------- */
+  .btn,
+  .name-btn,
+  .order-btn,
+  .pause-reason-btn,
+  .status-choice-btn {
+    border-radius: 9px !important;
+    box-shadow: none !important;
+  }
+
+  /* ---------- EMPLOYEE SPLIT ---------- */
+  main#main.emp-split-view,
+  main#main.admin-split-view {
+    padding-top: 24px !important;
+  }
+
+  .emp-dashboard-grid {
+    gap: 16px !important;
+  }
+
+  .emp-col-left,
+  .emp-col-right {
+    gap: 14px !important;
+    padding-right: 4px !important;
+  }
+
+  /* ---------- SCROLLBARS ---------- */
+  header.cover::-webkit-scrollbar,
+  .emp-col-left::-webkit-scrollbar,
+  .emp-col-right::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  header.cover::-webkit-scrollbar-thumb,
+  .emp-col-left::-webkit-scrollbar-thumb,
+  .emp-col-right::-webkit-scrollbar-thumb {
+    background: rgba(128,128,128,.28);
+    border-radius: 0;
+  }
+
+  /* ---------- MODALS / TOASTS ---------- */
+  #toastHost,
+  #modalHost {
+    left: var(--desktop-sidebar) !important;
+  }
+}
+
+/* =========================================================================
+   DRAMIFY DESKTOP v2 — top navigation / restrained brand color
+   ========================================================================= */
+@media (min-width: 900px) {
+  body {
+    background: var(--bg1);
+  }
+
+  .app {
+    display: block;
+    min-height: 100vh;
+  }
+
+  /* Top navigation instead of the old sidebar */
+  header.cover {
+    position: fixed;
+    inset: 0 0 auto 0;
+    width: 100%;
+    min-width: 0;
+    height: 72px;
+    min-height: 72px;
+    margin: 0;
+    padding: 0 28px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 28px;
+    overflow: visible;
+    z-index: 100;
+    border-radius: 0;
+    border-bottom: 1px solid rgba(84,68,102,.14);
+    box-shadow: 0 1px 12px rgba(20,12,30,.05);
+    background: color-mix(in srgb, var(--bg0) 94%, transparent);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  /* Remove decorative purple background effects from the old sidebar */
+  header.cover::before,
+  header.cover::after {
+    display: none;
+  }
+
+  .brand {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    z-index: 1;
+  }
+
+  .brand-banner {
+    height: 34px;
+    width: auto;
+    filter: none;
+  }
+
+  .brand .subtitle {
+    display: none;
+  }
+
+  /* Navigation is now a clean horizontal list */
+  .tabs {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    backdrop-filter: none;
+    z-index: 1;
+  }
+
+  .tab {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 25px 14px 24px;
+    border-radius: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink4);
+    letter-spacing: -.01em;
+    background: transparent;
+    box-shadow: none;
+    transition: color .16s ease, background .16s ease;
+  }
+
+  .tab:hover {
+    color: var(--ink);
+    background: rgba(92,62,120,.045);
+  }
+
+  .tab.active {
+    color: var(--p6);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--p5);
+  }
+
+  /* Keep brand color, but use it only as a controlled accent */
+  .theme-btn {
+    margin-left: auto !important;
+    position: static !important;
+    flex: 0 0 auto;
+  }
+
+  main#main {
+    margin: 0;
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 104px 42px 60px;
+    min-height: 100vh;
+  }
+
+  /* A little more breathing room on the desktop canvas */
+  #main > .card,
+  #main > .section {
+    max-width: 1440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Restrained color language: purple = primary, teal = status/success */
+  .card::before {
+    background: var(--p5);
+  }
+
+  .btn.primary {
+    background: var(--p5);
+    box-shadow: 0 4px 12px rgba(92,62,120,.16);
+  }
+
+  .btn.primary:hover {
+    background: var(--p6);
+    box-shadow: 0 6px 16px rgba(92,62,120,.20);
+  }
+
+  .btn.teal {
+    background: var(--teal-dark);
+    box-shadow: 0 4px 12px rgba(31,111,99,.13);
+  }
+
+  /* Tone down decorative badges/chips without removing semantic colors */
+  .badge,
+  .order-stat {
+    box-shadow: none;
+  }
+
+  /* Desktop cards: less "toy-like", still retain hierarchy */
+  .card {
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(30,20,40,.045);
+  }
+
+  .card:hover {
+    box-shadow: 0 5px 18px rgba(30,20,40,.07);
+    transform: translateY(-1px);
+  }
+}
+
+@media (min-width: 1400px) {
+  header.cover {
+    padding-left: 42px;
+    padding-right: 42px;
+  }
+
+  main#main {
+    padding-left: 56px;
+    padding-right: 56px;
+  }
+}
+</style>
 </head>
 <body>
 <div class="app">
