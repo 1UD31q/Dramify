@@ -1432,6 +1432,14 @@
   .btn.auth-google svg{width:20px;height:20px;flex:none;}
   .auth-or{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:12px;}
   .auth-or::before,.auth-or::after{content:'';flex:1;height:1px;background:var(--line);}
+  .ro-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-size:13px;color:var(--ink3);}
+  .ro-view #punchBtn,.ro-view [data-order-pause],.ro-view [data-order-resume],.ro-view [data-order-status],.ro-view textarea,.ro-view #switchUser{pointer-events:none;opacity:.5;}
+  .ro-view #switchUser{display:none;}
+  .tm-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 0;border-bottom:1px solid var(--bg2);}
+  .tm-row:last-child{border-bottom:none;}
+  .tm-name{flex:1 1 160px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .tm-meta{flex:2 1 260px;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink3);}
+  .card{margin-bottom:16px;}
 </style>
 </head>
 <body>
@@ -1443,6 +1451,7 @@
     <div class="tabs" style="position:relative;">
       <div class="tab active" data-mode="employee">Сотрудник</div>
       <div class="tab" id="salesTab" data-mode="sales" style="display:none;">Продажа</div>
+      <div class="tab" id="teamTab" data-mode="team" style="display:none;">Команда</div>
       <!-- Admin tab hidden; access via secret gesture -->
     </div>
     <button class="theme-btn" id="themeBtn" title="Сменить тему" style="position:absolute;top:12px;right:12px;">☀️</button>
@@ -3213,6 +3222,9 @@ let syncing = {};     // ключи: 'op_2025-08', 'to_2025-08', ...
 let schedules = {};
 let scheduleEmpId = null;
 let adminTab = 'summary';      // активная вкладка админки
+let viewEmpId = null;          // чью карточку сейчас смотрит админ/тимлид
+let teamSchedEmpId = null;     // чей график правит тимлид
+let _lastHtml = '';
 let kpiEditEmpId = null;       // чей KPI правим сейчас // какого сотрудника сейчас редактирует админ
 
 const SEED_MONTH_DATA = {
@@ -4357,6 +4369,8 @@ function currentViewKey(){
   // Ключ отражает только то, какой ЭКРАН показан, а не что на нём меняется
   // (ввод PIN, ввод KPI и т.п.) — иначе анимация появления будет
   // переигрываться на каждое нажатие клавиши и выглядеть как тряска.
+  if(viewEmpId && (mode==='admin' || mode==='team')) return 'view-emp:'+viewEmpId;
+  if(mode==='team') return 'team-view';
   if(mode==='employee'){
     if(myEmployeeId) return 'emp-dashboard:'+myEmployeeId;
     if(selectingEmpId) return 'emp-pingate';
@@ -4367,6 +4381,8 @@ function currentViewKey(){
   if(mode==='sales') return 'sales-view';
   return adminUnlocked ? 'admin-view' : 'admin-pingate';
 }
+
+(function(){ let t; window.addEventListener('scroll', function(){ clearTimeout(t); t = setTimeout(function(){ try{ sessionStorage.setItem('dramify-scroll', JSON.stringify({k:lastViewKey, y:window.scrollY})); }catch(e){} }, 150); }, {passive:true}); })();
 
 function render(){
   // Дебаунс: если уже запланирован рендер — не дублируем.
@@ -4397,6 +4413,8 @@ function _doRender(){
     const emp = employees.find(e=>e.id===myEmployeeId);
     salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
   }
+  const teamTabEl = document.getElementById('teamTab');
+  if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
   const viewKey = currentViewKey();
   const scrollY = window.scrollY; // запоминаем позицию до перезаписи DOM
 
@@ -4411,9 +4429,24 @@ function _doRender(){
     });
   });
 
-  if(mode==='employee')       main.innerHTML = renderEmployeeArea();
-  else if(mode==='sales')     main.innerHTML = renderSalesView();
-  else                         main.innerHTML = renderAdminView();
+  let html;
+  if(viewEmpId && (mode==='admin' || mode==='team')) html = renderViewedCard();
+  else if(mode==='employee')  html = renderEmployeeArea();
+  else if(mode==='sales')     html = renderSalesView();
+  else if(mode==='team')      html = renderTeamView();
+  else                         html = renderAdminView();
+  // Ничего не изменилось — DOM не трогаем: не сбрасываются прокрутка, фокус и раскрытые блоки
+  if(html === _lastHtml && viewKey === lastViewKey) return;
+  _lastHtml = html;
+  // Запоминаем прокрутку внутренних блоков и раскрытые <details>
+  const innerScroll = {}, cnt = {};
+  main.querySelectorAll('*').forEach(n=>{
+    const c = (n.className && n.className.baseVal===undefined ? String(n.className) : '') || n.tagName;
+    cnt[c] = (cnt[c]||0) + 1;
+    if(n.scrollTop > 0 && n.scrollHeight > n.clientHeight) innerScroll[c+'#'+cnt[c]] = n.scrollTop;
+  });
+  const openDetails = Array.from(main.querySelectorAll('details')).map(d=>d.open);
+  main.innerHTML = html;
 
   // Возвращаем несохранённый ввод обратно в поля
   pendingInputs.forEach(p=>{
@@ -4424,21 +4457,30 @@ function _doRender(){
     if(el && el.value !== p.value && p.value) el.value = p.value;
   });
   // Включаем split-scroll только для дашборда сотрудника на десктопе
-  const isEmpDash = mode==='employee' && myEmployeeId && employees.find(e=>e.id===myEmployeeId);
+  const isEmpDash = (mode==='employee' && myEmployeeId && employees.find(e=>e.id===myEmployeeId)) || (viewEmpId && (mode==='admin'||mode==='team'));
   const isDesktop = window.innerWidth >= 900;
   main.classList.toggle('emp-split-view', !!(isEmpDash && isDesktop));
-  const isAdminView = mode !== 'employee' && mode !== 'sales' && adminUnlocked;
+  const isAdminView = mode !== 'employee' && mode !== 'sales' && mode !== 'team' && !viewEmpId && adminUnlocked;
   main.classList.toggle('admin-split-view', !!(isAdminView && isDesktop));
   // анимацию «появления» включаем только когда реально сменился экран, а не на каждый рендер
   // (иначе ввод PIN или KPI подёргивался бы при каждой цифре/символе)
+  let savedY = 0;
+  try{ const sv = JSON.parse(sessionStorage.getItem('dramify-scroll')||'null'); if(sv && sv.k===viewKey && lastViewKey===null) savedY = sv.y||0; }catch(e){}
   if(viewKey !== lastViewKey){
-    window.scrollTo({top:0,behavior:'instant'}); // скроллим только при смене экрана
+    window.scrollTo({top:savedY,behavior:'instant'}); // наверх — только при смене экрана (при перезагрузке возвращаем место)
     void main.offsetWidth;
     main.classList.add('anim-in');
     lastViewKey = viewKey;
     setTimeout(() => slotRoll(main), 120);
   } else {
     window.scrollTo({top: scrollY, behavior: 'instant'}); // восстанавливаем позицию
+    const cnt2 = {};
+    main.querySelectorAll('*').forEach(n=>{
+      const c = (n.className && n.className.baseVal===undefined ? String(n.className) : '') || n.tagName;
+      cnt2[c] = (cnt2[c]||0) + 1;
+      const v = innerScroll[c+'#'+cnt2[c]]; if(v) n.scrollTop = v;
+    });
+    main.querySelectorAll('details').forEach((d,i)=>{ if(openDetails[i]) d.open = true; });
   }
   // обработчики событий навешаны один раз через делегирование (см. attachDelegatedHandlers),
   // поэтому после каждого render() их не нужно перевешивать заново — это и есть оптимизация
@@ -4490,9 +4532,9 @@ function initialsFor(e){
 
 
 
-function renderEmployeeDashboard(){
-  const emp = employees.find(e=>e.id===myEmployeeId);
-  if(!emp){ myEmployeeId = null; return renderNotLinked(); }
+function renderEmployeeDashboard(forId){
+  const emp = employees.find(e=>e.id===(forId||myEmployeeId));
+  if(!emp){ if(!forId) myEmployeeId = null; return forId ? '<div class="card"><div class="empty">Сотрудник не найден</div></div>' : renderNotLinked(); }
   const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op; // ИСПРАВЛЕНО: страховка от неизвестного отдела
   const checkedIn = isCheckedIn(emp.id);
   const todays = logs.filter(l=>l.empId===emp.id && isToday(l.ts)).sort((a,b)=>a.ts-b.ts);
@@ -4530,8 +4572,8 @@ function renderEmployeeDashboard(){
       ${isCurrentMonth ? '<span class="emp-month-badge">текущий</span>' : ''}
     </div>`;
 
-  return `
-    <div class="emp-dashboard-grid">
+  return `${forId ? '<div class="ro-bar"><button class="btn small secondary" id="viewBackBtn">← Назад</button><span>Карточка сотрудника · только просмотр</span></div>' : ''}
+    <div class="emp-dashboard-grid${forId ? ' ro-view' : ''}">
       <div class="emp-col-left">
         <div class="card">
           <div class="punch-wrap">
@@ -4579,6 +4621,52 @@ function renderEmployeeDashboard(){
         ${emp.department === 'op' ? renderOrdersBlockOP(emp.id, viewMonth) : ''}
       </div>
     </div>`;
+}
+
+function renderViewedCard(){
+  const me = employees.find(e=>e.id===myEmployeeId);
+  const target = employees.find(e=>e.id===viewEmpId);
+  const allowed = target && (authIsAdmin() || (me && me.role==='teamlead' && me.department===target.department));
+  if(!allowed){ viewEmpId = null; return '<div class="card"><div class="empty">Нет доступа к этой карточке</div></div>'; }
+  return renderEmployeeDashboard(viewEmpId);
+}
+
+function empKpiPct(e, mk){
+  const dept = DEPARTMENTS[e.department]; if(!dept) return null;
+  const k = getKpi(e.id, mk), plan = planShareFor(e.department, mk);
+  const num = Number(k[dept.ratio.num])||0;
+  const den = (dept.ratio.den==='plan' && plan!=null) ? plan : (Number(k[dept.ratio.den])||0);
+  return { num, den, pct: den>0 ? Math.round(num/den*100) : null };
+}
+
+function renderTeamView(){
+  const me = employees.find(e=>e.id===myEmployeeId);
+  if(!me || me.role!=='teamlead') return '<div class="card"><div class="empty">Раздел доступен только тимлидам</div></div>';
+  const mk = activeMonth, dept = me.department;
+  const mates = employees.filter(e=>e.department===dept);
+  if(!teamSchedEmpId || !mates.find(e=>e.id===teamSchedEmpId)) teamSchedEmpId = (mates.find(e=>e.id!==me.id)||mates[0]).id;
+  const names = mates.map(e=>e.name);
+  const att = attentionItems(mk);
+  const late = att.overdue.filter(o=>names.includes(o.emp)).slice(0,8);
+  const cls = p=> p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low';
+  const rows = mates.map(e=>{
+    const r = empKpiPct(e, mk) || {num:0,pct:null};
+    const t = avgCompletionTime(e.id, mk);
+    return `<div class="tm-row">
+      <div class="tm-name"><span class="pdot ${isCheckedIn(e.id)?'on':''}"></span>${escapeHtml(e.name)}${empRoleLabel(e)?`<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>`:''}</div>
+      <div class="tm-meta"><span>${isCheckedIn(e.id)?'на смене':'не на смене'} · ${fmtDuration(todayHoursFor(e.id))}</span><span>${fmtMoney(r.num)}</span><span class="ppct ${cls(r.pct)}">${r.pct!=null?r.pct+'%':'—'}</span><span>${t?'⏱ '+fmtOrderTime(t.ms):''}</span></div>
+      <button class="btn small secondary" data-view-emp="${e.id}">Карточка</button>
+    </div>`;}).join('');
+  return `<div class="admin-dashboard-grid"><div class="admin-col-left">
+    <div class="card"><h2>Моя команда · ${deptLabel(dept)} · ${monthLabel(mk)}</h2>${rows || '<div class="empty">В отделе пока нет сотрудников</div>'}</div>
+    <div class="card"><h2>Требует внимания</h2>${late.length ? late.map(o=>`<div class="ov-att-row"><span class="who">${escapeHtml(o.emp)}</span><span class="what">${escapeHtml(o.client||'без имени')}</span><span class="when">просрочен на ${o.days} дн.</span></div>`).join('') : '<div class="ov-att-empty">Просроченных заказов нет</div>'}</div>
+  </div><div class="admin-col-right">
+    <div class="card"><h2>График сотрудника</h2>
+      <select id="teamSchedSelect">${mates.map(e=>`<option value="${e.id}" ${e.id===teamSchedEmpId?'selected':''}>${escapeHtml(e.name)}</option>`).join('')}</select>
+      <div class="hint" style="margin:8px 0 2px;">Нажимайте на дни, чтобы отметить выходной за ${monthLabel(mk)}.</div>
+      ${renderCalendarGrid(teamSchedEmpId, mk, true)}
+      <div class="cal-legend"><span><span class="sw work"></span>Рабочий день</span><span><span class="sw off"></span>Выходной</span><span><span class="sw today"></span>Сегодня</span></div>
+    </div></div></div>`;
 }
 
 function renderPinGate(){
@@ -5129,6 +5217,7 @@ function renderAdminView(){
       <td><span class="status-dot" style="background:${checkedIn?'#1F6F63':'#9AA5A8'}"></span>${checkedIn?'На смене':'Не на смене'}</td>
       <td class="mono">${fmtDuration(todayHoursFor(e.id))}</td>
       <td class="mono">${last? fmtDateTime(last.ts):'—'}</td>
+      <td><button class="btn small secondary" data-view-emp="${e.id}">Карточка</button></td>
     </tr>`;
   }).join('');
 
@@ -5319,7 +5408,7 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Статус команды сейчас</h2>
-      <table><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>
 
     <div class="card">
@@ -5666,7 +5755,13 @@ function attachDelegatedHandlers(){
     const el = ev.target;
 
     const tab = el.closest('.tab');
-    if(tab){ mode = tab.dataset.mode; renderNow(); return; }
+    if(tab){ mode = tab.dataset.mode; viewEmpId = null; renderNow(); return; }
+
+    const vBtn = el.closest('[data-view-emp]');
+    if(vBtn){ viewEmpId = vBtn.dataset.viewEmp; renderNow(); return; }
+    if(el.closest('#viewBackBtn')){ viewEmpId = null; renderNow(); return; }
+    // В режиме просмотра чужой карточки действия отключены
+    if(viewEmpId && el.closest('#punchBtn, [data-order-pause], [data-order-resume], [data-order-status]')) return;
 
     // Скрытый режим удаления отметок времени: 5 быстрых нажатий по заголовку карточки
     if(el.closest('#saleTimesTitle')){
@@ -5947,6 +6042,7 @@ function attachDelegatedHandlers(){
       salesForm[SALES_FIELDS[ev.target.id]] = ev.target.value;
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
+    if(ev.target.id === 'teamSchedSelect'){ teamSchedEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'kpiEmpSelect'){ kpiEditEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'saleTimesEmpSelect'){ saleTimesEmpFilter = ev.target.value; ev.target.blur(); renderNow(); }
