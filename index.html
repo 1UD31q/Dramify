@@ -152,7 +152,7 @@
     display: contents;
   }
 
-  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date]{
+  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date], input[type=time]{
     width:100%;min-width:0;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1.5px solid var(--bg3);
     font-family:var(--font);font-size:14px;line-height:1.3;background:var(--bg1);color:var(--ink);
     outline:none;-webkit-appearance:none;appearance:none;
@@ -222,11 +222,35 @@
   .hist-col:last-child .hist-tip{left:auto;right:0;transform:none;}
   .hist-col:hover .hist-tip,.hist-col:focus .hist-tip{display:block;}
   .hist-sum{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap;}
+  /* Время смены в календаре и пунктуальность */
+  .cal-cell{flex-direction:column;line-height:1.1;}
+  .cal-time{font-size:9px;font-weight:600;color:var(--p5);margin-top:1px;letter-spacing:-.02em;}
+  .cal-cell.shifted{box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .cal-cell.shifted.today{box-shadow:inset 0 0 0 2px var(--p5);}
+  .cal-legend .sw.shifted{background:var(--bg1);box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .shift-ed{display:flex;flex-direction:column;gap:8px;margin:4px 0 10px;}
+  .shift-def{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);}
+  .shift-def input,.shift-mode input{width:auto;flex:0 0 auto;padding:7px 10px;}
+  .shift-mode{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .shift-mode .att-btn{height:36px;font-size:12.5px;}
+  .att-btn.on{background:var(--p5);border-color:var(--p5);color:#fff;}
+  .att-late{color:var(--rust-dark);font-weight:600;font-size:12px;}
+  .pun-head,.pun-row{display:grid;grid-template-columns:22px 1fr minmax(110px,auto) 84px;gap:10px;align-items:center;}
+  .pun-head{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);padding-bottom:6px;}
+  .pun-row{padding:9px 0;border-top:1px solid var(--bg2);font-size:13px;}
+  .pun-row small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px;}
+  .pun-rank{font-weight:700;color:var(--ink3);text-align:center;}
+  .pun-rank.hot{color:var(--rust-dark);}
+  .pun-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .pun-late b{color:var(--rust-dark);}
+  .pun-ok{color:var(--teal-dark);}
+  .pun-na{color:var(--muted);}
+  .pun-avg{text-align:right;}
   /* Отметки за день */
   .att-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .att-nav input[type=date]{flex:1;min-width:150px;width:auto;}
-  html.dark input[type=date]{color-scheme:dark;}
-  @media (prefers-color-scheme: dark){ html:not(.light) input[type=date]{color-scheme:dark;} }
+  html.dark input[type=date],html.dark input[type=time]{color-scheme:dark;}
+  @media (prefers-color-scheme: dark){ html:not(.light) input[type=date],html:not(.light) input[type=time]{color-scheme:dark;} }
   .att-btn{min-width:42px;height:42px;padding:0 12px;border-radius:12px;border:1.5px solid var(--bg3);background:var(--bg1);color:var(--ink);font:600 15px var(--font);cursor:pointer;transition:background .15s;}
   .att-btn:hover:not(:disabled){background:var(--bg3);}
   .att-btn:disabled{opacity:.35;cursor:default;}
@@ -647,7 +671,7 @@
     .emp-dashboard-grid{grid-template-columns:1fr;}
   }
   /* запрещаем зум при фокусе на iOS */
-  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date]{font-size:16px;}
+  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date], input[type=time]{font-size:16px;}
   .keypad button, .btn, .name-btn, .tab{min-height:44px;}
   body{padding-bottom:env(safe-area-inset-bottom);}
 
@@ -1188,7 +1212,7 @@
     }
 
     /* ── Inputs & selects ── */
-    select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date] {
+    select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date], input[type=time] {
       font-size: 14px;
       padding: 11px 14px;
     }
@@ -2547,6 +2571,52 @@ async function toggleOffDay(empId, monthKey, day){
   await storeSet('app:schedules', schedules, SHARED);
 }
 
+// ── Время начала смены ─────────────────────────────────────────────────────
+// Хранится в том же ключе app:schedules (его правят админ и тимлид):
+//   schedules._shift[empId]               — обычное начало смены, 'ЧЧ:ММ'
+//   schedules._shiftDay[mk][empId][day]   — другое время в конкретный день
+// Опоздание — первый приход позже начала смены больше чем на LATE_GRACE_MIN.
+const LATE_GRACE_MIN = 5;
+let calMode = 'off';          // что делает клик по дню в редакторе: 'off' выходной | 'time' время смены
+let calModeTime = '12:00';
+function validHHMM(v){ return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v||'')); }
+function shiftDefault(empId){ const m = schedules._shift || {}; return validHHMM(m[empId]) ? m[empId] : null; }
+function shiftOverride(empId, mk, day){
+  const m = (((schedules._shiftDay||{})[mk])||{})[empId] || {};
+  return validHHMM(m[day]) ? m[day] : null;
+}
+function shiftStartFor(empId, mk, day){ return shiftOverride(empId, mk, day) || shiftDefault(empId); }
+async function setShiftDefault(empId, val){
+  schedules._shift = Object.assign({}, schedules._shift||{});
+  if(validHHMM(val)) schedules._shift[empId] = val; else delete schedules._shift[empId];
+  return storeSet('app:schedules', schedules, SHARED);
+}
+async function toggleShiftDay(empId, mk, day, val){
+  const all = schedules._shiftDay = schedules._shiftDay || {};
+  const mm = all[mk] = all[mk] || {};
+  const em = mm[empId] = mm[empId] || {};
+  if(em[day] === val || !validHHMM(val)) delete em[day]; else em[day] = val;
+  return storeSet('app:schedules', schedules, SHARED);
+}
+function hhmmToMin(v){ const [h,m] = v.split(':').map(Number); return h*60+m; }
+function minToHHMM(x){ x = Math.round(x); return String(Math.floor(x/60)%24).padStart(2,'0') + ':' + String(x%60).padStart(2,'0'); }
+function fmtLate(min){ return min>=60 ? Math.floor(min/60)+'ч '+(min%60)+'м' : min+' мин'; }
+
+// Панель над редактируемым календарём: обычное начало смены и режим клика
+function renderShiftEditor(empId){
+  return `<div class="shift-ed">
+    <label class="shift-def">Начало смены <input type="time" data-shiftdefault="${empId}" value="${shiftDefault(empId)||''}"></label>
+    <div class="shift-mode">
+      <button class="att-btn${calMode==='off'?' on':''}" data-calmode="off">Выходной</button>
+      <button class="att-btn${calMode==='time'?' on':''}" data-calmode="time">Другое время</button>
+      ${calMode==='time' ? `<input type="time" id="calModeTime" value="${calModeTime}">` : ''}
+    </div>
+    <div class="hint" style="margin:2px 0 0;">${calMode==='off'
+      ? 'Нажимайте на дни, чтобы отметить выходной.'
+      : `Нажимайте на дни, где смена начинается в ${calModeTime}. Повторное нажатие — вернуть обычное время.`}</div>
+  </div>`;
+}
+
 const WEEKDAY_LETTERS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
 // editable=true — календарь кликабельный (админка); иначе только для просмотра (сотрудник)
@@ -2565,9 +2635,13 @@ function renderCalendarGrid(empId, monthKey, editable){
     if(off) cls.push('off');
     if(isToday) cls.push('today');
     if(editable) cls.push('editable');
-    cells += `<div class="${cls.join(' ')}" ${editable?`data-caltoggle="${empId}" data-calday="${d}" data-calmonth="${monthKey}"`:''}>${d}</div>`;
+    const ov = !off ? shiftOverride(empId, monthKey, d) : null;
+    if(ov) cls.push('shifted');
+    cells += `<div class="${cls.join(' ')}" ${editable?`data-caltoggle="${empId}" data-calday="${d}" data-calmonth="${monthKey}"`:''}>${d}${ov?`<span class="cal-time">${ov}</span>`:''}</div>`;
   }
+  const def = shiftDefault(empId);
   return `
+    ${!editable && def ? `<div class="hint" style="margin:-4px 0 8px;">Обычное начало смены: <b>${def}</b>. Дни с другим временем отмечены в календаре.</div>` : ''}
     <div class="cal-wrap">
       <div class="cal-weekdays">${WEEKDAY_LETTERS.map(w=>`<div class="cal-wd">${w}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
@@ -3840,9 +3914,57 @@ function attDayStats(empId, dayStr){
   if(open) total += Math.max(0, Date.now()-openIn);
   const firstIn = list.find(l=>l.type==='in');
   const outs = list.filter(l=>l.type==='out');
+  const start = shiftStartFor(empId, dayStr.slice(0,7), d);
+  let late = null;
+  if(start && firstIn){
+    const diff = Math.round((firstIn.ts - new Date(y, m-1, d, ...start.split(':').map(Number)).getTime()) / 60000);
+    if(diff > LATE_GRACE_MIN) late = diff;
+  }
   return { list, total, open, firstIn: firstIn ? firstIn.ts : null, lastOut: outs.length ? outs[outs.length-1] : null,
-           off: isOffDay(empId, dayStr.slice(0,7), d) };
+           off: isOffDay(empId, dayStr.slice(0,7), d), start, late };
 }
+// Пунктуальность за месяц: опоздания и среднее время прихода.
+// Берём рабочие дни (не выходные) до сегодняшнего включительно, где был приход.
+function monthPunctuality(empList, mk){
+  const [y,m] = mk.split('-').map(Number);
+  const total = daysInMonthOf(mk);
+  const lastDay = mk===currentMonthKey() ? new Date().getDate() : (mk > currentMonthKey() ? 0 : total);
+  return empList.map(e=>{
+    let days = 0, lateDays = 0, lateMin = 0, arrSum = 0, maxLate = 0, withStart = 0;
+    for(let d=1; d<=lastDay; d++){
+      if(isOffDay(e.id, mk, d)) continue;
+      const st = attDayStats(e.id, `${mk}-${String(d).padStart(2,'0')}`);
+      if(!st.firstIn) continue;
+      days++;
+      const t = new Date(st.firstIn);
+      arrSum += t.getHours()*60 + t.getMinutes();
+      if(st.start) withStart++;
+      if(st.late){ lateDays++; lateMin += st.late; maxLate = Math.max(maxLate, st.late); }
+    }
+    return { e, days, lateDays, lateMin, maxLate, withStart,
+             avgArrival: days ? minToHHMM(arrSum/days) : null, start: shiftDefault(e.id) };
+  });
+}
+function renderPunctualityCard(empList, mk){
+  ensureAttMonth(mk);
+  const rows = monthPunctuality(empList, mk)
+    .sort((a,b)=> b.lateDays-a.lateDays || b.lateMin-a.lateMin || (a.avgArrival||'99').localeCompare(b.avgArrival||'99'));
+  const noStart = rows.filter(r=>!r.start).length;
+  const body = rows.map((r,i)=>`
+    <div class="pun-row">
+      <span class="pun-rank${r.lateDays && i<3 ? ' hot' : ''}">${i+1}</span>
+      <span class="pun-name">${escapeHtml(r.e.name)}<small>${r.start ? 'смена с ' + r.start : 'начало смены не задано'}</small></span>
+      <span class="pun-late">${r.lateDays ? `<b>${r.lateDays}</b> ${r.lateDays===1?'опоздание':r.lateDays<5?'опоздания':'опозданий'}<small>всего ${fmtLate(r.lateMin)} · макс. ${fmtLate(r.maxLate)}</small>` : (r.withStart ? '<span class="pun-ok">без опозданий</span>' : '<span class="pun-na">—</span>')}</span>
+      <span class="pun-avg mono">${r.avgArrival || '—'}<small>${r.days ? r.days + ' дн.' : 'нет приходов'}</small></span>
+    </div>`).join('');
+  return `<div class="card">
+    <h2>Пунктуальность · ${monthLabel(mk)}</h2>
+    <div class="pun-head"><span></span><span>Сотрудник</span><span>Опоздания</span><span>Средний приход</span></div>
+    ${body || '<div class="empty">Нет сотрудников</div>'}
+    <div class="hint" style="margin-top:8px;">Опоздание — приход позже начала смены больше чем на ${LATE_GRACE_MIN} мин. Считаются рабочие дни по графику.${noStart ? ' Начало смены задаётся в календаре сотрудника.' : ''}</div>
+  </div>`;
+}
+
 function renderDayAttendance(empList, title){
   const day = attDayValue();
   const mk = day.slice(0,7);
@@ -3856,7 +3978,7 @@ function renderDayAttendance(empList, title){
   const body = rows.map(({e, st})=>{
     let status;
     if(st.list.length){
-      status = `<span class="att-in">${fmtTime(st.firstIn || st.list[0].ts)}</span> → ${st.open ? '<span class="att-open">на смене</span>' : (st.lastOut ? `<span>${fmtTime(st.lastOut.ts)}</span>${st.lastOut.auto?' <span class="log-auto">авто</span>':''}` : '<span class="att-miss">нет ухода</span>')}`;
+      status = `${st.late ? `<span class="att-late" title="смена с ${st.start}">+${fmtLate(st.late)}</span> ` : ''}<span class="att-in">${fmtTime(st.firstIn || st.list[0].ts)}</span> → ${st.open ? '<span class="att-open">на смене</span>' : (st.lastOut ? `<span>${fmtTime(st.lastOut.ts)}</span>${st.lastOut.auto?' <span class="log-auto">авто</span>':''}` : '<span class="att-miss">нет ухода</span>')}`;
     } else {
       status = st.off ? '<span class="att-off">выходной</span>' : '<span class="att-miss">не отмечался</span>';
     }
@@ -5022,6 +5144,7 @@ function renderEmployeeDashboard(forId){
           <div class="cal-legend">
             <span><span class="sw work"></span>Рабочий день</span>
             <span><span class="sw off"></span>Выходной</span>
+            <span><span class="sw shifted"></span>Другое время</span>
             <span><span class="sw today"></span>Сегодня</span>
           </div>
         </div>
@@ -5226,10 +5349,11 @@ function renderTeamView(){
   </div><div class="admin-col-right">
     <div class="card"><h2>График сотрудника</h2>
       <select id="teamSchedSelect">${mates.map(e=>`<option value="${e.id}" ${e.id===teamSchedEmpId?'selected':''}>${escapeHtml(e.name)}</option>`).join('')}</select>
-      <div class="hint" style="margin:8px 0 2px;">Нажимайте на дни, чтобы отметить выходной за ${monthLabel(mk)}.</div>
+      ${renderShiftEditor(teamSchedEmpId)}
       ${renderCalendarGrid(teamSchedEmpId, mk, true)}
-      <div class="cal-legend"><span><span class="sw work"></span>Рабочий день</span><span><span class="sw off"></span>Выходной</span><span><span class="sw today"></span>Сегодня</span></div>
+      <div class="cal-legend"><span><span class="sw work"></span>Рабочий день</span><span><span class="sw off"></span>Выходной</span><span><span class="sw shifted"></span>Другое время</span><span><span class="sw today"></span>Сегодня</span></div>
     </div>
+    ${renderPunctualityCard(mates, mk)}
     ${accessCard}
     ${logCard}
   </div></div>`;
@@ -6079,7 +6203,7 @@ function renderCycleCard(dept){
 function renderAnalyticsPane(){
   const mk = editingMonth;
   return '<div class="admin-dashboard-grid"><div class="admin-col-left">' +
-    renderForecastCard(mk) + renderLoadCard('to', activeMonth) +
+    renderForecastCard(mk) + renderPunctualityCard(employees, mk) + renderLoadCard('to', activeMonth) +
     '</div><div class="admin-col-right">' +
     renderDeadlinesCard('to', activeMonth) + renderCycleCard('to') +
     '</div></div>';
@@ -6443,11 +6567,11 @@ function renderAdminView(){
       <div class="row">
         <select id="scheduleEmpSelect">${scheduleOptions}</select>
       </div>
-      <div class="hint" style="margin-top:8px;margin-bottom:2px;">Нажимайте на дни, чтобы отметить сотруднику выходной за ${monthLabel(editingMonth)}.</div>
-      ${scheduleEmpId ? renderCalendarGrid(scheduleEmpId, editingMonth, true) : '<div class="empty">Сначала добавьте сотрудника</div>'}
+      ${scheduleEmpId ? renderShiftEditor(scheduleEmpId) + renderCalendarGrid(scheduleEmpId, editingMonth, true) : '<div class="empty">Сначала добавьте сотрудника</div>'}
       <div class="cal-legend">
         <span><span class="sw work"></span>Рабочий день</span>
         <span><span class="sw off"></span>Выходной</span>
+        <span><span class="sw shifted"></span>Другое время</span>
         <span><span class="sw today"></span>Сегодня</span>
       </div>
     </div>
@@ -6749,6 +6873,7 @@ function attachDelegatedHandlers(){
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
+    if(el.closest('[data-calmode]')){ calMode = el.closest('[data-calmode]').dataset.calmode; renderNow(); return; }
     if(el.closest('[data-attshift]')){ shiftAttDay(Number(el.closest('[data-attshift]').dataset.attshift)); renderNow(); return; }
     if(el.closest('[data-atttoday]')){ attDay = null; renderNow(); return; }
 
@@ -6863,7 +6988,8 @@ function attachDelegatedHandlers(){
     const calCell = el.closest('[data-caltoggle]');
     if(calCell){
       await runOnce(async ()=>{
-        await toggleOffDay(calCell.dataset.caltoggle, calCell.dataset.calmonth, calCell.dataset.calday);
+        if(calMode==='time') await toggleShiftDay(calCell.dataset.caltoggle, calCell.dataset.calmonth, calCell.dataset.calday, calModeTime);
+        else await toggleOffDay(calCell.dataset.caltoggle, calCell.dataset.calmonth, calCell.dataset.calday);
         renderNow();
       });
       return;
@@ -7004,6 +7130,12 @@ function attachDelegatedHandlers(){
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'teamSchedSelect'){ teamSchedEmpId = ev.target.value; renderNow(); }
+    if(ev.target.id === 'calModeTime'){ if(validHHMM(ev.target.value)) calModeTime = ev.target.value; renderNow(); }
+    if(ev.target.dataset && ev.target.dataset.shiftdefault){
+      const ok = await setShiftDefault(ev.target.dataset.shiftdefault, ev.target.value);
+      showToast(ok ? 'Начало смены сохранено' : 'Не удалось сохранить', ok ? 'success' : 'error');
+      renderNow();
+    }
     if(ev.target.id === 'attDayInput'){ const v = ev.target.value; attDay = (v && v <= localDayStr(new Date())) ? v : null; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'kpiEmpSelect'){ kpiEditEmpId = ev.target.value; renderNow(); }
