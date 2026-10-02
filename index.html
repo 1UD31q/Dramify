@@ -228,6 +228,13 @@
   .cal-cell.shifted{box-shadow:inset 0 0 0 1.5px var(--p3);}
   .cal-cell.shifted.today{box-shadow:inset 0 0 0 2px var(--p5);}
   .cal-legend .sw.shifted{background:var(--bg1);box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .au-mon{border-top:1px solid var(--bg2);padding:10px 0;}
+  .au-h{font-weight:700;font-size:14px;margin-bottom:6px;}
+  .au-d{margin:6px 0 8px;font-size:13px;line-height:1.5;}
+  .au-m{color:var(--muted);font-size:12px;font-weight:400;}
+  .au-w{color:var(--rust-dark);font-size:12.5px;}
+  .au-emps{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:12px;color:var(--ink2);}
+  .au-e.diff{color:var(--rust-dark);font-weight:600;}
   .sc-sum{font-size:13px;margin:6px 0 8px;line-height:1.5;}
   .sc-sum span{display:block;color:var(--muted);font-size:12px;}
   .sc-warn{font-size:12.5px;color:var(--rust-dark);background:var(--rust-tint);border-radius:8px;padding:8px 10px;margin:6px 0;line-height:1.45;}
@@ -4116,7 +4123,7 @@ async function saveEmployee(emp){
   await storeSet('app:kpiData', kpiData, SHARED);
 }
 
-function parseCSV(text){
+function parseCSV(text, keepEmpty){
   const rows = []; let row = []; let field=''; let inQuotes=false;
   for(let i=0;i<text.length;i++){
     const c = text[i];
@@ -4132,6 +4139,11 @@ function parseCSV(text){
     }
   }
   if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(keepEmpty){
+    // пустые строки оставляем, чтобы номер в массиве = номер строки в таблице; хвост срезаем
+    while(rows.length && !rows[rows.length-1].some(c=>c.trim()!=='')) rows.pop();
+    return rows;
+  }
   return rows.filter(r=> r.some(c=>c.trim()!==''));
 }
 
@@ -4228,7 +4240,7 @@ function parseGvizJson(text){
 // Универсальный fetch: сначала пробует gviz JSON, при неудаче — CSV.
 // forceCsv=true для «дашборд»-листов (трекер): там нет шапки таблицы,
 // подписи разбросаны по ячейкам, и gviz съедает первую строку как заголовок.
-async function fetchSheetRows(url, forceCsv){
+async function fetchSheetRows(url, forceCsv, keepEmpty){
   if(!forceCsv){
     const gvizUrl = toGvizUrl(url);
     if(gvizUrl){
@@ -4245,7 +4257,7 @@ async function fetchSheetRows(url, forceCsv){
   // Fallback / принудительный путь: CSV — он отдаёт сетку ячеек как есть
   const csvUrl = toCsvUrl(url);
   const text = await fetchCsvWithRetry(csvUrl);
-  return parseCSV(text);
+  return parseCSV(text, keepEmpty);
 }
 
 // Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
@@ -4465,6 +4477,32 @@ async function fetchCsvWithRetry(url, attempts){
   throw lastErr;
 }
 
+// Чтение листа продаж/заказов. Сначала CSV-выгрузка: она отдаёт ячейки как есть.
+// Прежний способ (gviz) сам угадывает тип колонки и молча отдаёт ПУСТЫМИ ячейки
+// «не того» типа — например, суммы, набранные текстом («15 000 тг») в колонке,
+// где остальные — числа. Так терялись суммы и даты. gviz — запасной вариант.
+// Плюс ищем строку шапки в первых 15 строках: над ней бывает название или пустая строка.
+const LEDGER_HEAD_KEYS = ['кто продал','кто делает','сумма','статус','дата','имя'];
+async function fetchLedgerRows(url){
+  let rows = null, via = 'csv';
+  try{
+    rows = await fetchSheetRows(url, true, true);
+    if(rows && rows.length && /^\s*</.test(String((rows[0]||[])[0]||''))) rows = null; // вместо таблицы пришла страница входа
+  }catch(e){ rows = null; }
+  if(!rows || rows.length < 2){ via = 'gviz'; rows = await fetchSheetRows(url); }
+  let best = 0, bestScore = -1;
+  for(let i=0; i<Math.min(rows.length, 15); i++){
+    const sc = (rows[i]||[]).reduce((a,c)=> a + (LEDGER_HEAD_KEYS.some(k=>String(c||'').toLowerCase().includes(k)) ? 1 : 0), 0);
+    if(sc > bestScore){ bestScore = sc; best = i; }
+  }
+  const out = rows.slice(best).map(r=> (r||[]).map(c=> String(c==null ? '' : c)));
+  // rowOffset: сколько строк над шапкой. Номер строки в таблице = r + rowOffset + 1.
+  // Номер заказа строим от него же — при шапке в первой строке он совпадает с прежним,
+  // поэтому паузы, комментарии и статусы сотрудников остаются на своих заказах.
+  out.headerRow = best + 1; out.rowOffset = best; out.via = via;
+  return out;
+}
+
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
   const key = dept + '_' + targetMonth;
@@ -4472,7 +4510,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
   if(!rawUrl){ if(!silent) syncStatus[key] = 'Сначала вставьте ссылку на таблицу'; return; }
   if(!silent){ syncing[key] = true; syncStatus[key] = ''; render(); }
   try{
-    const rows = await fetchSheetRows(rawUrl);
+    const rows = await fetchLedgerRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
 
     const header = rows[0].map(h=>h.trim());
@@ -4671,7 +4709,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const duration   = durationCol>=0 ? (row[durationCol]||'').trim() : '';
 
             // Уникальный ID заказа: строка в таблице (r) + имя клиента
-            const orderId = `r${r}-${emp.id}`;
+            const orderId = `r${r + (rows.rowOffset||0)}-${emp.id}`;
 
             // statusSince: берём из существующего ordersData если статус не изменился,
             // иначе — сейчас (точное время неизвестно из CSV)
@@ -4781,7 +4819,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const phone       = opPhoneCol>=0     ? (row[opPhoneCol]||'').trim()         : '';
           const dateCreated = dateCol>=0        ? (row[dateCol]||'').trim()            : '';
 
-          const orderId = `r${r}-${emp.id}`;
+          const orderId = `r${r + (rows.rowOffset||0)}-${emp.id}`;
           const existing = ((ordersData[targetMonth]&&ordersData[targetMonth][emp.id])||[]).find(o=>o.id===orderId);
           const statusSince = (existing && existing.status === statusRaw)
             ? existing.statusSince : Date.now();
@@ -5295,7 +5333,7 @@ async function runSheetCheck(emp, mk){
   try{
     const url = getSheetUrl(emp.department, mk);
     if(!url) throw new Error('Для этого месяца не указана ссылка на таблицу ' + deptLabel(emp.department));
-    const rows = await fetchSheetRows(url);
+    const rows = await fetchLedgerRows(url);
     if(rows.length < 2) throw new Error('Таблица пустая');
     const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
     const findCol = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
@@ -5329,7 +5367,7 @@ async function runSheetCheck(emp, mk){
       const isDone = status.toLowerCase().includes('успешно');
       const sum = emp.department==='to' ? (isDone ? gross : 0) : gross;
       if(counted){ total += sum; count++; }
-      list.push({ r: r+1, client: nameCol>=0 ? String(row[nameCol]||'').trim() : '', date: dateRaw || (dlRaw ? 'сдача ' + dlRaw : 'без даты'),
+      list.push({ r: r + 1 + (rows.rowOffset||0), client: nameCol>=0 ? String(row[nameCol]||'').trim() : '', date: dateRaw || (dlRaw ? 'сдача ' + dlRaw : 'без даты'),
         gross, status, counted, reason, done: isDone, noDate: !dateRaw });
     }
     sheetCheck[key] = {res:{list, similar, total, count, other}};
@@ -5366,6 +5404,106 @@ function renderSheetCheck(emp, mk){
     <h2>Проверка по таблице · ${monthLabel(mk)}</h2>
     <div class="hint" style="margin-top:-4px;">Заново читает таблицу ${escapeHtml(deptLabel(emp.department))} и показывает, какие строки засчитаны этому сотруднику.</div>
     <button class="btn secondary small" data-sheetcheck="${emp.id}" data-sheetcheck-mk="${mk}" style="margin:10px 0 6px;">${st.res||st.error ? 'Проверить ещё раз' : 'Проверить по таблице'}</button>
+    ${body}
+  </div>`;
+}
+
+// ── Проверка таблиц по всем месяцам истории (вкладка «Данные») ──────────────
+// Для каждого месяца и отдела: прочиталась ли таблица, где шапка, какие колонки
+// найдены, сколько строк за месяц, чьи имена не совпали, строки без суммы/даты.
+let sheetsAudit = null;   // {loading} | {at, months:[...]}
+async function analyzeLedger(dept, mk){
+  const url = getSheetUrl(dept, mk);
+  if(!url) return { dept, missing:true };
+  try{
+    const rows = await fetchLedgerRows(url);
+    const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+    const findCol = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
+    const col = i => i<0 ? null : (rows[0][i] || '') ;
+    const actorCol = findCol([dept==='op' ? 'кто продал' : 'кто делает']);
+    const grossCol = findCol(['сумма общая','сумма']), dateCol = findCol(['дата оформления','дата']);
+    const statusCol = findCol(['статус']), dlCol = dept==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
+    const res = { dept, via: rows.via, headerRow: rows.headerRow, cols: { actor: col(actorCol), gross: col(grossCol), date: col(dateCol), status: col(statusCol) },
+      rows: 0, inMonth: 0, badDate: 0, noActor: 0, noSum: 0, otherMonth: 0, otherSample: '', unmatched: {}, byEmp: {} };
+    if(actorCol<0 || grossCol<0) return res;
+    const emps = employees.filter(e=>e.department===dept);
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r];
+      if(!row.some(c=>String(c).trim())) continue;
+      res.rows++;
+      const dateRaw = dateCol>=0 ? String(row[dateCol]||'').trim() : '';
+      if(dateRaw && !sheetDateMonth(dateRaw)) res.badDate++;
+      const inMonth = dept==='to' ? toOrderMonth(row, dateCol, dlCol)===mk : rowInMonth(row, dateCol, mk);
+      if(!inMonth){
+        if(dateRaw && sheetDateMonth(dateRaw)){ res.otherMonth++; if(!res.otherSample) res.otherSample = dateRaw; }
+        continue;
+      }
+      res.inMonth++;
+      const actorRaw = String(row[actorCol]||'').trim();
+      if(!actorRaw || /^[-—–]$/.test(actorRaw)){ res.noActor++; continue; }
+      const st = statusCol>=0 ? String(row[statusCol]||'') : '';
+      if(isCancelledStatus(st)) continue;
+      const gross = parseNum(row[grossCol]);
+      const emp = emps.find(e=> normName(e.name)===normName(actorRaw));
+      if(!emp){ res.unmatched[actorRaw] = (res.unmatched[actorRaw]||0) + 1; continue; }
+      if(!gross) res.noSum++;
+      const b = res.byEmp[emp.id] = res.byEmp[emp.id] || {count:0, sum:0};
+      b.count++;
+      if(dept==='op' || st.toLowerCase().includes('успешно')) b.sum += gross;
+    }
+    return res;
+  }catch(e){ return { dept, error: e.message }; }
+}
+async function runSheetsAudit(){
+  sheetsAudit = {loading:true};
+  renderNow();
+  const months = Array.from(new Set(historyMonths().concat([activeMonth]))).sort().reverse();
+  const out = [];
+  for(const mk of months){
+    out.push({ mk, plan: (trackerData[mk]||{}).effectivePlan || 0, trackerUrl: !!(trackerUrls[mk]||'').trim(),
+      depts: [await analyzeLedger('op', mk), await analyzeLedger('to', mk)] });
+  }
+  sheetsAudit = {at: Date.now(), months: out};
+  renderNow();
+}
+function renderSheetsAudit(){
+  const a = sheetsAudit;
+  const warn = t => `<div class="au-w">⚠ ${t}</div>`;
+  const deptBlock = (d, mk) => {
+    const label = deptLabel(d.dept);
+    if(d.missing) return `<div class="au-d"><b>${label}</b> <span class="au-m">ссылка не указана</span></div>`;
+    if(d.error) return `<div class="au-d"><b>${label}</b>${warn('не прочиталась: ' + escapeHtml(d.error) + '. Проверьте доступ «Все, у кого есть ссылка» и что ссылка ведёт на нужную вкладку.')}</div>`;
+    const c = d.cols, issues = [];
+    if(!c.actor) issues.push(warn('не нашёл колонку «' + (d.dept==='op'?'Кто продал':'Кто делает') + '» в строке ' + d.headerRow));
+    if(!c.gross) issues.push(warn('не нашёл колонку «Сумма общая»'));
+    if(!c.date) issues.push(warn('не нашёл колонку даты — строки не делятся по месяцам'));
+    if(d.inMonth===0 && d.rows>0) issues.push(warn('ни одна строка не относится к ' + monthLabel(mk) + ' — проверьте даты (год, формат) и что ссылка на вкладку нужного месяца'));
+    if(d.badDate) issues.push(warn('даты не распознаны в ' + d.badDate + ' строк(ах) — такие строки не считаются'));
+    if(d.otherMonth) issues.push(warn('строк с датой другого месяца: ' + d.otherMonth + ' (например, «' + escapeHtml(d.otherSample) + '») — в ' + monthLabel(mk) + ' они не считаются. Если это опечатка в годе или месяце — исправьте дату в таблице.'));
+    const um = Object.keys(d.unmatched);
+    if(um.length) issues.push(warn('имена не совпали ни с одним сотрудником: ' + um.slice(0,6).map(n=>'«'+escapeHtml(n)+'» ('+d.unmatched[n]+')').join(', ')));
+    if(d.noSum) issues.push(warn('строк без суммы у сотрудников: ' + d.noSum));
+    const emps = employees.filter(e=>e.department===d.dept).map(e=>{
+      const b = d.byEmp[e.id] || {count:0, sum:0};
+      const k = getKpi(e.id, mk), app = d.dept==='to' ? (Number(k.netAmount)||0) : (Number(k.revenue)||0);
+      const diff = Math.round(app) !== Math.round(b.sum);
+      return `<span class="au-e${diff?' diff':''}">${escapeHtml(e.name)}: ${fmtMoney(b.sum)} (${b.count})${diff ? ' · в приложении ' + fmtMoney(app) : ''}</span>`;
+    }).join('');
+    return `<div class="au-d"><b>${label}</b> <span class="au-m">прочитано${d.headerRow>1 ? ', шапка найдена в строке ' + d.headerRow : ''}; строк ${d.rows}, за месяц ${d.inMonth}</span>
+      <div class="au-m">Колонки: ${['actor','gross','date','status'].map(k=>c[k] ? '«'+escapeHtml(c[k])+'»' : '—').join(' · ')}</div>
+      ${issues.join('')}
+      <div class="au-emps">${emps}</div></div>`;
+  };
+  let body = '';
+  if(a && a.loading) body = '<div class="empty">Читаю таблицы всех месяцев…</div>';
+  else if(a) body = a.months.map(m=>`<div class="au-mon">
+      <div class="au-h">${monthLabel(m.mk)} <span class="au-m">${m.plan ? 'план ' + fmtMoney(m.plan) : (m.trackerUrl ? 'трекер есть, но план не прочитан' : 'нет ссылки на трекер — план не задан')}</span></div>
+      ${m.depts.map(d=>deptBlock(d, m.mk)).join('')}
+    </div>`).join('') + '<div class="hint">Красным — сотрудники, у которых цифра в приложении отличается от таблицы. После исправлений нажмите «Синхронизировать» у месяца или просто откройте приложение заново.</div>';
+  return `<div class="card">
+    <h2>Проверка таблиц</h2>
+    <div class="hint" style="margin-top:-4px;">Читает таблицы всех месяцев истории и показывает, что приложение в них видит и что мешает правильному подсчёту.</div>
+    <button class="btn small" id="sheetsAuditBtn" style="margin:10px 0 4px;" ${a&&a.loading?'disabled':''}>${a && !a.loading ? 'Проверить ещё раз' : 'Проверить таблицы'}</button>
     ${body}
   </div>`;
 }
@@ -6752,6 +6890,7 @@ function renderAdminView(){
 
     <!-- ══════════ ДАННЫЕ ══════════ -->
     <div class="admin-pane${adminTab==='data'?' active':''}" data-pane="data">
+    ${renderSheetsAudit()}
 
     <div class="card">
       <h2>Источники данных</h2>
@@ -7037,6 +7176,7 @@ function attachDelegatedHandlers(){
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
+    if(el.closest('#sheetsAuditBtn')){ runSheetsAudit(); return; }
     if(el.closest('[data-sheetcheck]')){
       const b = el.closest('[data-sheetcheck]');
       const emp = employees.find(e=>e.id===b.dataset.sheetcheck);
