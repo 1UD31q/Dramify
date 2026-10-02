@@ -205,6 +205,7 @@
   .kpi-box.wide{grid-column:1 / -1;}
   .kpi-box .label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px;}
   .kpi-box .value{font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-.03em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
+  .kpi-box .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3;}
 
   .plan-bar-wrap{margin-top:16px;}
   .plan-bar-track{height:6px;border-radius:5px;background:var(--bg2);overflow:hidden;margin-top:7px;}
@@ -2661,6 +2662,29 @@ function personalTrend(empId, monthKey, value, plan){
   };
 }
 
+// Сколько сотруднику нужно делать в день до конца месяца, чтобы выйти в план.
+// Остаток плана делим на оставшиеся рабочие дни по его календарю (сегодня включительно).
+function dailyNeed(empId, monthKey, value, plan){
+  if(!plan || plan<=0) return null;
+  if(monthKey !== currentMonthKey()) return null;
+  const total = daysInMonthOf(monthKey);
+  const today = Math.min(new Date().getDate(), total);
+  let daysLeft = 0;
+  for(let d=today; d<=total; d++){ if(!isOffDay(empId, monthKey, d)) daysLeft++; }
+  const remaining = Math.max(0, plan - (Number(value)||0));
+  return {
+    remaining: Math.round(remaining),
+    daysLeft,
+    perDay: remaining<=0 ? 0 : Math.round(remaining / Math.max(1, daysLeft)),
+  };
+}
+// Ставка (% от продажи), если сотрудник продолжит в том же темпе:
+// берём % тенденции и прогоняем через ту же сетку ставок. Фикс-ставка важнее.
+function trendRateFor(e, trend){
+  if(empFixedRate(e)!=null) return empFixedRate(e);
+  return trend ? rateFor(trend.pct) : null;
+}
+
 function deptOverview(dept, monthKey){
   const def = DEPARTMENTS[dept];
   if(!def) return null;
@@ -2685,6 +2709,7 @@ function deptOverview(dept, monthKey){
     });
     const num = Number(k[numKey])||0;
     const den = autoPlan!=null ? autoPlan : (Number(k.plan)||0);
+    const trend = personalTrend(e.id, monthKey, num, den);
     return {
       id: e.id,
       name: e.name,
@@ -2697,7 +2722,9 @@ function deptOverview(dept, monthKey){
       rate: empFixedRate(e)!=null ? empFixedRate(e) : (den>0 ? rateFor(num/den*100) : null),
       orders: dept==='to' ? (Number(k.orders)||0) : (Number(k.deals)||0),
       avgTime: avgCompletionTime(e.id, monthKey),
-      trend: personalTrend(e.id, monthKey, num, den),
+      trend,
+      trendRate: dept==='op' ? trendRateFor(e, trend) : null,
+      need: dept==='op' ? dailyNeed(e.id, monthKey, num, den) : null,
       best: false,
     };
   }).sort((a,b)=> b.value - a.value);
@@ -4707,7 +4734,21 @@ function renderEmployeeDashboard(forId){
     const display = f.type==='number' ? (f.money ? fmtMoney(val) : val) : (escapeHtml(val) || '—');
     const wideClass = (f.key==='avgCheck' && emp.department==='op') ? ' wide' : '';
     return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
-  }).join('');
+  }).join('') + opPlanBoxes();
+
+  // ОП, текущий месяц: сколько делать в день до плана и ставка по тенденции
+  function opPlanBoxes(){
+    if(emp.department!=='op' || !(den>0)) return '';
+    const need = dailyNeed(emp.id, viewMonth, num, den);
+    if(!need) return '';
+    const trend = personalTrend(emp.id, viewMonth, num, den);
+    const tRate = trendRateFor(emp, trend);
+    const needBox = need.perDay>0
+      ? `<div class="kpi-box"><div class="label">Нужно в день</div><div class="value">${fmtMoney(need.perDay)}</div><div class="sub">до плана ${fmtMoney(need.remaining)} · ${need.daysLeft} раб. дн.</div></div>`
+      : `<div class="kpi-box"><div class="label">Нужно в день</div><div class="value">${fmtMoney(0)}</div><div class="sub">план выполнен</div></div>`;
+    const rateBox = `<div class="kpi-box"><div class="label">% по тенденции</div><div class="value">${tRate!=null ? tRate+'%' : '—'}</div><div class="sub">${empFixedRate(emp)!=null ? 'фиксированная ставка' : trend ? `темп ${trend.pct}% плана` : 'нет рабочих дней'}</div></div>`;
+    return needBox + rateBox;
+  }
 
   const monthOptions = availMonths.map(mk=>
     `<option value="${mk}" ${mk===viewMonth?'selected':''}>${monthLabel(mk)}${mk===activeMonth?' ✦':''}</option>`
@@ -5806,7 +5847,11 @@ function renderDeptPlate(ov){
             <span>${p.avgTime ? `⏱ ${fmtAvg(p.avgTime)} · ${p.avgTime.count} зак.` : '⏱ нет завершённых'}</span>
             ${p.trend ? `<span class="ptrend ${pctClass(p.trend.pct)}">тенденция ${p.trend.pct}%</span>` : ''}
           </div>
-          ${p.rate!=null ? `<div class="ov-person-pay"><span>ставка ${p.rate}%${p.fixedRate!=null?' · фикс.':''}</span></div>` : ''}
+          ${(p.rate!=null || p.need) ? `<div class="ov-person-pay"><span>${[
+            p.rate!=null ? `ставка ${p.rate}%${p.fixedRate!=null?' · фикс.':''}` : '',
+            (p.trendRate!=null && p.fixedRate==null) ? `по тенденции ${p.trendRate}%` : '',
+            p.need ? (p.need.perDay>0 ? `в день ${fmtMoney(p.need.perDay)}` : 'план выполнен') : '',
+          ].filter(Boolean).join(' · ')}</span></div>` : ''}
         </div>`).join('')}
       ${ov.unassigned>0 ? `<div class="ov-person unassigned"><div class="ov-person-top"><span class="pname">Основатели и продажи без имени</span><span class="pval">${fmtMoney(ov.unassigned)}</span></div><div class="ov-person-sub"><span>Разница между кассой и суммой по сотрудникам</span></div></div>` : ''}
     </div>`;
