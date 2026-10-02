@@ -206,6 +206,22 @@
   .kpi-box .label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px;}
   .kpi-box .value{font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-.03em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
   .kpi-box .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3;}
+  /* История по месяцам: столбики выполнения плана, пунктир — 100% */
+  .hist-chart{position:relative;display:flex;align-items:flex-end;gap:8px;height:150px;padding:18px 0 0;margin-top:4px;}
+  .hist-goal{position:absolute;left:0;right:0;border-top:1.5px dashed var(--ink4);pointer-events:none;}
+  .hist-goal span{position:absolute;right:0;top:-15px;font-size:10px;color:var(--muted);}
+  .hist-col{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative;outline:none;cursor:default;}
+  .hist-val{font-size:11px;font-weight:600;color:var(--ink2);margin-bottom:4px;font-variant-numeric:tabular-nums;}
+  .hist-bar{width:100%;max-width:38px;border-radius:4px 4px 0 0;background:var(--p5);min-height:2px;transition:opacity .15s;}
+  .hist-col.cur .hist-bar{opacity:.55;}
+  .hist-col:hover .hist-bar,.hist-col:focus .hist-bar{opacity:1;filter:brightness(1.1);}
+  .hist-axis{display:flex;gap:8px;border-top:1px solid var(--bg3);padding-top:6px;}
+  .hist-axis span{flex:1;min-width:0;text-align:center;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hist-tip{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);z-index:5;background:var(--bg1);color:var(--ink);border:1px solid var(--bg3);border-radius:8px;padding:8px 10px;font-size:11.5px;line-height:1.45;white-space:nowrap;box-shadow:var(--shadow-md);pointer-events:none;}
+  .hist-col:first-child .hist-tip{left:0;transform:none;}
+  .hist-col:last-child .hist-tip{left:auto;right:0;transform:none;}
+  .hist-col:hover .hist-tip,.hist-col:focus .hist-tip{display:block;}
+  .hist-sum{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap;}
   .team-split{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;}
   .team-split > .card{margin-bottom:0;}
   @media (min-width: 900px){ .team-split{grid-template-columns:minmax(260px,340px) 1fr;} }
@@ -2001,8 +2017,23 @@ async function storeGet(key, shared){
   }
 }
 
+// Кто какие ключи может записывать. Зеркало правил доступа в базе (RLS,
+// см. security.sql): там это и есть настоящая защита, а здесь — чтобы браузер
+// сотрудника даже не пытался писать чужое (без лишних ошибок 403 в консоли).
+// Синхронизацию с таблицами сотрудник всё равно видит — она считается у него
+// в памяти, просто в базу её результат пишет только админ.
+const STAFF_WRITE_KEYS = ['attendance:log', 'app:ordersOverlay'];
+const TEAMLEAD_WRITE_KEYS = ['app:schedules', 'app:employees'];
+function canWriteKey(key){
+  if(authIsAdmin()) return true;
+  if(STAFF_WRITE_KEYS.indexOf(key) >= 0 || String(key).indexOf('saletime:') === 0) return true;
+  const me = employees.find(e=>e.id===myEmployeeId);
+  return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
+}
+
 async function storeSet(key, value, shared){
   if(shared){
+    if(!canWriteKey(key)) return false;
     // Пока состояние не прочитано успешно — не трогаем важные ключи,
     // иначе можно затереть живые данные пустышкой.
     if(!stateLoaded && GUARDED_KEYS.indexOf(key) >= 0){
@@ -4843,6 +4874,8 @@ function renderEmployeeDashboard(forId){
           </div>
         </div>
 
+        ${renderHistoryCard(emp)}
+
         <div class="card">
           <h2>Мой график · ${monthLabel(viewMonth)}</h2>
           ${renderCalendarGrid(emp.id, viewMonth, false)}
@@ -4865,6 +4898,49 @@ function renderEmployeeDashboard(forId){
         ${emp.department === 'op' ? renderOrdersBlockOP(emp.id, viewMonth) : ''}
       </div>
     </div>`;
+}
+
+// История сотрудника: выполнение плана по месяцам (последние 6 месяцев с данными)
+function renderHistoryCard(emp){
+  const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op;
+  const months = Object.keys(kpiData).sort().slice(-6);
+  const rows = months.map(mk=>{
+    const k = getKpi(emp.id, mk);
+    const num = Number(k[dept.ratio.num])||0;
+    const p = planFor(emp, mk);
+    const den = (dept.ratio.den==='plan' && p!=null) ? p : (Number(k[dept.ratio.den])||0);
+    const pct = den>0 ? Math.round(num/den*100) : null;
+    const rate = empFixedRate(emp)!=null ? empFixedRate(emp) : (pct!=null ? rateFor(pct) : null);
+    return { mk, num, den, pct, rate };
+  });
+  if(!rows.some(r=> r.num>0 || r.den>0)) return '';
+  const top = Math.max(120, ...rows.map(r=> r.pct||0));
+  const AREA = 110; // px под столбики (высота графика минус подпись значения)
+  const px = v => Math.round(Math.min(1, v/top) * AREA);
+  const short = mk => monthLabel(mk).slice(0,3).toLowerCase() + ' ' + mk.slice(2,4);
+  const cols = rows.map(r=>`
+    <div class="hist-col${r.mk===currentMonthKey()?' cur':''}" tabindex="0">
+      <div class="hist-val">${r.pct!=null ? r.pct+'%' : '—'}</div>
+      <div class="hist-bar" style="height:${r.pct!=null ? px(r.pct) : 0}px"></div>
+      <div class="hist-tip"><b>${monthLabel(r.mk)}</b>${r.mk===currentMonthKey()?' · идёт':''}<br>
+        ${fmtMoney(r.num)}${r.den>0 ? ' из ' + fmtMoney(r.den) : ' · план не задан'}<br>
+        ${r.pct!=null ? 'выполнение ' + r.pct + '%' : ''}${r.rate!=null ? ' · ставка ' + r.rate + '%' : ''}</div>
+    </div>`).join('');
+  const done = rows.filter(r=> r.pct!=null && r.mk!==currentMonthKey());
+  const avg = done.length ? Math.round(done.reduce((a,r)=>a+r.pct,0)/done.length) : null;
+  const best = done.length ? done.reduce((a,b)=> b.pct>a.pct ? b : a) : null;
+  return `<div class="card">
+    <h2>История по месяцам</h2>
+    <div class="hist-chart">
+      <div class="hist-goal" style="bottom:${px(100)}px"><span>план 100%</span></div>
+      ${cols}
+    </div>
+    <div class="hist-axis">${rows.map(r=>`<span>${short(r.mk)}</span>`).join('')}</div>
+    <div class="hist-sum">
+      <span>${avg!=null ? 'В среднем за закрытые месяцы: <b>' + avg + '%</b> плана' : 'Закрытых месяцев пока нет'}</span>
+      ${best ? `<span>Лучший: ${monthLabel(best.mk)} — ${best.pct}%</span>` : ''}
+    </div>
+  </div>`;
 }
 
 function renderViewedCard(){
