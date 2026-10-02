@@ -1528,6 +1528,41 @@
     body{background:var(--bg1) !important;background-image:none !important;}
     main#main{background:transparent;}
   }
+
+  /* ── Аналитика ── */
+  .an-verdict{border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px;line-height:1.5;border:1px solid var(--bg3);border-left-width:4px;}
+  .an-verdict.good{border-left-color:var(--green);background:rgba(29,185,84,.07);}
+  .an-verdict.warn{border-left-color:var(--amber);background:rgba(245,158,11,.08);}
+  .an-verdict.bad{border-left-color:var(--red);background:rgba(229,72,77,.07);}
+  .an-verdict.info{border-left-color:var(--ink4);}
+  .an-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:6px;}
+  .an-stat{border:1px solid var(--bg3);border-radius:12px;padding:12px 14px;min-width:0;}
+  .an-stat .l{font-size:11.5px;color:var(--ink3);margin-bottom:4px;}
+  .an-stat .v{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.2;}
+  .an-stat .s{font-size:12px;color:var(--ink3);margin-top:3px;line-height:1.35;}
+  .an-stat.good .v{color:var(--green);} .an-stat.warn .v{color:var(--amber);} .an-stat.bad .v{color:var(--red);}
+  .an-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .an-table th{font-size:11.5px;font-weight:600;color:var(--ink3);text-align:left;padding:0 10px 8px 0;white-space:nowrap;}
+  .an-table td{padding:10px 10px 10px 0;border-top:1px solid var(--bg2);vertical-align:middle;white-space:nowrap;}
+  .an-bar{height:8px;border-radius:4px;background:var(--bg2);overflow:hidden;}
+  .an-bar i{display:block;height:100%;background:var(--p5);border-radius:4px;}
+  .an-bad-text{color:var(--red);font-weight:700;}
+  .an-dl-row{display:grid;grid-template-columns:120px 1fr;gap:4px 14px;padding:11px 0;border-top:1px solid var(--bg2);font-size:13.5px;}
+  .an-dl-row:first-of-type{border-top:0;}
+  .an-dl-date{font-weight:600;color:var(--ink2);}
+  .an-dl-row.bad .an-dl-date{color:var(--red);}
+  .an-dl-row.today .an-dl-date{color:var(--p6);}
+  .an-dl-row.muted{opacity:.7;}
+  .an-dl-who{font-size:12px;color:var(--ink3);margin-top:2px;}
+  .an-flag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600;color:var(--amber);background:rgba(245,158,11,.12);}
+  @media (max-width:600px){
+    /* на телефоне оставляем главное: имя, в очереди, просрочено, ближайший срок */
+    .an-table th:nth-child(2), .an-table td:nth-child(2), .an-table th:nth-child(n+6), .an-table td:nth-child(n+6){display:none;}
+    .an-dl-row{grid-template-columns:96px 1fr;}
+  }
+  .an-how{margin-top:12px;}
+  .an-how summary{cursor:pointer;font-size:12px;color:var(--ink3);user-select:none;}
+  .an-note{font-size:12px;color:var(--ink3);line-height:1.5;margin-top:8px;}
 </style>
 </head>
 <body>
@@ -4876,6 +4911,7 @@ function renderTeamView(){
   const logCard = `<div class="card"><h2>Отметки сегодня · ${escapeHtml(deptLabel(dept))}</h2>${todayRows || '<div class="empty">Сегодня отметок не было</div>'}</div>`;
   return `<div class="admin-dashboard-grid"><div class="admin-col-left">
     ${plateCard}
+    ${dept==='to' ? renderLoadCard(dept, mk) + renderDeadlinesCard(dept, mk) : ''}
     <div class="card"><h2>Моя команда · ${deptLabel(dept)} · ${monthLabel(mk)}</h2>${rows || '<div class="empty">В отделе пока нет сотрудников</div>'}</div>
     <div class="card"><h2>Требует внимания</h2>${late.length ? late.map(o=>`<div class="ov-att-row"><span class="who">${escapeHtml(o.emp)}</span><span class="what">${escapeHtml(o.client||'без имени')}</span><span class="when">просрочен на ${o.days} дн.</span></div>`).join('') : '<div class="ov-att-empty">Просроченных заказов нет</div>'}</div>
   </div><div class="admin-col-right">
@@ -5427,6 +5463,319 @@ async function submitSalesForm(){
   renderNow();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// АНАЛИТИКА: прогноз месяца, загрузка ТО, календарь дедлайнов, цикл заказа.
+// Расчёты — чистые функции от данных приложения; «сейчас» передаётся параметром,
+// поэтому их можно проверять тестами на любой дате.
+// ═══════════════════════════════════════════════════════════════════════════
+const DAY_MS = 86400000;
+function parseRuDate(str){            // «дд.мм.гггг» (допускаем «дд.мм.гг»), иначе null
+  const m = String(str||'').match(/^\s*(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)/);   // сначала 4 цифры года, потом 2
+  if(!m) return null;
+  let y = Number(m[3]); if(y < 100) y += 2000;
+  const d = new Date(y, Number(m[2]) - 1, Number(m[1]));
+  return (d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[1])) ? d : null;
+}
+function dayStart(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function daysBetween(a, b){ return Math.round((dayStart(b).getTime() - dayStart(a).getTime()) / DAY_MS); }
+function anPlural(n, one, few, many){
+  const a = Math.abs(n) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b > 1 && b < 5) return few;
+  if(b === 1) return one;
+  return many;
+}
+function anPluralNum(n, one, few, many){   // дробные числа: «5,6 заказа», целые — по обычным правилам
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? anPlural(r, one, few, many) : few;
+}
+function anNum(n, digits){ return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: digits == null ? 1 : digits }); }
+function anMedian(arr){
+  if(!arr.length) return null;
+  const a = arr.slice().sort((x, y) => x - y), h = Math.floor(a.length / 2);
+  return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+}
+function anAvg(arr){ return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null; }
+function anDuration(ms){                 // «1 д 4 ч», «5 ч 20 м»
+  if(ms == null) return '—';
+  const h = Math.round(ms / 3600000);
+  if(h >= 24){ const d = Math.floor(h / 24), r = h % 24; return d + ' д' + (r ? ' ' + r + ' ч' : ''); }
+  if(h >= 1) return h + ' ч';
+  return Math.max(1, Math.round(ms / 60000)) + ' мин';
+}
+function anDayLabel(d, today){
+  const MON = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+  const WD = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  const off = daysBetween(today, d), base = d.getDate() + ' ' + MON[d.getMonth()];
+  if(off === 0) return 'Сегодня, ' + base;
+  if(off === 1) return 'Завтра, ' + base;
+  return WD[d.getDay()] + ', ' + base;
+}
+// Куда относится заказ по статусу (так же, как на экране сотрудника)
+function orderBucketOf(status){
+  const s = String(status || '').toLowerCase();
+  if(s.includes('успешно') || s === 'выполнен') return 'done';
+  if(s.includes('оплат')) return 'pay';       // работа ТО закончена, ждём оплату клиента
+  return 'open';                              // новый, в работе, проверка, ждёт материалы
+}
+// Все заказы отдела из данных приложения (все месяцы, без дублей) с учётом правок статуса
+function collectDeptOrders(dept){
+  const emps = {}; employees.forEach(e => { if(e.department === dept) emps[e.id] = e; });
+  const seen = {}, out = [];
+  Object.keys(ordersData || {}).forEach(mk => {
+    const byEmp = ordersData[mk] || {};
+    Object.keys(byEmp).forEach(empId => {
+      if(!emps[empId]) return;
+      (byEmp[empId] || []).forEach(o => {
+        if(!o || seen[o.id]) return;
+        seen[o.id] = true;
+        const ov = ordersOverlay[o.id] || {};
+        const status = ov.status || o.status || '';
+        out.push({
+          id: o.id, empId, emp: emps[empId].name, client: o.client || '', status,
+          bucket: orderBucketOf(status), gross: Number(o.gross) || 0,
+          created: parseRuDate(o.dateCreated), deadline: parseRuDate(o.deadline),
+          finalTime: (ov.finalTime != null && ov.finalTime > 0) ? ov.finalTime : null
+        });
+      });
+    });
+  });
+  return out;
+}
+// Нагрузка отдела: очередь по людям, темп сдачи, просрочка
+function deptLoad(dept, mk, now){
+  const today = dayStart(now);
+  const emps = employees.filter(e => e.department === dept);
+  const orders = collectDeptOrders(dept);
+  const [y, m] = mk.split('-').map(Number);
+  const isCur = (now.getFullYear() === y && now.getMonth() + 1 === m);
+  const elapsed = isCur ? now.getDate() : daysInMonthOf(mk);     // календарных дней с начала месяца
+  const monthList = ordersData[mk] || {};
+  const rows = emps.map(e => {
+    const mine = orders.filter(o => o.empId === e.id && o.bucket === 'open');
+    const doneMonth = (monthList[e.id] || []).filter(o => orderBucketOf((ordersOverlay[o.id] || {}).status || o.status) !== 'open').length;
+    const dls = mine.filter(o => o.deadline).map(o => o.deadline.getTime());
+    return {
+      id: e.id, name: e.name, open: mine.length,
+      openSum: mine.reduce((s, o) => s + o.gross, 0),
+      overdue: mine.filter(o => o.deadline && o.deadline < today).length,
+      nearest: dls.length ? new Date(Math.min.apply(null, dls)) : null,
+      doneMonth, pace: elapsed >= 3 ? doneMonth / elapsed : null
+    };
+  });
+  const open = orders.filter(o => o.bucket === 'open');
+  const teamDone = rows.reduce((s, r) => s + r.doneMonth, 0);
+  const teamPace = (elapsed >= 3 && teamDone > 0) ? teamDone / elapsed : null;
+  return {
+    rows, open, openCount: open.length, openSum: open.reduce((s, o) => s + o.gross, 0),
+    overdue: rows.reduce((s, r) => s + r.overdue, 0), teamDone, teamPace, elapsed,
+    producers: rows.filter(r => r.doneMonth > 0).length,
+    queueDays: (teamPace && open.length) ? open.length / teamPace : null,
+    hasOrders: orders.length > 0, today
+  };
+}
+// Сроки: просроченные, по дням на горизонт, позже, без срока
+function deadlineBuckets(open, today, horizon){
+  const overdue = [], byDay = {}, later = [], nodate = [];
+  open.forEach(o => {
+    if(!o.deadline){ nodate.push(o); return; }
+    const off = daysBetween(today, o.deadline);
+    if(off < 0) overdue.push(o);
+    else if(off <= horizon) (byDay[off] = byDay[off] || []).push(o);
+    else later.push(o);
+  });
+  return { overdue, byDay, later, nodate };
+}
+// Хватает ли темпа на сроки. Для каждого срока: заказов к этому сроку / дней до него.
+// Максимум из этих нагрузок = нужный темп в день. Просроченное — «на сегодня».
+function capacityVerdict(open, today, teamPace, producers){
+  const offs = open.filter(o => o.deadline).map(o => Math.max(0, daysBetween(today, o.deadline)));
+  if(!offs.length) return { status: 'nodeadlines' };
+  if(!teamPace) return { status: 'nodata' };
+  const uniq = Array.from(new Set(offs)).sort((a, b) => a - b);
+  let required = 0, worstOff = 0;
+  uniq.forEach(k => {
+    const need = offs.filter(x => x <= k).length / (k + 1);
+    if(need > required){ required = need; worstOff = k; }
+  });
+  const perPerson = teamPace / Math.max(1, producers);
+  if(required <= teamPace) return { status: 'ok', required, teamPace, reserve: Math.round((teamPace / required - 1) * 100), worstOff };
+  const extraRate = required - teamPace;
+  return { status: 'short', required, teamPace, extraRate, extraPeople: extraRate / perPerson, worstOff };
+}
+// Цикл заказа
+function deptCycle(dept, now){
+  const today = dayStart(now), orders = collectDeptOrders(dept);
+  const planned = orders.filter(o => o.created && o.deadline).map(o => daysBetween(o.created, o.deadline)).filter(n => n >= 0 && n <= 120);
+  const ages = orders.filter(o => o.bucket === 'open' && o.created).map(o => Math.max(0, daysBetween(o.created, today)));
+  const finals = orders.filter(o => o.finalTime).map(o => o.finalTime);
+  return {
+    planned: { n: planned.length, avg: anAvg(planned), median: anMedian(planned) },
+    ages: { n: ages.length, avg: anAvg(ages), max: ages.length ? Math.max.apply(null, ages) : null },
+    finals: { n: finals.length, avg: anAvg(finals), median: anMedian(finals) },
+    total: orders.length
+  };
+}
+// Прогноз месяца. Если есть трекер — берём его цифры (так считает ваша таблица),
+// иначе — по календарному темпу кассы.
+function monthForecast(mk, now){
+  const f = companyFinance(mk), td = trackerData[mk];
+  const [y, m] = mk.split('-').map(Number);
+  const isCur = (now.getFullYear() === y && now.getMonth() + 1 === m);
+  const dim = daysInMonthOf(mk);
+  const plan = f.totalPlan || 0, fact = f.netCash || 0;
+  const res = { mk, isCur, plan, fact, factPct: plan > 0 ? Math.round(fact / plan * 100) : 0, mode: 'none' };
+  if(plan > 0 && td && td.plan > 0){
+    res.mode = 'tracker';
+    res.shouldBeNow = td.shouldBeNow || 0;
+    res.diff = td.diff || 0;
+    res.forecastPct = td.trendPct || 0;
+    res.forecastTotal = td.forecastTotal || Math.round(plan * (td.trendPct || 0) / 100);
+    res.daysLeft = td.workDaysLeft || 0;
+    res.remaining = Math.max(0, td.remainingToPlan != null ? td.remainingToPlan : plan - fact);
+    res.dailyNeeded = td.dailyTargetNeeded > 0 ? td.dailyTargetNeeded : (res.daysLeft > 0 ? res.remaining / res.daysLeft : res.remaining);
+    res.daysLabel = 'раб.';
+  } else if(plan > 0 && isCur){
+    const elapsed = now.getDate(), left = dim - elapsed;
+    res.mode = 'pace';
+    res.forecastTotal = fact / elapsed * dim;
+    res.forecastPct = Math.round(res.forecastTotal / plan * 100);
+    res.daysLeft = left;
+    res.remaining = Math.max(0, plan - fact);
+    res.dailyNeeded = left > 0 ? res.remaining / left : res.remaining;
+    res.daysLabel = 'кал.';
+  } else if(plan > 0){
+    res.mode = 'closed';
+  }
+  // средний чек — из заказов ТО этого месяца (иначе из всех)
+  const withSum = collectDeptOrders('to').filter(o => o.gross > 0);
+  const inMonth = withSum.filter(o => o.created && o.created.getFullYear() === y && o.created.getMonth() + 1 === m);
+  const base = inMonth.length >= 3 ? inMonth : withSum;
+  res.avgCheck = base.length ? anAvg(base.map(o => o.gross)) : null;
+  res.ordersPerDay = (res.avgCheck > 0 && res.dailyNeeded > 0) ? res.dailyNeeded / res.avgCheck : null;
+  return res;
+}
+
+// ── Отрисовка ──
+function anHow(text){ return '<details class="an-how"><summary>Как считается</summary><div class="an-note">' + text + '</div></details>'; }
+function renderForecastCard(mk){
+  const now = new Date(), fc = monthForecast(mk, now);
+  const title = 'Прогноз месяца · ' + monthLabel(mk);
+  if(fc.mode === 'none') return '<div class="card"><h2>' + title + '</h2><div class="empty">План на месяц не задан — прогнозировать не от чего. Заполните трекер или план в KPI.</div></div>';
+  if(fc.mode === 'closed'){
+    return '<div class="card"><h2>' + title + '</h2><div class="an-verdict ' + (fc.factPct >= 100 ? 'good' : 'warn') + '">Месяц закрыт: <b>' + fc.factPct + '%</b> плана (' + fmtMoney(fc.fact) + ' из ' + fmtMoney(fc.plan) + ').</div></div>';
+  }
+  const p = fc.forecastPct;
+  const cls = p >= 100 ? 'good' : (p >= 90 ? 'warn' : 'bad');
+  let verdict;
+  if(p >= 100) verdict = 'При текущем темпе план <b>будет выполнен</b>: ≈ ' + p + '% (' + fmtMoney(fc.forecastTotal) + ').';
+  else if(p >= 90) verdict = 'План <b>почти</b> выполняется: ≈ ' + p + '%, не хватит около ' + fmtMoney(Math.max(0, fc.plan - fc.forecastTotal)) + '.';
+  else verdict = 'При текущем темпе выйдем только на <b>≈ ' + p + '%</b> плана — нужен рывок: не хватит около ' + fmtMoney(Math.max(0, fc.plan - fc.forecastTotal)) + '.';
+  const diffTxt = fc.mode === 'tracker'
+    ? '<div class="an-stat ' + (fc.diff >= 0 ? 'good' : 'bad') + '"><div class="l">По графику должно быть</div><div class="v">' + fmtMoney(fc.shouldBeNow) + '</div><div class="s">' + (fc.diff >= 0 ? 'впереди на ' : 'отставание ') + fmtMoney(Math.abs(fc.diff)) + '</div></div>'
+    : '';
+  const perDay = fc.ordersPerDay
+    ? '<div class="s">≈ ' + anNum(fc.ordersPerDay, 1) + ' ' + anPluralNum(fc.ordersPerDay, 'заказ', 'заказа', 'заказов') + ' по среднему чеку ' + fmtMoney(fc.avgCheck) + '</div>'
+    : '<div class="s">средний чек пока неизвестен</div>';
+  const how = fc.mode === 'tracker'
+    ? 'Цифры берутся из вашей таблицы-трекера (тенденция, остаток рабочих дней, «в день нужно делать»). Заказы в день = нужная сумма в день ÷ средний чек заказов ТО.'
+    : 'Трекера нет, поэтому считаем по календарному темпу кассы: касса ÷ прошедшие дни × дней в месяце. Выходные и неравномерность не учитываются. Заказы в день = нужная сумма в день ÷ средний чек.';
+  return '<div class="card"><h2>' + title + '</h2>' +
+    '<div class="an-verdict ' + cls + '">' + verdict + '</div>' +
+    '<div class="an-stats">' +
+      '<div class="an-stat"><div class="l">Касса сейчас</div><div class="v">' + fmtMoney(fc.fact) + '</div><div class="s">' + fc.factPct + '% от плана ' + fmtMoney(fc.plan) + '</div></div>' +
+      diffTxt +
+      '<div class="an-stat ' + cls + '"><div class="l">Прогноз на конец месяца</div><div class="v">≈ ' + fmtMoney(fc.forecastTotal) + '</div><div class="s">' + p + '% плана</div></div>' +
+      '<div class="an-stat"><div class="l">Нужно в день до конца</div><div class="v">' + fmtMoney(fc.dailyNeeded) + '</div>' + perDay + '</div>' +
+      '<div class="an-stat"><div class="l">Осталось до плана</div><div class="v">' + fmtMoney(fc.remaining) + '</div><div class="s">' + fc.daysLeft + ' ' + fc.daysLabel + ' ' + anPlural(fc.daysLeft, 'день', 'дня', 'дней') + '</div></div>' +
+    '</div>' + anHow(how) + '</div>';
+}
+function renderLoadCard(dept, mk){
+  const now = new Date(), L = deptLoad(dept, mk, now);
+  const title = 'Загрузка ' + deptLabel(dept);
+  if(!L.hasOrders) return '<div class="card"><h2>' + title + '</h2><div class="empty">Нет данных о заказах. Проверьте, что таблица ТО подключена и синхронизирована.</div></div>';
+  const V = capacityVerdict(L.open, L.today, L.teamPace, L.producers);
+  let verdict;
+  if(V.status === 'nodata') verdict = '<div class="an-verdict info">Пока мало данных для вывода: темп считается с 3-го дня месяца и по уже сданным заказам.</div>';
+  else if(V.status === 'nodeadlines') verdict = '<div class="an-verdict info">У открытых заказов не указан срок сдачи — оценить загрузку по срокам нельзя.</div>';
+  else if(V.status === 'ok') verdict = '<div class="an-verdict good">Темпа <b>хватает</b>: чтобы сдать всё в срок, нужно ≈ ' + anNum(V.required) + ' ' + anPluralNum(V.required, 'заказ', 'заказа', 'заказов') + ' в день, команда делает ≈ ' + anNum(V.teamPace) + '. Запас около ' + V.reserve + '%.</div>';
+  else {
+    const ep = V.extraPeople;
+    verdict = '<div class="an-verdict ' + (ep >= 1 ? 'bad' : 'warn') + '">Темпа <b>не хватает</b>: для сроков нужно ≈ ' + anNum(V.required) + ' ' + anPluralNum(V.required, 'заказ', 'заказа', 'заказов') + ' в день, команда делает ≈ ' + anNum(V.teamPace) + '. ' +
+      (ep >= 0.5 ? 'Это примерно <b>+' + anNum(ep, 1) + ' ' + anPluralNum(ep, 'человек', 'человека', 'человек') + '</b> при текущей производительности.' : 'Разрыв небольшой — можно закрыть сверхурочными или перераспределением.') + '</div>';
+  }
+  const maxOpen = Math.max(1, Math.max.apply(null, L.rows.map(r => r.open)));
+  const body = L.rows.map(r => '<tr>' +
+    '<td><b>' + escapeHtml(r.name) + '</b></td>' +
+    '<td style="min-width:110px;"><div class="an-bar"><i style="width:' + Math.round(r.open / maxOpen * 100) + '%"></i></div></td>' +
+    '<td><b>' + r.open + '</b></td>' +
+    '<td>' + (r.overdue ? '<span class="an-bad-text">' + r.overdue + '</span>' : '0') + '</td>' +
+    '<td>' + (r.nearest ? anDayLabel(r.nearest, L.today) : '—') + '</td>' +
+    '<td>' + r.doneMonth + '</td>' +
+    '<td>' + (r.pace != null ? anNum(r.pace, 2) : '—') + '</td></tr>').join('');
+  const stats =
+    '<div class="an-stats" style="margin-bottom:14px;">' +
+      '<div class="an-stat"><div class="l">В очереди сейчас</div><div class="v">' + L.openCount + '</div><div class="s">на ' + fmtMoney(L.openSum) + '</div></div>' +
+      '<div class="an-stat ' + (L.overdue ? 'bad' : '') + '"><div class="l">Просрочено</div><div class="v">' + L.overdue + '</div><div class="s">срок сдачи уже прошёл</div></div>' +
+      '<div class="an-stat"><div class="l">Темп команды</div><div class="v">' + (L.teamPace ? anNum(L.teamPace, 2) : '—') + '</div><div class="s">сдано заказов в день</div></div>' +
+      '<div class="an-stat"><div class="l">Очередь ≈</div><div class="v">' + (L.queueDays ? anNum(L.queueDays, 1) : '—') + '</div><div class="s">дн. работы без новых заказов</div></div>' +
+    '</div>';
+  const how = 'Очередь — заказы не в статусах «Успешно» и «Ждём оплату». Темп = сданные за месяц (по заказам этого месяца) ÷ прошедшие календарные дни, с 3-го дня месяца. ' +
+    'Нужный темп: для каждого срока считаем «заказов к этому сроку ÷ дней до него», берём максимум; просроченные считаются на сегодня. Не учитывает выходные и сложность заказов — это грубая оценка.';
+  return '<div class="card"><h2>' + title + '</h2>' + verdict + stats +
+    '<div class="table-wrap"><table class="an-table"><thead><tr><th>Сотрудник</th><th></th><th>В очереди</th><th>Просрочено</th><th>Ближайший срок</th><th>Сдано за мес.</th><th>В день</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+    anHow(how) + '</div>';
+}
+function renderDeadlinesCard(dept, mk){
+  const now = new Date(), L = deptLoad(dept, mk, now), today = L.today;
+  const title = 'Календарь сдачи · ' + deptLabel(dept);
+  if(!L.hasOrders) return '<div class="card"><h2>' + title + '</h2><div class="empty">Нет данных о заказах.</div></div>';
+  const B = deadlineBuckets(L.open, today, 13);
+  const norm = L.teamPace ? Math.max(2, Math.ceil(L.teamPace * 1.5)) : null;     // день «тяжелее нормы»
+  const who = list => { const c = {}; list.forEach(o => { c[o.emp] = (c[o.emp] || 0) + 1; }); return Object.keys(c).map(n => escapeHtml(n) + (c[n] > 1 ? ' ×' + c[n] : '')).join(', '); };
+  const sum = list => list.reduce((s, o) => s + o.gross, 0);
+  const row = (label, list, cls, flag) => '<div class="an-dl-row ' + (cls || '') + '"><div class="an-dl-date">' + label + '</div><div><b>' + list.length + ' ' + anPlural(list.length, 'заказ', 'заказа', 'заказов') + '</b>' +
+    (sum(list) ? ' · ' + fmtMoney(sum(list)) : '') + (flag ? ' <span class="an-flag">выше нормы дня</span>' : '') + '<div class="an-dl-who">' + who(list) + '</div></div></div>';
+  let rows = '';
+  if(B.overdue.length) rows += row('Просрочено', B.overdue, 'bad', false);
+  for(let k = 0; k <= 13; k++){
+    const list = B.byDay[k]; if(!list) continue;
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + k);
+    rows += row(anDayLabel(d, today), list, k === 0 ? 'today' : '', norm != null && list.length > norm);
+  }
+  if(B.later.length) rows += row('Позже, чем через 2 недели', B.later, '', false);
+  if(B.nodate.length) rows += row('Срок не указан', B.nodate, 'muted', false);
+  if(!rows) rows = '<div class="empty">Открытых заказов нет.</div>';
+  const how = 'Открытые заказы сгруппированы по сроку сдачи на ближайшие 14 дней. «Выше нормы дня» — если заказов на один день больше, чем 1,5 × средний дневной темп команды (минимум 2).';
+  return '<div class="card"><h2>' + title + '</h2>' + rows + anHow(how) + '</div>';
+}
+function renderCycleCard(dept){
+  const now = new Date(), C = deptCycle(dept, now), L = deptLoad(dept, activeMonth, now);
+  const title = 'Цикл заказа · ' + deptLabel(dept);
+  if(!C.total) return '<div class="card"><h2>' + title + '</h2><div class="empty">Нет данных о заказах.</div></div>';
+  const t = (l, v, s, cls) => '<div class="an-stat ' + (cls || '') + '"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
+  const finals = C.finals.n >= 3
+    ? t('Время выполнения в ТО', anDuration(C.finals.median), 'медиана по ' + C.finals.n + ' ' + anPlural(C.finals.n, 'заказу', 'заказам', 'заказам') + ', в среднем ' + anDuration(C.finals.avg))
+    : t('Время выполнения в ТО', '—', 'накапливается: ' + C.finals.n + ' из 3 заказов (считается, когда сотрудники меняют статус в приложении)');
+  const planned = C.planned.n
+    ? t('Срок, который мы даём', anNum(C.planned.median, 0) + ' ' + anPluralNum(C.planned.median, 'день', 'дня', 'дней'), 'медиана от оформления до срока сдачи (по ' + C.planned.n + ' заказам)')
+    : t('Срок, который мы даём', '—', 'в таблице нет дат оформления и сдачи');
+  const age = C.ages.n
+    ? t('Возраст открытых заказов', anNum(C.ages.avg, 0) + ' дн.', 'в среднем, самый старый — ' + C.ages.max + ' дн.', C.ages.max > 14 ? 'warn' : '')
+    : t('Возраст открытых заказов', '—', 'нет открытых заказов с датой оформления');
+  const ov = t('Просрочено сейчас', L.overdue, L.overdue ? 'сдача позже обещанного' : 'всё в сроках', L.overdue ? 'bad' : 'good');
+  const how = 'В таблице нет даты фактической сдачи, поэтому «оформление → сдача» напрямую посчитать нельзя. Вместо неё: срок, который мы обещаем клиенту (дата сдачи − дата оформления), возраст ещё открытых заказов и время выполнения, которое приложение записывает само, когда сотрудник переводит заказ в «Ждём оплату» или «Успешно».';
+  return '<div class="card"><h2>' + title + '</h2><div class="an-stats">' + planned + age + finals + ov + '</div>' + anHow(how) + '</div>';
+}
+function renderAnalyticsPane(){
+  const mk = editingMonth;
+  return '<div class="admin-dashboard-grid"><div class="admin-col-left">' +
+    renderForecastCard(mk) + renderLoadCard('to', activeMonth) +
+    '</div><div class="admin-col-right">' +
+    renderDeadlinesCard('to', activeMonth) + renderCycleCard('to') +
+    '</div></div>';
+}
+
 function ovPctClass(p){ return p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low'; }
 // Плашка отдела: общая для сводки админа и вкладки «Команда» у тимлида
 function renderDeptPlate(ov){
@@ -5574,6 +5923,7 @@ function renderAdminView(){
 
   const tabs = [
     ['summary',  'Сводка'],
+    ['analytics','Аналитика'],
     ['team',     'Команда'],
     ['data',     'Данные'],
     ['settings', 'Настройки'],
@@ -5743,6 +6093,11 @@ function renderAdminView(){
     </div><!-- /admin-col-right -->
     </div><!-- /admin-dashboard-grid -->
     </div><!-- /pane summary -->
+
+    <!-- ══════════ АНАЛИТИКА ══════════ -->
+    <div class="admin-pane${adminTab==='analytics'?' active':''}" data-pane="analytics">
+    ${adminTab==='analytics' ? renderAnalyticsPane() : ''}
+    </div><!-- /pane analytics -->
 
     <!-- ══════════ КОМАНДА ══════════ -->
     <div class="admin-pane${adminTab==='team'?' active':''}" data-pane="team">
