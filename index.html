@@ -152,7 +152,7 @@
     display: contents;
   }
 
-  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url]{
+  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date]{
     width:100%;min-width:0;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1.5px solid var(--bg3);
     font-family:var(--font);font-size:14px;line-height:1.3;background:var(--bg1);color:var(--ink);
     outline:none;-webkit-appearance:none;appearance:none;
@@ -222,6 +222,28 @@
   .hist-col:last-child .hist-tip{left:auto;right:0;transform:none;}
   .hist-col:hover .hist-tip,.hist-col:focus .hist-tip{display:block;}
   .hist-sum{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap;}
+  /* Отметки за день */
+  .att-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .att-nav input[type=date]{flex:1;min-width:150px;width:auto;}
+  html.dark input[type=date]{color-scheme:dark;}
+  @media (prefers-color-scheme: dark){ html:not(.light) input[type=date]{color-scheme:dark;} }
+  .att-btn{min-width:42px;height:42px;padding:0 12px;border-radius:12px;border:1.5px solid var(--bg3);background:var(--bg1);color:var(--ink);font:600 15px var(--font);cursor:pointer;transition:background .15s;}
+  .att-btn:hover:not(:disabled){background:var(--bg3);}
+  .att-btn:disabled{opacity:.35;cursor:default;}
+  .att-btn[data-atttoday]{font-size:13px;}
+  .att-date{font-size:12px;color:var(--muted);margin:8px 0 6px;}
+  .att-date::first-letter{text-transform:uppercase;}
+  .att-row{padding:9px 0;border-top:1px solid var(--bg2);}
+  .att-row.none .att-name{color:var(--ink3);}
+  .att-main{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .att-name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .att-times{font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .att-hours{min-width:58px;text-align:right;color:var(--ink2);}
+  .att-open{color:var(--teal-dark);font-weight:600;}
+  .att-miss{color:var(--rust-dark);}
+  .att-off{color:var(--muted);}
+  .att-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .att-chips .log-type{font-size:11px;}
   .team-split{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;}
   .team-split > .card{margin-bottom:0;}
   @media (min-width: 900px){ .team-split{grid-template-columns:minmax(260px,340px) 1fr;} }
@@ -625,7 +647,7 @@
     .emp-dashboard-grid{grid-template-columns:1fr;}
   }
   /* запрещаем зум при фокусе на iOS */
-  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url]{font-size:16px;}
+  select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date]{font-size:16px;}
   .keypad button, .btn, .name-btn, .tab{min-height:44px;}
   body{padding-bottom:env(safe-area-inset-bottom);}
 
@@ -1166,7 +1188,7 @@
     }
 
     /* ── Inputs & selects ── */
-    select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url] {
+    select, input[type=text], input[type=number], input[type=email], input[type=password], input[type=tel], input[type=search], input[type=url], input[type=date] {
       font-size: 14px;
       padding: 11px 14px;
     }
@@ -3752,16 +3774,17 @@ function prevMonthKey(mk){
   const [y,m] = mk.split('-').map(Number);
   return m===1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`;
 }
+async function fetchAttMonth(m){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('att:'+m+':')}*&select=value&limit=20000`, {
+    headers: await sbHeaders()
+  });
+  if(res.status === 401) authOnUnauthorized();
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).map(r=>{ try{ return JSON.parse(r.value); }catch(e){ return null; } }).filter(Boolean);
+}
 async function loadAttendance(){
   const mk = saleZoned(Date.now()).mk;
-  const fetchMonth = async (m)=>{
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('att:'+m+':')}*&select=value&limit=20000`, {
-      headers: await sbHeaders()
-    });
-    if(res.status === 401) authOnUnauthorized();
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    return (await res.json()).map(r=>{ try{ return JSON.parse(r.value); }catch(e){ return null; } }).filter(Boolean);
-  };
+  const fetchMonth = fetchAttMonth;
   try{
     const [cur, prev, legacy] = await Promise.all([fetchMonth(mk), fetchMonth(prevMonthKey(mk)), storeGet('attendance:log', SHARED)]);
     const seen = {}, out = [];
@@ -3777,6 +3800,84 @@ async function loadAttendance(){
     storeReadFailed = true;
     return null;
   }
+}
+
+// ── Отметки за конкретный день ────────────────────────────────────────────
+// Текущий и прошлый месяц уже в logs; более старые месяцы догружаем по запросу.
+let attDay = null;            // 'ГГГГ-ММ-ДД' — выбранный день; null = сегодня
+let attMonthExtra = {};       // mk -> [отметки] для старых месяцев
+let attMonthLoading = {};
+function localDayStr(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function attDayValue(){ return attDay || localDayStr(new Date()); }
+function shiftAttDay(delta){
+  const [y,m,d] = attDayValue().split('-').map(Number);
+  const nd = new Date(y, m-1, d + delta);
+  if(nd > new Date()) return; // в будущее не листаем
+  attDay = localDayStr(nd);
+}
+function ensureAttMonth(mk){
+  const cur = saleZoned(Date.now()).mk;
+  if(mk===cur || mk===prevMonthKey(cur) || attMonthExtra[mk] || attMonthLoading[mk]) return;
+  attMonthLoading[mk] = true;
+  fetchAttMonth(mk).then(list=>{ attMonthExtra[mk] = list; })
+    .catch(e=>{ console.error('att month load failed', e); attMonthExtra[mk] = []; })
+    .finally(()=>{ attMonthLoading[mk] = false; renderNow(); });
+}
+function attDayStats(empId, dayStr){
+  const [y,m,d] = dayStr.split('-').map(Number);
+  const from = new Date(y, m-1, d).getTime(), to = new Date(y, m-1, d+1).getTime();
+  const seen = {};
+  const list = [].concat(logs, ...Object.values(attMonthExtra))
+    .filter(l=> l.empId===empId && l.ts>=from && l.ts<to)
+    .filter(l=>{ const id = l.ts+':'+l.type; if(seen[id]) return false; seen[id]=true; return true; })
+    .sort((a,b)=>a.ts-b.ts);
+  let total = 0, openIn = null;
+  list.forEach(l=>{
+    if(l.type==='in'){ if(openIn===null) openIn = l.ts; }
+    else if(openIn!==null){ total += l.ts-openIn; openIn = null; }
+  });
+  const open = openIn!==null && dayStr===localDayStr(new Date());
+  if(open) total += Math.max(0, Date.now()-openIn);
+  const firstIn = list.find(l=>l.type==='in');
+  const outs = list.filter(l=>l.type==='out');
+  return { list, total, open, firstIn: firstIn ? firstIn.ts : null, lastOut: outs.length ? outs[outs.length-1] : null,
+           off: isOffDay(empId, dayStr.slice(0,7), d) };
+}
+function renderDayAttendance(empList, title){
+  const day = attDayValue();
+  const mk = day.slice(0,7);
+  ensureAttMonth(mk);
+  const isTodaySel = day === localDayStr(new Date());
+  const [y,m,d] = day.split('-').map(Number);
+  const dateLabel = new Date(y, m-1, d).toLocaleDateString('ru-RU', {weekday:'short', day:'numeric', month:'long'});
+  const rows = empList.map(e=>({e, st: attDayStats(e.id, day)}))
+    .sort((a,b)=> (b.st.list.length>0) - (a.st.list.length>0) || (a.st.firstIn||0) - (b.st.firstIn||0));
+  const withPunch = rows.filter(r=>r.st.list.length).length;
+  const body = rows.map(({e, st})=>{
+    let status;
+    if(st.list.length){
+      status = `<span class="att-in">${fmtTime(st.firstIn || st.list[0].ts)}</span> → ${st.open ? '<span class="att-open">на смене</span>' : (st.lastOut ? `<span>${fmtTime(st.lastOut.ts)}</span>${st.lastOut.auto?' <span class="log-auto">авто</span>':''}` : '<span class="att-miss">нет ухода</span>')}`;
+    } else {
+      status = st.off ? '<span class="att-off">выходной</span>' : '<span class="att-miss">не отмечался</span>';
+    }
+    const chips = st.list.length > 2
+      ? `<div class="att-chips">${st.list.map(l=>`<span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'} ${fmtTime(l.ts)}${l.auto?' · авто':''}</span>`).join('')}</div>` : '';
+    return `<div class="att-row${st.list.length?'':' none'}">
+      <div class="att-main"><span class="att-name">${escapeHtml(e.name)}</span><span class="att-times">${status}</span><span class="att-hours mono">${st.total ? fmtDuration(st.total) : '—'}</span></div>
+      ${chips}
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <h2>${title} <span class="log-count">${withPunch} из ${empList.length}</span></h2>
+    <div class="att-nav">
+      <button class="att-btn" data-attshift="-1" aria-label="Предыдущий день">‹</button>
+      <input type="date" id="attDayInput" value="${day}" max="${localDayStr(new Date())}">
+      <button class="att-btn" data-attshift="1" aria-label="Следующий день" ${isTodaySel?'disabled':''}>›</button>
+      ${isTodaySel ? '' : '<button class="att-btn" data-atttoday>Сегодня</button>'}
+    </div>
+    <div class="att-date">${dateLabel}${attMonthLoading[mk] ? ' · загружаю…' : ''}</div>
+    ${body || '<div class="empty">Нет сотрудников</div>'}
+  </div>`;
 }
 
 let punchInFlight = false;
@@ -5092,10 +5193,6 @@ function renderTeamView(){
     ? `<div class="card"><h2>Мой отдел · ${monthLabel(mk)}</h2><div class="ov-depts" style="grid-template-columns:1fr;">${renderDeptPlate(ov)}</div></div>`
     : '';
   const mateIds = mates.map(e=>e.id);
-  const todayRows = logs.filter(l=>isToday(l.ts) && mateIds.includes(l.empId)).sort((a,b)=>b.ts-a.ts).map(l=>{
-    const emp = employees.find(e=>e.id===l.empId);
-    return `<div class="log-row"><span>${emp?escapeHtml(emp.name):'—'} · <span class="log-type ${l.type}">${l.type==='in'?'приход':'уход'}</span>${l.auto?' <span class="log-auto">автозакрытие</span>':''}</span><span class="mono">${fmtTime(l.ts)}</span></div>`;
-  }).join('');
   const accessRows = mates.map(e=>{
     const tag = empRoleLabel(e) ? `<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>` : '';
     return `<div class="tm-acc-row">
@@ -5120,7 +5217,7 @@ function renderTeamView(){
         <div class="hint" style="margin-top:10px;">Имя должно совпадать с колонкой «Кто делает» в таблице заказов: по нему заказы привязываются к сотруднику. Чтобы сотрудник смог войти, администратор должен открыть ему доступ по этой почте.</div>
       </div>
     </div>`;
-  const logCard = `<div class="card"><h2>Отметки сегодня · ${escapeHtml(deptLabel(dept))}</h2>${todayRows || '<div class="empty">Сегодня отметок не было</div>'}</div>`;
+  const logCard = renderDayAttendance(mates, 'Отметки за день · ' + escapeHtml(deptLabel(dept)));
   return `<div class="admin-dashboard-grid"><div class="admin-col-left">
     ${plateCard}
     ${dept==='to' ? renderLoadCard(dept, mk) + renderDeadlinesCard(dept, mk) : ''}
@@ -6326,10 +6423,7 @@ function renderAdminView(){
       <table><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>
 
-    <details class="card log-fold">
-      <summary><h2>Журнал посещений · сегодня <span class="log-count">${todayLogs.length}</span></h2></summary>
-      ${todayLogRows || '<div class="empty">Сегодня отметок не было</div>'}
-    </details>
+    ${renderDayAttendance(employees, 'Отметки за день')}
 
     </div><!-- /admin-col-right -->
     </div><!-- /admin-dashboard-grid -->
@@ -6655,6 +6749,8 @@ function attachDelegatedHandlers(){
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
+    if(el.closest('[data-attshift]')){ shiftAttDay(Number(el.closest('[data-attshift]').dataset.attshift)); renderNow(); return; }
+    if(el.closest('[data-atttoday]')){ attDay = null; renderNow(); return; }
 
     if(el.closest('#saveKpiBtn')){
       await runOnce(async ()=>{
@@ -6908,6 +7004,7 @@ function attachDelegatedHandlers(){
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'teamSchedSelect'){ teamSchedEmpId = ev.target.value; renderNow(); }
+    if(ev.target.id === 'attDayInput'){ const v = ev.target.value; attDay = (v && v <= localDayStr(new Date())) ? v : null; renderNow(); }
     if(ev.target.id === 'scheduleEmpSelect'){ scheduleEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'kpiEmpSelect'){ kpiEditEmpId = ev.target.value; renderNow(); }
     if(ev.target.id === 'saleTimesEmpSelect'){ saleTimesEmpFilter = ev.target.value; ev.target.blur(); renderNow(); }
