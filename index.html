@@ -1474,6 +1474,60 @@
   .tm-add{margin-top:18px;padding-top:16px;border-top:1px solid var(--bg3);}
   .tm-add h3{font-size:13px;font-weight:700;margin-bottom:12px;}
   .tm-name .role-tag, .tm-acc-name .role-tag{font-size:10px;font-weight:600;color:var(--p6);background:var(--p1);border-radius:20px;padding:2px 8px;white-space:nowrap;}
+
+  /* ═══ Верхняя панель вместо боковой (только широкий экран; телефон не меняется) ═══ */
+  .top-user{display:none;}
+  @media (min-width: 900px){
+    header.cover{
+      width:auto;min-width:0;right:0;bottom:auto;height:60px;min-height:0;
+      flex-direction:row;align-items:center;gap:28px;padding:0 32px;
+      background:#131317;box-shadow:none;border-bottom:1px solid rgba(255,255,255,.07);
+      overflow:visible;
+    }
+    header.cover::before, header.cover::after{display:none;}
+    .brand{margin:0;flex:none;}
+    .brand-banner{height:30px;}
+    .tabs{flex-direction:row;align-items:center;align-self:stretch;gap:4px;background:none;border:0;border-radius:0;padding:0;backdrop-filter:none;}
+    .tab{position:relative;height:36px;min-height:0;padding:0 14px;border-radius:8px;font-size:14px;font-weight:500;
+         letter-spacing:0;color:rgba(255,255,255,.6);box-shadow:none;}
+    .tab::before{display:none;}
+    .tab:hover:not(.active){background:rgba(255,255,255,.06);color:#fff;}
+    .tab.active{background:transparent;color:#fff;box-shadow:none;}
+    .tab.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-12px;height:2px;border-radius:2px 2px 0 0;background:var(--p4);}
+
+    .top-user{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0;}
+    .top-user:empty{display:none;}
+    .tu-ava{width:32px;height:32px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+            background:rgba(255,255,255,.12);color:#fff;font-size:13px;font-weight:600;}
+    .tu-meta{min-width:0;max-width:200px;line-height:1.25;}
+    .tu-name{font-size:13.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .tu-sub{font-size:11.5px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .tu-out{height:34px;padding:0 12px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:transparent;
+            color:rgba(255,255,255,.75);font-family:var(--font);font-size:13px;cursor:pointer;transition:background .15s,color .15s;}
+    .tu-out:hover{background:rgba(255,255,255,.08);color:#fff;}
+
+    /* кнопка темы: значок вместо эмодзи */
+    #themeBtn{position:static !important;top:auto !important;right:auto !important;margin:0;align-self:center;flex:none;
+      width:34px;height:34px;padding:0;font-size:0 !important;border-radius:8px;
+      background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);
+      display:flex;align-items:center;justify-content:center;}
+    #themeBtn:hover{background:rgba(255,255,255,.08);color:#fff;}
+    #themeBtn::before{content:'';width:18px;height:18px;background:currentColor;
+      -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;}
+    html.dark #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
+    @media (prefers-color-scheme: dark){
+      :root:not(.light) #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
+    }
+
+    /* содержимое: по центру, ограниченной ширины, под панелью */
+    main#main{margin:60px auto 0;width:100%;max-width:1360px;padding:28px 32px 48px;min-height:calc(100vh - 60px);overflow-y:visible;}
+    main#main.emp-split-view, main#main.admin-split-view{height:calc(100vh - 60px);padding-top:24px;padding-bottom:0;overflow-y:hidden;}
+    .emp-dashboard-grid, .admin-dashboard-grid{height:calc(100vh - 60px - 64px);}
+    #toastHost, #modalHost{left:0;}
+    /* ровный фон страницы: без декоративного узора и без «полос» по краям центрированного содержимого */
+    body{background:var(--bg1) !important;background-image:none !important;}
+    main#main{background:transparent;}
+  }
 </style>
 </head>
 <body>
@@ -1488,6 +1542,7 @@
       <div class="tab" id="teamTab" data-mode="team" style="display:none;">Команда</div>
       <!-- Admin tab hidden; access via secret gesture -->
     </div>
+    <div class="top-user" id="topUser"></div>
     <button class="theme-btn" id="themeBtn" title="Сменить тему" style="position:absolute;top:12px;right:12px;">☀️</button>
   </header>
   <main id="main"></main>
@@ -4433,6 +4488,28 @@ function renderNow(){
   _doRender();
 }
 
+// Блок «кто вошёл» в верхней панели (виден только на широком экране)
+function renderTopUser(){
+  const box = document.getElementById('topUser');
+  if(!box) return;
+  if(!authSession){ box.innerHTML = ''; return; }
+  const me = employees.find(e=>e.id===myEmployeeId);
+  const email = authEmail();
+  let name, sub;
+  if(me){
+    name = me.name;
+    sub = empRoleLabel(me) || deptLabel(me.department);
+    if(authIsAdmin()) sub += ' · админ';
+  } else {
+    name = authIsAdmin() ? 'Администратор' : (email.split('@')[0] || 'Профиль');
+    sub = email;
+  }
+  const ava = (String(name).trim()[0] || '?').toUpperCase();
+  box.innerHTML = '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
+    '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div>' +
+    '<button type="button" class="tu-out" id="topLogoutBtn">Выйти</button>';
+}
+
 function _doRender(){
   _renderScheduled = false;
   if(!authSession) return;   // пока не вошли — экран входа не трогаем
@@ -4447,6 +4524,7 @@ function _doRender(){
     const emp = employees.find(e=>e.id===myEmployeeId);
     salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
   }
+  renderTopUser();
   const teamTabEl = document.getElementById('teamTab');
   if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
   const viewKey = currentViewKey();
@@ -5967,7 +6045,7 @@ function attachDelegatedHandlers(){
     if(el.closest('#punchBtn')){ await runOnce(()=>punch(myEmployeeId)); return; }
 
     if(el.closest('#authOpenAdminBtn')){ if(authIsAdmin()){ mode = 'admin'; renderNow(); } return; }
-    if(el.closest('#switchUser') || el.closest('#authLogoutBtn')){ await authSignOut(); return; }
+    if(el.closest('#switchUser') || el.closest('#authLogoutBtn') || el.closest('#topLogoutBtn')){ await authSignOut(); return; }
 
     if(el.closest('#lockAdminBtn')){ mode = 'employee'; renderNow(); return; }
 
