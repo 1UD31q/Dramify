@@ -207,6 +207,7 @@
   .kpi-box .value{font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-.03em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
   .kpi-box .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3;}
   .kpi-box.span-all{grid-column:1 / -1;}
+  .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
   .kpi-refresh .att-btn{height:34px;font-size:12.5px;}
@@ -2191,7 +2192,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-02.3';
+const APP_BUILD = '2026-10-02.4';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2602,8 +2603,14 @@ const OP_FIELDS = [
 
 const DEPARTMENTS = {
   op: { label: 'ОП', ratio: {num:'revenue', den:'plan', label:'Выполнение плана'}, fields: OP_FIELDS },
-  to: { label: 'ТО', ratio: {num:'netAmount', den:'plan', label:'Выполнение плана'}, fields: TO_FIELDS }
+  to: { label: 'ТО', ratio: {num:'netAmount', den:'plan', label:'Выполнение плана'}, fields: TO_FIELDS },
+  // ОС: без плана, ставок и ручного KPI — только показатели работы (заказы, V,
+  // апсейлы, видеореакции) из листов, подключаемых отдельно. Ни дохода, ни выплат.
+  os: { label: 'ОС', ratio: null, fields: [], workOnly: true },
 };
+// Отдел из любой записи: «ОС»/«ос»/«OS»/« os » → 'os' и т.п. (кириллица и латиница)
+const DEPT_ALIASES = { op:'op', 'оп':'op', to:'to', 'то':'to', os:'os', 'ос':'os' };
+function normDept(d){ const k = String(d||'').trim().toLowerCase(); return DEPT_ALIASES[k] || k; }
 
 // ИСПРАВЛЕНО: DEPARTMENTS[dept].label падал, если у сотрудника отдел не 'op'/'to'
 // (например 'os'). Одна такая запись роняла всю админку целиком.
@@ -2807,7 +2814,7 @@ function nextRateStep(num, den){
 // У тимлида ставка не зависит от выполнения плана.
 function empRoleLabel(e){
   if(!e || e.role!=='teamlead') return '';
-  return e.department==='to' ? 'Тимлид ТО' : 'Тимлид';
+  return e.department==='to' ? 'Тимлид ТО' : e.department==='os' ? 'Тимлид ОС' : 'Тимлид';
 }
 function empFixedRate(e){
   if(!e || e.fixedRate==null || e.fixedRate==='') return null;
@@ -2820,6 +2827,7 @@ function empFixedRate(e){
 function normalizeEmployees(list){
   if(!Array.isArray(list)) return list;
   list.forEach(e=>{
+    if(e && e.department!==undefined){ const d = normDept(e.department); if(d !== e.department) e.department = d; }
     if(e && e.name==='Алихан' && e.department==='to' && e.role===undefined){
       e.role = 'teamlead';
       if(e.fixedRate===undefined) e.fixedRate = 8;
@@ -2839,6 +2847,7 @@ function opRevenueTotal(monthKey){
 // Общая цель отдела: ОП — план из трекера, ТО — то, что сделали ОП.
 function deptPlanTotal(deptKey, monthKey){
   const mk = monthKey||activeMonth;
+  if(deptKey!=='op' && deptKey!=='to') return null; // у ОС плана нет
   if(deptKey==='to'){
     const base = opRevenueTotal(mk);
     return base>0 ? base : null;
@@ -3001,7 +3010,7 @@ function trendRateFor(e, trend){
 
 function deptOverview(dept, monthKey){
   const def = DEPARTMENTS[dept];
-  if(!def) return null;
+  if(!def || !def.ratio) return null; // ОС — своя плашка (renderOsPlate), без плана
   const list = employees.filter(e=>e.department===dept);
   if(!list.length) return null;
 
@@ -5304,8 +5313,9 @@ function renderEmployeeDashboard(forId){
 
   const k = getKpi(emp.id, viewMonth);
   const autoPlan = planFor(emp, viewMonth);
-  const num = Number(k[dept.ratio.num])||0;
-  const den = (dept.ratio.den==='plan' && autoPlan!=null) ? autoPlan : (Number(k[dept.ratio.den])||0);
+  // у ОС нет плана и доли — num/den = 0, плитки ставок и полоса плана не показываются
+  const num = dept.ratio ? (Number(k[dept.ratio.num])||0) : 0;
+  const den = !dept.ratio ? 0 : (dept.ratio.den==='plan' && autoPlan!=null) ? autoPlan : (Number(k[dept.ratio.den])||0);
   const ratioPct = den>0 ? Math.min(100, Math.round(num/den*100)) : 0;
 
   const kpiBoxes = dept.fields.map(f=>{
@@ -5402,17 +5412,18 @@ function renderEmployeeDashboard(forId){
         </div>
 
         <div class="card">
-          <h2>KPI · ${monthLabel(viewMonth)}</h2>
+          <h2>${dept.workOnly ? 'Показатели' : 'KPI'} · ${monthLabel(viewMonth)}</h2>
           ${monthBar}
+          ${dept.workOnly ? `<div class="empty">Показатели ОС появятся после подключения листов апсейлов и видеореакций.</div>` : `
           <div class="kpi-grid">${kpiBoxes}</div>
           <div class="plan-bar-wrap">
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
             <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${ratioPct}%"></div></div>
-          </div>
+          </div>`}
         </div>
 
         ${renderHistoryCard(emp)}
-        ${forId ? renderSheetCheck(emp, viewMonth) : ''}
+        ${forId && (emp.department==='op' || emp.department==='to') ? renderSheetCheck(emp, viewMonth) : ''}
 
         <div class="card">
           <h2>Мой график · ${monthLabel(viewMonth)}</h2>
@@ -5442,6 +5453,7 @@ function renderEmployeeDashboard(forId){
 // История сотрудника: выполнение плана по месяцам (последние 6 месяцев с данными)
 function renderHistoryCard(emp){
   const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op;
+  if(!dept.ratio) return ''; // ОС — без плана, история выполнения не нужна
   const months = historyMonths();
   const rows = months.map(mk=>{
     const k = getKpi(emp.id, mk);
@@ -5693,7 +5705,7 @@ function renderViewedCard(){
 }
 
 function empKpiPct(e, mk){
-  const dept = DEPARTMENTS[e.department]; if(!dept) return null;
+  const dept = DEPARTMENTS[e.department]; if(!dept || !dept.ratio) return null;
   const k = getKpi(e.id, mk), plan = planFor(e, mk);
   const num = Number(k[dept.ratio.num])||0;
   const den = (dept.ratio.den==='plan' && plan!=null) ? plan : (Number(k[dept.ratio.den])||0);
@@ -5786,7 +5798,7 @@ function renderTeamView(){
     const t = avgCompletionTime(e.id, mk);
     return `<div class="tm-row">
       <div class="tm-name"><span class="pdot ${isCheckedIn(e.id)?'on':''}"></span>${escapeHtml(e.name)}${empRoleLabel(e)?`<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>`:''}</div>
-      <div class="tm-meta"><span>${isCheckedIn(e.id)?'на смене':'не на смене'} · ${fmtDuration(todayHoursFor(e.id))}</span><span>${fmtMoney(r.num)}</span><span class="ppct ${cls(r.pct)}">${r.pct!=null?r.pct+'%':'—'}</span><span>${t?'⏱ '+fmtOrderTime(t.ms):''}</span></div>
+      <div class="tm-meta"><span>${isCheckedIn(e.id)?'на смене':'не на смене'} · ${fmtDuration(todayHoursFor(e.id))}</span>${e.department==='os' ? '' : `<span>${fmtMoney(r.num)}</span><span class="ppct ${cls(r.pct)}">${r.pct!=null?r.pct+'%':'—'}</span><span>${t?'⏱ '+fmtOrderTime(t.ms):''}</span>`}</div>
       <button class="btn small secondary" data-view-emp="${e.id}">Карточка</button>
     </div>`;}).join('');
   const ov = deptOverview(dept, mk);
@@ -6687,6 +6699,24 @@ function renderAnalyticsPane(){
     '</div></div>';
 }
 
+// Плашка ОС в сводке: люди и смена. Показатели работы добавятся, когда подключим
+// листы апсейлов/реакций. Никаких денег, ставок и плана.
+function renderOsPlate(){
+  const list = employees.filter(e=>e.department==='os');
+  if(!list.length) return '';
+  const on = list.filter(e=>isCheckedIn(e.id)).length;
+  return `<div class="ov-dept ov-dept-os">
+    <div class="ov-dept-head"><span class="dname">${escapeHtml(deptLabel('os'))}</span><span class="dshift">${on} из ${list.length} на смене</span></div>
+    ${list.map(e=>`<div class="ov-person">
+      <div class="ov-person-top">
+        <span class="pdot ${isCheckedIn(e.id)?'on':''}"></span>
+        <span class="pname">${escapeHtml(e.name)}${empRoleLabel(e)?`<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>`:''}</span>
+        <span class="pval">${fmtDuration(todayHoursFor(e.id))}</span>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
 function ovPctClass(p){ return p==null ? '' : p>=100 ? 'ok' : p>=70 ? 'mid' : 'low'; }
 // Плашка отдела: общая для сводки админа и вкладки «Команда» у тимлида
 function renderDeptPlate(ov){
@@ -6753,7 +6783,7 @@ function renderAdminView(){
   // Редактор KPI показывает ОДНОГО сотрудника за раз.
   // Раньше на экран вываливались поля всех сразу — десятки инпутов,
   // из которых в момент нужны два-три.
-  const editableEmps = employees.filter(e => DEPARTMENTS[e.department]);
+  const editableEmps = employees.filter(e => DEPARTMENTS[e.department] && DEPARTMENTS[e.department].fields.length);
   if(!kpiEditEmpId || !editableEmps.find(e=>e.id===kpiEditEmpId)){
     kpiEditEmpId = editableEmps[0] ? editableEmps[0].id : null;
   }
@@ -6901,8 +6931,8 @@ function renderAdminView(){
         </div>
         <div class="ov-stat ${finance.trendPct>=100?'good':finance.trendPct<70?'bad':''}">
           <div class="label">Тенденция</div>
-          <div class="value">${finance.trendPct}%</div>
-          <div class="sub">${finance.trendPct>=100?'идём с опережением':'отстаём от графика'}</div>
+          <div class="value">${isFinite(finance.trendPct) ? finance.trendPct + '%' : '—'}</div>
+          <div class="sub">${!isFinite(finance.trendPct) ? 'нет данных трекера' : finance.trendPct>=100?'идём с опережением':'отстаём от графика'}</div>
         </div>
         <div class="ov-stat">
           <div class="label">На смене</div>
@@ -6914,6 +6944,7 @@ function renderAdminView(){
       <div class="ov-depts">
         ${renderDeptCol(ovOp)}
         ${renderDeptCol(ovTo)}
+        ${renderOsPlate()}
       </div>
 
       <div class="ov-attention">
@@ -6947,7 +6978,7 @@ function renderAdminView(){
         ${finance.sheetOutstanding!=null ? `
         <div class="finance-box warn"><div class="fi-icon">${icon('hourglass')}</div><div class="label">Висит остаток</div><div class="value">${fmtMoney(finance.sheetOutstanding)}</div></div>` : ''}
         <div class="finance-box" style="grid-column:1/-1"><div class="fi-icon">${icon('target')}</div><div class="label">Общий план</div><div class="value">${fmtMoney(finance.totalPlan)}</div></div>
-        <div class="finance-box trend-box wide"><div class="fi-icon">${icon('trend')}</div><div class="label">Тенденция</div><div class="value">${finance.trendPct}%</div></div>
+        <div class="finance-box trend-box wide"><div class="fi-icon">${icon('trend')}</div><div class="label">Тенденция</div><div class="value">${isFinite(finance.trendPct) ? finance.trendPct + '%' : '—'}</div></div>
       </div>
 
       ${finance.source==='tracker' ? '' :
@@ -7223,10 +7254,10 @@ function renderAdminView(){
                 <option value="teamlead" ${e.role==='teamlead'?'selected':''}>Тимлид</option>
               </select>
             </div>
-            <div class="fld">
+            ${e.department==='os' ? '' : `<div class="fld">
               <label class="field-label">Фикс. ставка, %</label>
               <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="по плану">
-            </div>
+            </div>`}
           </div>
         </div>`).join('')}
       <div class="emp-save-row"><button class="btn small" id="savePinsBtn">Сохранить</button></div>
@@ -7245,6 +7276,7 @@ function renderAdminView(){
           <select id="newEmpDept">
             <option value="op">ОП</option>
             <option value="to">ТО</option>
+            <option value="os">ОС</option>
           </select>
         </div>
         <div class="fld full">
