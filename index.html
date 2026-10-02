@@ -4849,6 +4849,44 @@ async function silentAutoSync(){
     if((trackerUrls[activeMonth]||'').trim()) await syncTracker(activeMonth, true);
     if((cashUrls[activeMonth]||'').trim()) await syncCashSheet(activeMonth, true);
   }catch(e){ console.error('auto-sync failed', e); }
+  syncHistoryMonths();
+}
+
+// Прошлые месяцы для «Истории по месяцам». Раньше автоматически пересчитывался
+// только текущий месяц, а прошлые жили с цифрами последней ручной синхронизации —
+// часто посчитанными ещё старой логикой или не посчитанными вовсе. Теперь при
+// открытии приложения пересчитываем их из своих таблиц (раз в 6 часов на месяц).
+const HISTORY_MONTHS = 6;
+const HISTORY_RESYNC_MS = 6*60*60*1000;
+let historySyncedAt = {};
+let historySyncing = false;
+function historyMonths(){
+  const cur = currentMonthKey();
+  return Object.keys(kpiData).filter(mk=> /^\d{4}-\d{2}$/.test(mk) && mk <= cur).sort().slice(-HISTORY_MONTHS);
+}
+async function syncHistoryMonths(){
+  if(historySyncing || !stateLoaded) return;
+  const todo = historyMonths().filter(mk=> mk !== activeMonth
+    && (Date.now() - (historySyncedAt[mk]||0)) > HISTORY_RESYNC_MS
+    && (getSheetUrl('op', mk) || getSheetUrl('to', mk) || (trackerUrls[mk]||'').trim() || (cashUrls[mk]||'').trim()));
+  if(!todo.length) return;
+  historySyncing = true;
+  render();
+  try{
+    for(const mk of todo){
+      try{
+        // трекер и касса — раньше листов отделов: от них зависит план и выручка ОП (база плана ТО)
+        if((trackerUrls[mk]||'').trim()) await syncTracker(mk, true);
+        if((cashUrls[mk]||'').trim()) await syncCashSheet(mk, true);
+        if(getSheetUrl('op', mk)) await syncFromGoogleSheet('op', mk, true);
+        if(getSheetUrl('to', mk)) await syncFromGoogleSheet('to', mk, true);
+        historySyncedAt[mk] = Date.now();
+      }catch(e){ console.error('history sync failed', mk, e); }
+    }
+  } finally {
+    historySyncing = false;
+    render();
+  }
 }
 
 // Небольшой набор line-иконок вместо эмодзи — на разных телефонах/ОС эмодзи
@@ -5194,7 +5232,7 @@ function renderEmployeeDashboard(forId){
 // История сотрудника: выполнение плана по месяцам (последние 6 месяцев с данными)
 function renderHistoryCard(emp){
   const dept = DEPARTMENTS[emp.department] || DEPARTMENTS.op;
-  const months = Object.keys(kpiData).sort().slice(-6);
+  const months = historyMonths();
   const rows = months.map(mk=>{
     const k = getKpi(emp.id, mk);
     const num = Number(k[dept.ratio.num])||0;
@@ -5231,6 +5269,7 @@ function renderHistoryCard(emp){
       <span>${avg!=null ? 'В среднем за закрытые месяцы: <b>' + avg + '%</b> плана' : 'Закрытых месяцев пока нет'}</span>
       ${best ? `<span>Лучший: ${monthLabel(best.mk)} — ${best.pct}%</span>` : ''}
     </div>
+    ${historySyncing ? '<div class="hint" style="margin-top:6px;">Пересчитываю прошлые месяцы по таблицам…</div>' : ''}
   </div>`;
 }
 
@@ -7359,6 +7398,8 @@ let orderTimerHandle = null;
   if(getSheetUrl('op', activeMonth) || getSheetUrl('to', activeMonth) || (trackerUrls[activeMonth]||'').trim() || (cashUrls[activeMonth]||'').trim()){
     silentAutoSync();
     sheetSyncTimer = setInterval(silentAutoSync, 5*60000);
+  } else {
+    syncHistoryMonths(); // даже если у текущего месяца ссылок нет — прошлые месяцы истории
   }
   startBackgroundSync();
   autoCloseStaleShifts();   // закрыть смены, которые остались открытыми с прошлых дней
