@@ -228,6 +228,17 @@
   .cal-cell.shifted{box-shadow:inset 0 0 0 1.5px var(--p3);}
   .cal-cell.shifted.today{box-shadow:inset 0 0 0 2px var(--p5);}
   .cal-legend .sw.shifted{background:var(--bg1);box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .sc-sum{font-size:13px;margin:6px 0 8px;line-height:1.5;}
+  .sc-sum span{display:block;color:var(--muted);font-size:12px;}
+  .sc-warn{font-size:12.5px;color:var(--rust-dark);background:var(--rust-tint);border-radius:8px;padding:8px 10px;margin:6px 0;line-height:1.45;}
+  .sc-list{max-height:420px;overflow-y:auto;}
+  .sc-row{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--bg2);font-size:13px;}
+  .sc-row small{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+  .sc-row.off{opacity:.6;}
+  .sc-row.off .sc-v small{color:var(--rust-dark);}
+  .sc-n{font-size:11px;color:var(--ink4);}
+  .sc-c{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .sc-v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .shift-defnote{font-size:11px;color:var(--muted);}
   .shift-today{font-size:12.5px;color:var(--ink3);margin-top:6px;}
   .shift-today b{color:var(--ink);font-variant-numeric:tabular-nums;}
@@ -4128,6 +4139,9 @@ function parseNum(s){
   if(s===null || s===undefined) return 0;
   let t = String(s).replace(/[^\d.,\-]/g,'');
   if(t==='') return 0;
+  // «1.500.000» или «1,500,000» — несколько одинаковых разделителей = разряды
+  if((t.match(/\./g)||[]).length > 1 && !t.includes(',')) t = t.replace(/\./g,'');
+  if((t.match(/,/g)||[]).length > 1 && !t.includes('.')) t = t.replace(/,/g,'');
   if(t.includes(',') && t.includes('.')){
     if(t.lastIndexOf(',') > t.lastIndexOf('.')){ t = t.replace(/\./g,'').replace(',', '.'); }
     else { t = t.replace(/,/g,''); }
@@ -4236,15 +4250,46 @@ async function fetchSheetRows(url, forceCsv){
 
 // Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
 // Если дата пустая — строка не отбрасывается (так было и раньше).
+// Месяц ('ГГГГ-ММ') из даты в ячейке. Понимает 05.10.2026, 5.10.26, 05/10/2026,
+// 05-10-2026 и 2026-10-05. Не распознали — null.
+function sheetDateMonth(str){
+  const t = String(str||'').trim();
+  if(!t) return null;
+  let m = t.match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if(m) return Number(m[2])>=1 && Number(m[2])<=12 ? m[1] + '-' + String(Number(m[2])).padStart(2,'0') : null;
+  m = t.match(/^(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{2,4})/);
+  if(!m) return null;
+  const mo = Number(m[2]); if(mo<1 || mo>12) return null;
+  const y = m[3].length===2 ? '20' + m[3] : m[3];
+  return y + '-' + String(mo).padStart(2,'0');
+}
+// Строка относится к месяцу по колонке даты. Строку без даты считаем только
+// в текущем месяце (раньше она попадала во ВСЕ месяцы сразу и раздувала цифры).
 function rowInMonth(row, dateCol, targetMonth){
   if(dateCol<0) return true;
-  const dateRaw = String(row[dateCol]||'').trim();
-  const dm = dateRaw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-  if(dm){
-    const mk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
-    return mk === targetMonth;
-  }
-  return !dateRaw;
+  const raw = String(row[dateCol]||'').trim();
+  if(!raw) return targetMonth === currentMonthKey();
+  return sheetDateMonth(raw) === targetMonth;
+}
+// Сравнение имени из таблицы с именем сотрудника: регистр, ё/е, лишние пробелы,
+// точки («Алишер А.» = «Алишер А»), латинские буквы-двойники (A, E, O, C…).
+const LAT2CYR = {a:'а',b:'в',c:'с',e:'е',h:'н',k:'к',m:'м',o:'о',p:'р',t:'т',x:'х',y:'у'};
+function normName(s){
+  let t = String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[.\u00a0]/g,' ').replace(/\s+/g,' ').trim();
+  // латиницу заменяем только в «смешанных» именах — чисто латинские не трогаем
+  if(/[а-я]/.test(t) && /[a-z]/.test(t)) t = t.replace(/[a-z]/g, ch => LAT2CYR[ch] || ch);
+  return t;
+}
+// Отменённые и возвратные заказы в личные продажи и заказы не идут
+function isCancelledStatus(st){ return /отмен|возврат|отказ/.test(String(st||'').toLowerCase()); }
+// Месяц, к которому относится заказ ТО: месяц сдачи (дедлайна), а если его нет —
+// месяц оформления. Раньше заказ мог посчитаться и там и там — дважды.
+function toOrderMonth(row, dateCol, deadlineCol){
+  const dl = deadlineCol>=0 ? sheetDateMonth(row[deadlineCol]) : null;
+  if(dl) return dl;
+  if(dateCol<0) return currentMonthKey();
+  const raw = String(row[dateCol]||'').trim();
+  return raw ? sheetDateMonth(raw) : currentMonthKey();
 }
 
 // ---------------------------------------------------------------------
@@ -4499,7 +4544,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           allGross += grossVal; allPrepaid += prepayVal; allPending += pendingVal; allRows++;
         }
 
-        const actor = (row[actorCol]||'').trim().toLowerCase();
+        const actor = normName(row[actorCol]);
         if(!actor || actor==='-' || actor==='—' || actor==='–' || actor==='n/a') continue; // строка вообще не про этот отдел (исполнитель не указан) — не считаем её сюда
         const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
         const isDone = statusText.includes('успешно');
@@ -4508,7 +4553,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         ledgerPending += pendingVal;
         ledgerPrepaid += prepayVal;
         ledgerCount++;
-        if(!deptEmployees.some(e=>e.name.trim().toLowerCase()===actor)){
+        if(!deptEmployees.some(e=>normName(e.name)===actor)){
           ledgerUnmatched++;
           if(unmatchedNames.size<5) unmatchedNames.add((row[actorCol]||'').trim());
         }
@@ -4537,30 +4582,19 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       const _deadlineColForKpi = dept==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
 
       for(const emp of deptEmployees){
-        const nameLc = emp.name.trim().toLowerCase();
+        const nameLc = normName(emp.name);
         let orders=0, completed=0, netAmount=0, pending=0, revenue=0, deals=0, actualCash=0;
         for(let r=1;r<rows.length;r++){
           const row = rows[r];
-          const actor = (row[actorCol]||'').trim().toLowerCase();
-          if(actor !== nameLc) continue;
-
-          // Для ТО: строка попадает в targetMonth если:
-          //   а) дата оформления в targetMonth, ИЛИ
-          //   б) дата сдачи (дедлайн) в targetMonth (заказ из прошлого месяца, но сдавать сейчас)
-          let rowBelongsToMonth = rowInMonth(row, dateCol, targetMonth);
-          if(!rowBelongsToMonth && dept==='to' && _deadlineColForKpi>=0){
-            const dlStr = (row[_deadlineColForKpi]||'').trim();
-            if(dlStr){
-              const dm = dlStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-              if(dm){
-                const dlMk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
-                rowBelongsToMonth = dlMk === targetMonth;
-              }
-            }
-          }
+          if(normName(row[actorCol]) !== nameLc) continue;
+          // ОП — по дате оформления; ТО — по месяцу сдачи (или оформления, если срока нет)
+          const rowBelongsToMonth = dept==='to'
+            ? toOrderMonth(row, dateCol, _deadlineColForKpi) === targetMonth
+            : rowInMonth(row, dateCol, targetMonth);
           if(!rowBelongsToMonth) continue;
 
           const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
+          if(isCancelledStatus(statusText)) continue;
           const isDone = statusText.includes('успешно');
           const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
           if(dept==='to'){
@@ -4578,16 +4612,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           }
         }
         const values = getKpi(emp.id, targetMonth);
-        // Защита от обнуления: если таблица не дала по сотруднику ни одной строки,
-        // а раньше цифры были — не затираем их нулями, оставляем последние известные.
-        const hadData = dept==='to'
-          ? ((Number(values.orders)||0) > 0 || (Number(values.netAmount)||0) > 0)
-          : ((Number(values.deals)||0) > 0 || (Number(values.revenue)||0) > 0);
-        const gotNothing = dept==='to' ? (orders===0 && netAmount===0) : (deals===0 && revenue===0);
-        if(gotNothing && hadData){
-          if(orders>0 || deals>0) matched++;
-          continue;
-        }
+        // Раньше здесь была «защита»: если по сотруднику не нашлось строк, оставлялись
+        // старые цифры. Из-за неё после переименования или переноса строк сотрудник
+        // навсегда зависал со старыми цифрами. Пустая таблица целиком уже отсекается выше.
         if(dept==='to'){
           values.orders = orders; values.completed = completed; values.netAmount = netAmount;
           values.pending = pending; values.avgCheck = completed>0 ? Math.round(netAmount/completed) : 0;
@@ -4613,12 +4640,11 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
         const newOrdersData = {};
         for(const emp of deptEmployees){
-          const nameLc = emp.name.trim().toLowerCase();
+          const nameLc = normName(emp.name);
           const empOrders = [];
           for(let r=1;r<rows.length;r++){
             const row = rows[r];
-            const actor = (row[actorCol]||'').trim().toLowerCase();
-            if(actor !== nameLc) continue;
+            if(normName(row[actorCol]) !== nameLc) continue;
             const statusRaw = statusCol>=0 ? (row[statusCol]||'').trim() : '';
             const isDone = statusRaw.toLowerCase().includes('успешно');
             const deadlineStr= deadlineCol>=0 ? (row[deadlineCol]||'').trim() : '';
@@ -4629,11 +4655,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             // 2) Заказ ещё не завершён И срок сдачи (deadline) попадает в targetMonth или позже
             const createdInMonth = rowInMonth(row, dateCol, targetMonth);
             const deadlineInMonthOrLater = (() => {
-              if(!deadlineStr) return false;
-              const dm = deadlineStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-              if(!dm) return false;
-              const deadlineMk = dm[3] + '-' + String(Number(dm[2])).padStart(2,'0');
-              return deadlineMk >= targetMonth;
+              const deadlineMk = sheetDateMonth(deadlineStr);
+              return !!deadlineMk && deadlineMk >= targetMonth;
             })();
             if(!createdInMonth && !(deadlineInMonthOrLater && !isDone)) continue;
 
@@ -4701,7 +4724,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         const row = rows[r];
         const name = (row[idx]||'').trim();
         if(!name) continue;
-        const emp = deptEmployees.find(e=>e.name.trim().toLowerCase()===name.toLowerCase());
+        const emp = deptEmployees.find(e=>normName(e.name)===normName(name));
         if(!emp) continue;
         const values = getKpi(emp.id, targetMonth);
         Object.keys(fieldCols).forEach(fk=>{
@@ -4733,13 +4756,12 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
       const newOrdersData = {};
       for(const emp of deptEmployees){
-        const nameLc = emp.name.trim().replace(/\.+$/, '').toLowerCase();
+        const nameLc = normName(emp.name);
         const empOrders = [];
         for(let r=1; r<rows.length; r++){
           const row = rows[r];
-          // Фильтр по колонке «Кто продал» — точно как ТО делает по «Кто делает»
-          const actor = (row[sellerCol]||'').trim().replace(/\.+$/, '').toLowerCase();
-          if(actor !== nameLc) continue;
+          // Фильтр по колонке «Кто продал» — то же правило сравнения имён, что и в KPI
+          if(normName(row[sellerCol]) !== nameLc) continue;
           // ОП: строго по дате оформления — каждый месяц считается отдельно
           if(!rowInMonth(row, dateCol, targetMonth)) continue;
 
@@ -5142,6 +5164,7 @@ function renderEmployeeDashboard(forId){
         </div>
 
         ${renderHistoryCard(emp)}
+        ${forId ? renderSheetCheck(emp, viewMonth) : ''}
 
         <div class="card">
           <h2>Мой график · ${monthLabel(viewMonth)}</h2>
@@ -5208,6 +5231,103 @@ function renderHistoryCard(emp){
       <span>${avg!=null ? 'В среднем за закрытые месяцы: <b>' + avg + '%</b> плана' : 'Закрытых месяцев пока нет'}</span>
       ${best ? `<span>Лучший: ${monthLabel(best.mk)} — ${best.pct}%</span>` : ''}
     </div>
+  </div>`;
+}
+
+// ── Проверка подсчёта по таблице ─────────────────────────────────────────
+// Заново читает таблицу отдела и показывает по сотруднику каждую строку:
+// засчитана или нет и почему. Плюс похожие имена, которые не совпали.
+let sheetCheck = {};   // 'empId|mk' -> {loading, error, res}
+function nameSimilar(a, b){
+  if(!a || !b || a===b) return false;
+  const fa = a.split(' ')[0], fb = b.split(' ')[0];
+  if(fa.length>=3 && fa===fb) return true;
+  if(Math.abs(a.length-b.length) > 2) return false;
+  const d = Array.from({length:a.length+1}, (_,i)=>[i]);
+  for(let j=1;j<=b.length;j++) d[0][j]=j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length] <= 2;
+}
+async function runSheetCheck(emp, mk){
+  const key = emp.id + '|' + mk;
+  sheetCheck[key] = {loading:true};
+  renderNow();
+  try{
+    const url = getSheetUrl(emp.department, mk);
+    if(!url) throw new Error('Для этого месяца не указана ссылка на таблицу ' + deptLabel(emp.department));
+    const rows = await fetchSheetRows(url);
+    if(rows.length < 2) throw new Error('Таблица пустая');
+    const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+    const findCol = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
+    const actorCol = findCol([emp.department==='op' ? 'кто продал' : 'кто делает']);
+    if(actorCol<0) throw new Error('Не нашёл колонку «' + (emp.department==='op'?'Кто продал':'Кто делает') + '»');
+    const statusCol = findCol(['статус']), grossCol = findCol(['сумма общая','сумма']);
+    const dateCol = findCol(['дата оформления','дата']), dlCol = emp.department==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
+    const nameCol = findCol(['имя','name']);
+    const me = normName(emp.name);
+    const list = [], similar = {};
+    let total = 0, count = 0, other = 0;
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r], actorRaw = String(row[actorCol]||'').trim(), actor = normName(actorRaw);
+      if(!actor) continue;
+      if(actor !== me){
+        if(nameSimilar(actor, me)) similar[actorRaw] = (similar[actorRaw]||0) + 1;
+        continue;
+      }
+      const dateRaw = dateCol>=0 ? String(row[dateCol]||'').trim() : '';
+      const dlRaw = dlCol>=0 ? String(row[dlCol]||'').trim() : '';
+      const status = statusCol>=0 ? String(row[statusCol]||'').trim() : '';
+      const gross = grossCol>=0 ? parseNum(row[grossCol]) : 0;
+      const rowMk = emp.department==='to' ? toOrderMonth(row, dateCol, dlCol)
+        : (dateRaw ? sheetDateMonth(dateRaw) : currentMonthKey());
+      let reason = '';
+      if(dateRaw && !sheetDateMonth(dateRaw) && !(emp.department==='to' && sheetDateMonth(dlRaw))) reason = 'дата не распознана: «' + dateRaw + '»';
+      else if(rowMk !== mk){ other++; continue; }
+      else if(isCancelledStatus(status)) reason = 'отменён / возврат';
+      else if(!dateRaw && !(emp.department==='to' && dlRaw)) reason = '';
+      const counted = !reason;
+      const isDone = status.toLowerCase().includes('успешно');
+      const sum = emp.department==='to' ? (isDone ? gross : 0) : gross;
+      if(counted){ total += sum; count++; }
+      list.push({ r: r+1, client: nameCol>=0 ? String(row[nameCol]||'').trim() : '', date: dateRaw || (dlRaw ? 'сдача ' + dlRaw : 'без даты'),
+        gross, status, counted, reason, done: isDone, noDate: !dateRaw });
+    }
+    sheetCheck[key] = {res:{list, similar, total, count, other}};
+  }catch(e){
+    sheetCheck[key] = {error: e.message};
+  }
+  renderNow();
+}
+function renderSheetCheck(emp, mk){
+  const st = sheetCheck[emp.id + '|' + mk] || {};
+  const k = getKpi(emp.id, mk);
+  const appVal = emp.department==='to' ? (Number(k.netAmount)||0) : (Number(k.revenue)||0);
+  const appCnt = emp.department==='to' ? (Number(k.orders)||0) : (Number(k.deals)||0);
+  const what = emp.department==='to' ? 'выполнено (успешно завершённые)' : 'продажи';
+  let body = '';
+  if(st.loading) body = '<div class="empty">Читаю таблицу…</div>';
+  else if(st.error) body = `<div class="sc-warn">${escapeHtml(st.error)}</div>`;
+  else if(st.res){
+    const r = st.res;
+    const sim = Object.keys(r.similar);
+    body = `
+      <div class="sc-sum">По таблице сейчас: <b>${fmtMoney(r.total)}</b> ${what}, строк: <b>${r.count}</b>
+        <span>В приложении: ${fmtMoney(appVal)}, ${emp.department==='to'?'заказов':'сделок'}: ${appCnt}</span></div>
+      ${sim.length ? `<div class="sc-warn">Похожие имена в таблице, которые <b>не</b> засчитываются этому сотруднику: ${sim.map(n=>`«${escapeHtml(n)}» (${r.similar[n]})`).join(', ')}. Если это он — исправьте имя в таблице или в «Сотрудники и доступ».</div>` : ''}
+      ${r.list.length ? `<div class="sc-list">${r.list.map(x=>`
+        <div class="sc-row${x.counted?'':' off'}">
+          <span class="sc-n">стр. ${x.r}</span>
+          <span class="sc-c">${escapeHtml(x.client||'—')}<small>${escapeHtml(x.date)}${x.status?' · '+escapeHtml(x.status):''}</small></span>
+          <span class="sc-v">${fmtMoney(x.gross)}<small>${x.counted ? (emp.department==='to' && !x.done ? 'в работе' : (x.noDate ? 'засчитано (без даты — в текущий месяц)' : 'засчитано')) : escapeHtml(x.reason)}</small></span>
+        </div>`).join('')}</div>` : '<div class="empty">За этот месяц строк с этим именем нет</div>'}
+      ${r.other ? `<div class="hint">Ещё строк этого сотрудника в других месяцах: ${r.other}</div>` : ''}`;
+  }
+  return `<div class="card">
+    <h2>Проверка по таблице · ${monthLabel(mk)}</h2>
+    <div class="hint" style="margin-top:-4px;">Заново читает таблицу ${escapeHtml(deptLabel(emp.department))} и показывает, какие строки засчитаны этому сотруднику.</div>
+    <button class="btn secondary small" data-sheetcheck="${emp.id}" data-sheetcheck-mk="${mk}" style="margin:10px 0 6px;">${st.res||st.error ? 'Проверить ещё раз' : 'Проверить по таблице'}</button>
+    ${body}
   </div>`;
 }
 
@@ -6878,6 +6998,12 @@ function attachDelegatedHandlers(){
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
+    if(el.closest('[data-sheetcheck]')){
+      const b = el.closest('[data-sheetcheck]');
+      const emp = employees.find(e=>e.id===b.dataset.sheetcheck);
+      if(emp) runSheetCheck(emp, b.dataset.sheetcheckMk);
+      return;
+    }
     if(el.closest('[data-calmode]')){ calMode = el.closest('[data-calmode]').dataset.calmode; renderNow(); return; }
     if(el.closest('[data-attshift]')){ shiftAttDay(Number(el.closest('[data-attshift]').dataset.attshift)); renderNow(); return; }
     if(el.closest('[data-atttoday]')){ attDay = null; renderNow(); return; }
