@@ -236,7 +236,7 @@
   .att-btn.on{background:var(--p5);border-color:var(--p5);color:#fff;}
   .att-late{color:var(--rust-dark);font-weight:600;font-size:12px;}
   .pun-head,.pun-row{display:grid;grid-template-columns:22px 1fr minmax(110px,auto) 84px;gap:10px;align-items:center;}
-  .pun-head{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);padding-bottom:6px;}
+  .pun-head{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);padding-bottom:6px;}
   .pun-row{padding:9px 0;border-top:1px solid var(--bg2);font-size:13px;}
   .pun-row small{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px;}
   .pun-rank{font-weight:700;color:var(--ink3);text-align:center;}
@@ -272,7 +272,7 @@
   .team-split > .card{margin-bottom:0;}
   @media (min-width: 900px){ .team-split{grid-template-columns:minmax(260px,340px) 1fr;} }
   .plan-split{margin-top:14px;border:1px solid var(--bg2);border-radius:var(--radius-md);padding:10px 12px;background:var(--bg1);}
-  .plan-split-head{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px;}
+  .plan-split-head{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px;}
   .plan-split-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;border-top:1px solid var(--bg2);}
   .plan-split-row:first-of-type{border-top:none;}
   .plan-split-row.cur .nm{font-weight:700;}
@@ -310,18 +310,8 @@
     white-space:nowrap;border-radius:var(--radius-md);padding:10px 16px;font-size:13px;
     transition:all .15s ease;position:relative;overflow:hidden;
   }
-  .btn::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.16),transparent 60%);opacity:0;transition:opacity .18s;}
-  .btn:hover::after{opacity:1;}
   .btn:active{transform:scale(.97) translateY(1px);}
-  /* default = primary purple */
-  .btn{background:linear-gradient(145deg, var(--p5), var(--p6));color:#fff;box-shadow:0 2px 8px rgba(92,50,163,.35), inset 0 1px 0 rgba(255,255,255,.18);}
-  .btn:hover{filter:brightness(1.08);box-shadow:0 4px 16px rgba(92,50,163,.45), inset 0 1px 0 rgba(255,255,255,.2);}
-  .btn.secondary{background:var(--bg1);color:var(--ink2);border:1px solid var(--bg3);box-shadow:none;}
-  .btn.secondary:hover{background:var(--bg2);}
-  .btn.small, .btn.teal{background:linear-gradient(145deg, #34d97a, #15803d);color:#fff;box-shadow:0 2px 8px rgba(21,128,61,.3);}
-  .btn.small:hover{filter:brightness(1.06);}
-  .btn.danger{background:var(--rust-tint);color:var(--red);border:1px solid rgba(229,72,77,.15);box-shadow:none;}
-  .btn.danger:hover{background:rgba(229,72,77,.14);}
+  /* Цвета кнопок задаются в одном месте — блок «КНОПКИ» в конце стилей */
 
   .hint{font-size:12px;color:var(--ink4);line-height:1.55;margin-top:10px;}
   .empty{color:var(--ink4);font-size:13px;text-align:center;padding:22px 0;}
@@ -731,22 +721,6 @@
   .card:hover{box-shadow:0 10px 24px -12px rgba(59,34,71,.18);border-color:transparent;transform:translateY(-1px);}
   .card:hover::before{opacity:1;}
 
-  /* --- кнопки: объём, внутренний блик, приятное нажатие --- */
-  .btn{
-    position:relative;overflow:hidden;background:linear-gradient(155deg, var(--ink-soft), var(--ink));
-    box-shadow:0 6px 14px -6px rgba(59,34,71,.5), inset 0 1px 0 rgba(255,255,255,.12);
-    letter-spacing:.01em;
-  }
-  .btn::after{
-    content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(255,255,255,.18), transparent 60%);
-    opacity:0;transition:opacity .18s ease;
-  }
-  .btn:hover{opacity:1;}
-  .btn:hover::after{opacity:1;}
-  .btn:active{transform:scale(.97) translateY(1px);box-shadow:0 2px 6px -2px rgba(59,34,71,.5);}
-  .btn.teal{background:linear-gradient(155deg, #2A8A78, var(--teal-dark));box-shadow:0 6px 14px -6px rgba(31,111,99,.55), inset 0 1px 0 rgba(255,255,255,.15);}
-  .btn.secondary{box-shadow:none;}
-  .btn.danger{box-shadow:none;}
 
   /* --- avatar: тонкое градиентное кольцо --- */
   .avatar{position:relative;box-shadow:0 0 0 2px #fff, 0 0 0 3.5px var(--line);}
@@ -1467,7 +1441,7 @@
     --shadow-sm:none; --shadow-md:0 1px 2px rgba(0,0,0,.05);
     --font:'Inter',-apple-system,sans-serif; --font-mono:'Inter',-apple-system,sans-serif; }
   .cover{background:var(--p9);border-radius:12px;}
-  .cover::before,.cover::after,.card::before,.dept-col-title::after,.dept-group-title::before,.btn::after{display:none;}
+  .cover::before,.cover::after,.card::before,.dept-col-title::after,.dept-group-title::before{display:none;}
   .brand-banner{filter:none;}
   .card{box-shadow:none;}
   .card h2{font-size:15px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0;}
@@ -1482,8 +1456,7 @@
   .ov-stat.good .value{color:var(--teal-dark);} .ov-stat.bad .value{color:var(--rust-dark);}
   .ov-person.is-best{box-shadow:inset 2px 0 0 var(--p5);}
   .finance-box.trend-box{background:var(--p8);}
-  .btn,.btn.small,.btn.teal,.avatar.op,.avatar.to,.cal-cell.off,.cal-legend .sw.off{background:var(--p6);box-shadow:none;}
-  .btn.small,.btn.teal{background:var(--teal-dark);}
+  .avatar.op,.avatar.to,.cal-cell.off,.cal-legend .sw.off{background:var(--p6);box-shadow:none;}
   .toast.success{background:var(--teal-dark);}
   .plan-bar-fill,.ov-bar i,.st-part .br i,#tgNotifTimerFill{background:var(--p5);}
   .ov-bar.ok i{background:var(--green);} .ov-bar.low i{background:var(--red);}
@@ -1538,12 +1511,6 @@
   .emp-access-grid label.field-label{margin-bottom:6px;}
   .emp-save-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
 
-  /* Опасная кнопка. Раньше мелкая «Удалить» была зелёной (стиль мелких кнопок перебивал
-     красный) и выглядела как «подтвердить». Теперь контурная красная. */
-  .btn.small.danger{
-    background:transparent;color:var(--red);border:1px solid rgba(229,72,77,.5);box-shadow:none;filter:none;
-  }
-  .btn.small.danger:hover{background:rgba(229,72,77,.12);filter:none;}
   .emp-del{min-height:34px !important;padding:5px 12px !important;font-size:13px;}
 
   /* ── Тимлид: доступ сотрудников отдела ── */
@@ -1642,6 +1609,26 @@
   .an-how{margin-top:12px;}
   .an-how summary{cursor:pointer;font-size:12px;color:var(--ink3);user-select:none;}
   .an-note{font-size:12px;color:var(--ink3);line-height:1.5;margin-top:8px;}
+
+  /* ═══ КНОПКИ — единственное место, где задаётся их цвет ═══════════════════
+     Раньше цвет кнопок задавали три слоя стилей, и класс размера .small красил
+     кнопку в зелёный, перебивая даже .secondary («Карточка» была зелёной).
+     Теперь: размер — отдельно, цвет — только по смыслу.
+       .btn            главное действие — фирменный фиолетовый
+       .btn.secondary  второстепенное — нейтральная
+       .btn.danger     удаление — красный контур
+       .btn.small      на цвет не влияет (раньше именно он красил в зелёный)
+     Зелёный и красный остаются для статусов (на смене, опоздание, план). */
+  .btn{background:var(--p6);color:#fff;border:none;box-shadow:none;filter:none;}
+  .btn:hover{background:var(--p7);filter:none;}
+  .btn.teal{background:var(--p6);}
+  .btn.teal:hover{background:var(--p7);}
+  .btn.secondary{background:var(--bg1);color:var(--ink2);border:1px solid var(--bg3);}
+  .btn.secondary:hover{background:var(--bg2);color:var(--ink);}
+  .btn.danger{background:transparent;color:var(--red);border:1px solid rgba(229,72,77,.5);}
+  .btn.danger:hover{background:rgba(229,72,77,.12);}
+  .btn:disabled,.btn[disabled]{opacity:.5;cursor:default;transform:none;}
+  .btn:focus-visible{outline:2px solid var(--p4);outline-offset:2px;}
 </style>
 </head>
 <body>
@@ -3733,83 +3720,60 @@ function fmtTime(ts){ return new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-di
 // Wraps each char of a .value element in an animated span with staggered delay
 // ── Slot machine: JS counter animation ──
 // Rapidly cycles through random digits then eases into the real value
+// ── Анимация чисел ─────────────────────────────────────────────────────────
+// Раньше при каждом обновлении (и раз в 5 минут при фоновой синхронизации)
+// цифры KPI 0,9 с мелькали случайными значениями, а полоски плана сбрасывались
+// в ноль и росли заново — на деньгах это выглядело как сбой.
+// Теперь: число плавно перетекает от прежнего значения к новому и только если
+// оно изменилось; при первом показе — без анимации (карточка просто проявляется).
+const shownValues = {};   // ключ показателя -> последнее показанное число
+const shownBars = {};     // ключ полоски -> последняя ширина, %
+function valueKey(el, idx, kind){
+  const box = el.closest('.kpi-box, .finance-box, .card');
+  const label = box ? (box.querySelector('.label, h2') || {}).textContent || '' : '';
+  return kind + ':' + currentViewKey() + ':' + label.trim() + ':' + idx;
+}
 function slotRoll(container) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const els = container
-    ? container.querySelectorAll('.kpi-box .value, .finance-box .value')
-    : [];
-
-  els.forEach((el, elIdx) => {
+  if (!container) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n));
+  container.querySelectorAll('.kpi-box .value, .finance-box .value').forEach((el, idx) => {
     const finalText = el.textContent.trim();
-    // Extract numeric part and surrounding text (₸, spaces, etc.)
-    const match = finalText.match(/^(.*?)([\d\s]{1,20})(.*)$/);
+    const match = finalText.match(/^(.*?)(\d(?:[\d\s]{0,18}\d)?)(.*)$/);
     if (!match) return;
-    const prefix  = match[1];
-    const numStr  = match[2].replace(/\s/g, '');
-    const suffix   = match[3];
-    const target   = parseInt(numStr, 10);
-    if (isNaN(target) || target === 0) return;
-
-    const DURATION   = 900;
-    const FAST_PHASE = 0.6;   // first 60% = random flicker
-    const startDelay = elIdx * 60;
-
-    const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n));
-
-    let startTime = null;
-
+    const target = parseInt(match[2].replace(/\s/g, ''), 10);
+    if (isNaN(target)) return;
+    const key = valueKey(el, idx, 'v');
+    const prev = shownValues[key];
+    shownValues[key] = target;
+    if (reduce || prev === undefined || prev === target) return;
+    const DURATION = 600, start = performance.now();
     const tick = (now) => {
-      if (!startTime) startTime = now;
-      const t = Math.min((now - startTime) / DURATION, 1);
-
-      if (t < FAST_PHASE) {
-        // random flicker — different number each frame
-        const rnd = Math.floor(Math.random() * target * 1.5);
-        el.textContent = prefix + fmt(rnd) + suffix;
-      } else {
-        // cubic ease-out settle toward target
-        const tNorm = (t - FAST_PHASE) / (1 - FAST_PHASE);
-        const ease  = 1 - Math.pow(1 - tNorm, 3);
-        el.textContent = prefix + fmt(target * ease) + suffix;
-      }
-
-      if (t < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        el.textContent = finalText;
-      }
+      const t = Math.min((now - start) / DURATION, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      el.textContent = match[1] + fmt(prev + (target - prev) * ease) + match[3];
+      if (t < 1) requestAnimationFrame(tick); else el.textContent = finalText;
     };
-
-    setTimeout(() => requestAnimationFrame(tick), startDelay);
+    requestAnimationFrame(tick);
   });
-
   animatePlanBarsIn(container);
 }
 
-// ── Plan bar: animate width only when scrolled into view ──
+// Полоски выполнения плана: плавно от прежней ширины к новой, только если изменилась
 function animatePlanBarsIn(container) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const bars = (container || document).querySelectorAll('.plan-bar-fill');
-  bars.forEach(bar => {
-    const targetW = bar.style.width || '0%';
-    bar.style.width = '0%';
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  (container || document).querySelectorAll('.plan-bar-fill').forEach((bar, idx) => {
+    const target = parseFloat(bar.style.width) || 0;
+    const key = valueKey(bar, idx, 'b');
+    const prev = shownBars[key];
+    shownBars[key] = target;
+    if (reduce || prev === undefined || prev === target) return;
     bar.style.transition = 'none';
-
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        obs.disconnect();
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {   // double-raf ensures 0% paints first
-            bar.style.transition = 'width 1.1s cubic-bezier(0.22, 0.68, 0, 1.05)';
-            bar.style.width = targetW;
-            bar.addEventListener('transitionend', () => { bar.style.transition = ''; }, { once: true });
-          });
-        });
-      });
-    }, { threshold: 0.3 });
-
-    obs.observe(bar);
+    bar.style.width = prev + '%';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      bar.style.transition = 'width .6s cubic-bezier(.22,.61,.36,1)';
+      bar.style.width = target + '%';
+    }));
   });
 }
 
@@ -6782,7 +6746,7 @@ function renderAdminView(){
     <div class="card">
       <h2 id="toggleLogsBtn" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
         <span>Общий журнал (${olderLogs.length})</span>
-        <span class="mono" style="color:var(--teal);letter-spacing:0;text-transform:none;font-size:12px;">${logsExpanded?'Свернуть ▲':'Показать ▾'}</span>
+        <span class="mono" style="color:var(--p6);letter-spacing:0;text-transform:none;font-size:12px;">${logsExpanded?'Свернуть ▲':'Показать ▾'}</span>
       </h2>
       ${logsExpanded ? `<div style="max-height:360px;overflow-y:auto;">${olderLogRows.length===0? '<div class="empty">Логов пока нет</div>' : olderLogRows}</div>` : ''}
     </div>
