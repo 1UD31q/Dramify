@@ -2022,11 +2022,12 @@ async function storeGet(key, shared){
 // сотрудника даже не пытался писать чужое (без лишних ошибок 403 в консоли).
 // Синхронизацию с таблицами сотрудник всё равно видит — она считается у него
 // в памяти, просто в базу её результат пишет только админ.
-const STAFF_WRITE_KEYS = ['attendance:log', 'app:ordersOverlay'];
+const STAFF_WRITE_KEYS = ['app:ordersOverlay'];
 const TEAMLEAD_WRITE_KEYS = ['app:schedules', 'app:employees'];
 function canWriteKey(key){
   if(authIsAdmin()) return true;
   if(STAFF_WRITE_KEYS.indexOf(key) >= 0 || String(key).indexOf('saletime:') === 0) return true;
+  if(String(key).indexOf('att:') === 0) return true; // свои отметки; чужие база не пропустит
   const me = employees.find(e=>e.id===myEmployeeId);
   return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
 }
@@ -2344,7 +2345,7 @@ async function pollSharedData(){
     const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
-      storeGet('attendance:log', SHARED),
+      loadAttendance(),
       storeGet('app:activeMonth', SHARED),
       storeGet('app:adminPin', SHARED),
       storeGet('app:sheetUrls', SHARED),
@@ -2414,7 +2415,7 @@ async function pollSharedData(){
       for(const [key, get] of healBack){ storeSet(key, get(), SHARED); }
     }
 
-    if(freshLogs && (!Array.isArray(freshLogs) || freshLogs.length > 0 || !Array.isArray(logs) || logs.length === 0)) logs = freshLogs;
+    if(Array.isArray(freshLogs)) logs = freshLogs;
     if(freshActiveMonth) activeMonth = freshActiveMonth;
     if(freshAdminPin) adminPin = freshAdminPin;
     if(freshSheetUrls) sheetUrls = Object.assign({}, sheetUrls, freshSheetUrls);
@@ -3511,8 +3512,8 @@ async function loadAll(){
   if(!kpiData[nowMonthKey]) ensureMonth(nowMonthKey);
   editingMonth = activeMonth;
 
-  try { logs = await storeGet('attendance:log', SHARED); } catch(e) { console.error(e); }
-  if(!logs) logs = [];
+  try { logs = await loadAttendance(); } catch(e) { console.error(e); }
+  if(!Array.isArray(logs)) logs = [];
 
   myEmployeeId = null;   // определяется по почте после входа (linkAuthIdentity)
 
@@ -3740,6 +3741,44 @@ function fmtDuration(ms){
   return (h>0? h+'ч ' : '') + m + 'м';
 }
 
+// ── Хранение отметок ──────────────────────────────────────────────────────
+// Каждая отметка — отдельная строка в базе: att:ГГГГ-ММ:<empId>:<ts>.
+// Раньше все отметки лежали одним списком, и любой мог переписать его целиком.
+// Теперь база (security.sql) пропускает только новую отметку самого сотрудника
+// и только с текущим временем; править и удалять отметки может лишь админ.
+// Читаем текущий и прошлый месяц + старый общий список (история до переезда).
+function attKey(l){ return `att:${saleZoned(l.ts).mk}:${l.empId}:${l.ts}`; }
+function prevMonthKey(mk){
+  const [y,m] = mk.split('-').map(Number);
+  return m===1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`;
+}
+async function loadAttendance(){
+  const mk = saleZoned(Date.now()).mk;
+  const fetchMonth = async (m)=>{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('att:'+m+':')}*&select=value&limit=20000`, {
+      headers: await sbHeaders()
+    });
+    if(res.status === 401) authOnUnauthorized();
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return (await res.json()).map(r=>{ try{ return JSON.parse(r.value); }catch(e){ return null; } }).filter(Boolean);
+  };
+  try{
+    const [cur, prev, legacy] = await Promise.all([fetchMonth(mk), fetchMonth(prevMonthKey(mk)), storeGet('attendance:log', SHARED)]);
+    const seen = {}, out = [];
+    [].concat(Array.isArray(legacy) ? legacy : [], prev, cur).forEach(l=>{
+      if(!l || !l.empId || !l.ts) return;
+      const id = l.empId + ':' + l.ts + ':' + l.type;
+      if(seen[id]) return;
+      seen[id] = true; out.push(l);
+    });
+    return out.sort((a,b)=>a.ts-b.ts);
+  }catch(e){
+    console.error('loadAttendance failed', e);
+    storeReadFailed = true;
+    return null;
+  }
+}
+
 let punchInFlight = false;
 async function punch(empId){
   if(punchInFlight) return; // защита от повторного/двойного нажатия
@@ -3747,12 +3786,12 @@ async function punch(empId){
   try{
     // подтягиваем самые свежие логи перед записью, чтобы снизить риск
     // перезаписи данных, если сотрудник отмечался с другого устройства
-    if(SHARED){
-      const fresh = await storeGet('attendance:log', SHARED);
-      if(fresh) logs = fresh;
-    }
-    logs.push({empId, type: isCheckedIn(empId) ? 'out' : 'in', ts: Date.now()});
-    await storeSet('attendance:log', logs, SHARED);
+    const fresh = await loadAttendance();
+    if(Array.isArray(fresh)) logs = fresh;
+    const rec = {empId, type: isCheckedIn(empId) ? 'out' : 'in', ts: Date.now()};
+    const ok = await storeSet(attKey(rec), rec, SHARED);
+    if(ok) logs.push(rec);
+    else showToast('Отметка не сохранилась. Проверьте связь и время на телефоне, затем нажмите ещё раз', 'error');
   } finally {
     punchInFlight = false;
   }
@@ -3796,15 +3835,15 @@ async function autoCloseStaleShifts(){
   try{
     // Перед записью берём самые свежие логи: смену мог закрыть другой экран.
     // Если прочитать не удалось — ничего не пишем, чтобы не затереть данные.
-    if(SHARED){
-      const fresh = await storeGet('attendance:log', SHARED);
-      if(!Array.isArray(fresh)) return;
-      logs = fresh;
-    }
+    const fresh = await loadAttendance();
+    if(!Array.isArray(fresh)) return;
+    logs = fresh;
     const stale = staleOpenShifts(Date.now());
     if(!stale.length) return;
-    stale.forEach(x=> logs.push({empId:x.empId, type:'out', ts:x.ts, auto:true}));
-    await storeSet('attendance:log', logs, SHARED);
+    for(const x of stale){
+      const rec = {empId:x.empId, type:'out', ts:x.ts, auto:true};
+      if(await storeSet(attKey(rec), rec, SHARED)) logs.push(rec);
+    }
     if(myEmployeeId && stale.some(x=>x.empId===myEmployeeId)){
       showToast('Смена закрыта автоматически в 23:00. Не забывайте нажимать END', 'error');
     }
