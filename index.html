@@ -206,6 +206,9 @@
   .kpi-box .label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px;}
   .kpi-box .value{font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-.03em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
   .kpi-box .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3;}
+  .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
+  .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
+  .kpi-refresh .att-btn{height:34px;font-size:12.5px;}
   /* История по месяцам: столбики выполнения плана, пунктир — 100% */
   .hist-chart{position:relative;display:flex;align-items:flex-end;gap:8px;height:150px;padding:18px 0 0;margin-top:4px;}
   .hist-goal{position:absolute;left:0;right:0;border-top:1.5px dashed var(--ink4);pointer-events:none;}
@@ -2187,7 +2190,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-02.2';
+const APP_BUILD = '2026-10-02.3';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2770,6 +2773,35 @@ function rateFor(pct){
   if(pct>=67)  return 8;
   return 6;
 }
+// Ставка сейчас: фикс-ставка важнее; иначе по сетке от выполнения плана.
+// Процент НЕ ограничиваем сотней — от этого зависит ставка выше 100%.
+// Одна функция для сводки отдела и личной карточки, чтобы цифры совпадали.
+function currentRateFor(e, num, den){
+  const fixed = empFixedRate(e);
+  if(fixed!=null) return fixed;
+  return den>0 ? rateFor(num/den*100) : null;
+}
+// Ступени сетки rateFor: нижняя граница включается, кроме «более 140» — строго больше.
+const RATE_STEPS = [
+  {pct:67,  rate:8,  label:'67%'},
+  {pct:83,  rate:10, label:'83%'},
+  {pct:100, rate:11, label:'100%'},
+  {pct:120, rate:12, label:'120%'},
+  {pct:140, rate:13, label:'более 140%', strict:true},
+];
+// Сколько ₸ не хватает до ближайшей ступени выше текущей. null — плана нет;
+// {max:true} — ставка уже максимальная. Минимальную сумму подбираем через сам
+// rateFor, чтобы граница совпадала с ним до тенге (без ошибок округления).
+function nextRateStep(num, den){
+  if(!(den>0)) return null;
+  const cur = rateFor(num/den*100);
+  const step = RATE_STEPS.find(s=> s.rate > cur);
+  if(!step) return {max:true, rate:cur};
+  let n = step.strict ? Math.floor(step.pct*den/100) + 1 : Math.ceil(step.pct*den/100);
+  while(rateFor(n/den*100) < step.rate) n++;
+  while(n-1 > num && rateFor((n-1)/den*100) >= step.rate) n--;
+  return {rate: step.rate, label: step.label, need: Math.max(0, n - num), target: n};
+}
 // Роль и фиксированная ставка. role: 'teamlead' | '' ; fixedRate: число (%) или null.
 // У тимлида ставка не зависит от выполнения плана.
 function empRoleLabel(e){
@@ -3001,7 +3033,7 @@ function deptOverview(dept, monthKey){
       pct: den>0 ? Math.round(num/den*100) : null,
       roleLabel: empRoleLabel(e),
       fixedRate: empFixedRate(e),
-      rate: empFixedRate(e)!=null ? empFixedRate(e) : (den>0 ? rateFor(num/den*100) : null),
+      rate: currentRateFor(e, num, den),
       orders: dept==='to' ? (Number(k.orders)||0) : (Number(k.deals)||0),
       avgTime: avgCompletionTime(e.id, monthKey),
       trend,
@@ -3827,7 +3859,7 @@ function getKpi(empId, monthKey){
   return (kpiData[monthKey] && kpiData[monthKey][empId]) || zeroKpi(emp ? emp.department : 'op');
 }
 
-function fmtMoney(n){ return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₸'; }
+function fmtMoney(n){ n = Number(n); if(!isFinite(n)) n = 0; return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₸'; } // пустое/битое значение — 0 ₸, а не «не число ₸»
 function fmtTime(ts){ return new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); }
 
 // ── Slot machine animation ──
@@ -3913,6 +3945,24 @@ function todayHoursFor(empId){
 function fmtDuration(ms){
   const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
   return (h>0? h+'ч ' : '') + m + 'м';
+}
+
+// «Обновить сейчас» на карточке ТО: синхронизация таблиц текущего месяца вручную.
+// Трекер и лист ОП тоже — от них зависит план ТО (выручка ОП).
+let toRefreshBusy = false;
+async function refreshCurrentMonthNow(){
+  if(toRefreshBusy) return;
+  toRefreshBusy = true; renderNow();
+  const mk = activeMonth;
+  try{
+    if((trackerUrls[mk]||'').trim()) await syncTracker(mk, true);
+    if((cashUrls[mk]||'').trim()) await syncCashSheet(mk, true);
+    if(getSheetUrl('op', mk)) await syncFromGoogleSheet('op', mk, true);
+    if(getSheetUrl('to', mk)) await syncFromGoogleSheet('to', mk, true);
+  }catch(e){ console.error('refresh failed', e); }
+  toRefreshBusy = false;
+  renderNow();
+  showToast(lastSheetSyncAt['to_' + mk] ? 'Данные обновлены' : 'Не удалось обновить — проверьте связь', lastSheetSyncAt['to_' + mk] ? 'success' : 'error');
 }
 
 // ── Хранение отметок ──────────────────────────────────────────────────────
@@ -5266,7 +5316,41 @@ function renderEmployeeDashboard(forId){
     const display = f.type==='number' ? (f.money ? fmtMoney(val) : val) : (escapeHtml(val) || '—');
     const wideClass = (f.key==='avgCheck' && emp.department==='op') ? ' wide' : '';
     return `<div class="kpi-box${wideClass}"><div class="label">${f.label}</div><div class="value">${display}</div></div>`;
-  }).join('') + opPlanBoxes();
+  }).join('') + opPlanBoxes() + toRateBoxes();
+
+  // ТО, текущий месяц: ставка сейчас, сколько до следующей ставки, ставка по тенденции.
+  // Пересчитывается при каждой перерисовке — а она идёт при новых данных (опрос базы,
+  // синхронизация таблицы). План — тот же planFor, что и в сводке отдела.
+  function toRateBoxes(){
+    if(emp.department!=='to' || viewMonth!==currentMonthKey()) return '';
+    const fixed = empFixedRate(emp);
+    const hasPlan = den>0;
+    const syncedAt = lastSheetSyncAt['to_' + viewMonth];
+    const refresh = `<div class="kpi-refresh"><span>${toRefreshBusy ? 'Обновляю…' : (syncedAt ? 'обновлено в ' + fmtTime(syncedAt) : 'ещё не обновлялось с открытия')}</span>
+      <button class="att-btn" id="toRefreshBtn" ${toRefreshBusy?'disabled':''}>Обновить сейчас</button></div>`;
+    if(!hasPlan && fixed==null) return `<div class="kpi-box wide"><div class="label">Ставка сейчас</div><div class="value">—</div><div class="sub">план на месяц не задан — ставку посчитать не от чего</div></div>` + refresh;
+    const pctRaw = hasPlan ? num/den*100 : null;
+    const pctShow = pctRaw!=null ? (Math.round(pctRaw*10)/10).toLocaleString('ru-RU') : null;
+    const rate = currentRateFor(emp, num, den);
+    const nowBox = `<div class="kpi-box"><div class="label">Ставка сейчас</div><div class="value">${rate}%${fixed!=null?' <span class="kpi-tag">фикс.</span>':''}</div><div class="sub">${pctShow!=null ? 'выполнено ' + pctShow + '% плана' : 'фиксированная ставка'}</div></div>`;
+    let nextBox;
+    if(fixed!=null) nextBox = `<div class="kpi-box"><div class="label">До следующей ставки</div><div class="value">—</div><div class="sub">ставка фиксированная</div></div>`;
+    else {
+      const st = nextRateStep(num, den);
+      nextBox = st.max
+        ? `<div class="kpi-box"><div class="label">До следующей ставки</div><div class="value">${st.rate}%</div><div class="sub">максимальная ставка</div></div>`
+        : `<div class="kpi-box"><div class="label">До ставки ${st.rate}%</div><div class="value">${fmtMoney(st.need)}</div><div class="sub">не хватает до ${st.label} плана</div></div>`;
+    }
+    let trendBox = '';
+    if(hasPlan){
+      const trend = personalTrend(emp.id, viewMonth, num, den);
+      if(trend){
+        const tRate = trendRateFor(emp, trend);
+        trendBox = `<div class="kpi-box"><div class="label">По тенденции</div><div class="value">${tRate}%</div><div class="sub">${fixed!=null ? 'фикс. · ' : ''}темп ${trend.pct}% плана</div></div>`;
+      }
+    }
+    return nowBox + nextBox + trendBox + refresh;
+  }
 
   // ОП, текущий месяц: сколько делать в день до плана и ставка по тенденции
   function opPlanBoxes(){
@@ -7267,6 +7351,7 @@ function attachDelegatedHandlers(){
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
     if(el.closest('#sheetsAuditBtn')){ runSheetsAudit(); return; }
+    if(el.closest('#toRefreshBtn')){ refreshCurrentMonthNow(); return; }
     if(el.closest('[data-sheetcheck]')){
       const b = el.closest('[data-sheetcheck]');
       const emp = employees.find(e=>e.id===b.dataset.sheetcheck);
