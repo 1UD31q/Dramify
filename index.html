@@ -2187,7 +2187,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-02.1';
+const APP_BUILD = '2026-10-02.2';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -4356,6 +4356,22 @@ function normName(s){
   if(/[а-я]/.test(t) && /[a-z]/.test(t)) t = t.replace(/[a-z]/g, ch => LAT2CYR[ch] || ch);
   return t;
 }
+// Своя ли вкладка у месяца. Если ссылка (таблица + вкладка gid) указана только
+// для этого месяца — вкладка и есть месяц: считаем ВСЕ её строки, даты не смотрим.
+// Раньше строки сентябрьской вкладки со сдачей/датой в октябре выпадали из
+// сентября, а в октябре их тоже не было — октябрь читается из своей вкладки.
+// Даты нужны, только если одна и та же вкладка указана для нескольких месяцев.
+function sheetTabKey(url){
+  const u = String(url||'');
+  const id = (u.match(/\/spreadsheets\/d\/(?:e\/)?([a-zA-Z0-9-_]+)/)||[])[1];
+  if(!id) return u.trim();
+  return id + '#' + ((u.match(/gid=([0-9]+)/)||[])[1] || '0');
+}
+function isDedicatedTab(dept, mk){
+  const key = sheetTabKey(getSheetUrl(dept, mk));
+  if(!key) return false;
+  return !Object.keys(sheetUrls).some(m=> m!==mk && ['op','to'].some(d=> sheetTabKey(getSheetUrl(d, m))===key));
+}
 // Отменённые и возвратные заказы в личные продажи и заказы не идут
 function isCancelledStatus(st){ return /отмен|возврат|отказ/.test(String(st||'').toLowerCase()); }
 // Месяц, к которому относится заказ ТО: месяц сдачи (дедлайна), а если его нет —
@@ -4599,6 +4615,9 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
     const pendingCol = findCol(['остаток']);
     const dateCol = findCol(['дата оформления','дата']);
     const isRawLedger = sellerCol>=0 || doerCol>=0;
+    // Своя вкладка у месяца — все строки этого месяца; общая — по датам (см. isDedicatedTab)
+    const wholeTab = isDedicatedTab(dept, targetMonth);
+    const inThisMonth = row => wholeTab || rowInMonth(row, dateCol, targetMonth);
 
     ensureMonth(targetMonth);
     const deptEmployees = employees.filter(e=>e.department===dept);
@@ -4634,7 +4653,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       const unmatchedNames = new Set();
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
-        if(!rowInMonth(row, dateCol, targetMonth)) continue;
+        if(!inThisMonth(row)) continue;
 
         const grossVal = grossCol>=0 ? parseNum(row[grossCol]) : 0;
         const pendingVal = pendingCol>=0 ? parseNum(row[pendingCol]) : 0;
@@ -4688,10 +4707,11 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         for(let r=1;r<rows.length;r++){
           const row = rows[r];
           if(normName(row[actorCol]) !== nameLc) continue;
-          // ОП — по дате оформления; ТО — по месяцу сдачи (или оформления, если срока нет)
-          const rowBelongsToMonth = dept==='to'
+          // Своя вкладка месяца — все строки; общая на несколько месяцев — по датам:
+          // ОП по дате оформления, ТО по месяцу сдачи (или оформления, если срока нет)
+          const rowBelongsToMonth = wholeTab || (dept==='to'
             ? toOrderMonth(row, dateCol, _deadlineColForKpi) === targetMonth
-            : rowInMonth(row, dateCol, targetMonth);
+            : rowInMonth(row, dateCol, targetMonth));
           if(!rowBelongsToMonth) continue;
 
           const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
@@ -4754,7 +4774,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             // Для активных заказов: показываем строку если:
             // 1) Заказ создан в этом месяце (targetMonth), ИЛИ
             // 2) Заказ ещё не завершён И срок сдачи (deadline) попадает в targetMonth или позже
-            const createdInMonth = rowInMonth(row, dateCol, targetMonth);
+            const createdInMonth = inThisMonth(row);
             const deadlineInMonthOrLater = (() => {
               const deadlineMk = sheetDateMonth(deadlineStr);
               return !!deadlineMk && deadlineMk >= targetMonth;
@@ -4864,7 +4884,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           // Фильтр по колонке «Кто продал» — то же правило сравнения имён, что и в KPI
           if(normName(row[sellerCol]) !== nameLc) continue;
           // ОП: строго по дате оформления — каждый месяц считается отдельно
-          if(!rowInMonth(row, dateCol, targetMonth)) continue;
+          if(!inThisMonth(row)) continue;
 
           const deadlineStr = opDeadlineCol>=0  ? (row[opDeadlineCol]||'').trim()      : '';
           const statusRaw   = statusCol>=0      ? (row[statusCol]||'').trim()         : '';
@@ -5344,7 +5364,8 @@ function renderHistoryCard(emp){
     const den = (dept.ratio.den==='plan' && p!=null) ? p : (Number(k[dept.ratio.den])||0);
     const pct = den>0 ? Math.round(num/den*100) : null;
     const rate = empFixedRate(emp)!=null ? empFixedRate(emp) : (pct!=null ? rateFor(pct) : null);
-    return { mk, num, den, pct, rate };
+    const allTo = emp.department==='to' ? num + (Number(k.pending)||0) : null;
+    return { mk, num, den, pct, rate, allTo, orders: Number(k.orders)||0, completed: Number(k.completed)||0 };
   });
   if(!rows.some(r=> r.num>0 || r.den>0)) return '';
   const top = Math.max(120, ...rows.map(r=> r.pct||0));
@@ -5357,6 +5378,7 @@ function renderHistoryCard(emp){
       <div class="hist-bar" style="height:${r.pct!=null ? px(r.pct) : 0}px"></div>
       <div class="hist-tip"><b>${monthLabel(r.mk)}</b>${r.mk===currentMonthKey()?' · идёт':''}<br>
         ${fmtMoney(r.num)}${r.den>0 ? ' из ' + fmtMoney(r.den) : ' · план не задан'}<br>
+        ${r.allTo!=null ? `выполнено ${r.completed} из ${r.orders} заказов · всего на ${fmtMoney(r.allTo)}<br>` : ''}
         ${r.pct!=null ? 'выполнение ' + r.pct + '%' : ''}${r.rate!=null ? ' · ставка ' + r.rate + '%' : ''}</div>
     </div>`).join('');
   const done = rows.filter(r=> r.pct!=null && r.mk!==currentMonthKey());
@@ -5409,6 +5431,7 @@ async function runSheetCheck(emp, mk){
     const dateCol = findCol(['дата оформления','дата']), dlCol = emp.department==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
     const nameCol = findCol(['имя','name']);
     const me = normName(emp.name);
+    const wholeTab = isDedicatedTab(emp.department, mk);
     const list = [], similar = {};
     let total = 0, count = 0, other = 0;
     for(let r=1;r<rows.length;r++){
@@ -5422,10 +5445,10 @@ async function runSheetCheck(emp, mk){
       const dlRaw = dlCol>=0 ? String(row[dlCol]||'').trim() : '';
       const status = statusCol>=0 ? String(row[statusCol]||'').trim() : '';
       const gross = grossCol>=0 ? parseNum(row[grossCol]) : 0;
-      const rowMk = emp.department==='to' ? toOrderMonth(row, dateCol, dlCol)
-        : (dateRaw ? sheetDateMonth(dateRaw) : currentMonthKey());
+      const rowMk = wholeTab ? mk : (emp.department==='to' ? toOrderMonth(row, dateCol, dlCol)
+        : (dateRaw ? sheetDateMonth(dateRaw) : currentMonthKey()));
       let reason = '';
-      if(dateRaw && !sheetDateMonth(dateRaw) && !(emp.department==='to' && sheetDateMonth(dlRaw))) reason = 'дата не распознана: «' + dateRaw + '»';
+      if(!wholeTab && dateRaw && !sheetDateMonth(dateRaw) && !(emp.department==='to' && sheetDateMonth(dlRaw))) reason = 'дата не распознана: «' + dateRaw + '»';
       else if(rowMk !== mk){ other++; continue; }
       else if(isCancelledStatus(status)) reason = 'отменён / возврат';
       else if(!dateRaw && !(emp.department==='to' && dlRaw)) reason = '';
@@ -5493,13 +5516,14 @@ async function analyzeLedger(dept, mk){
       rows: 0, inMonth: 0, badDate: 0, noActor: 0, noSum: 0, otherMonth: 0, otherSample: '', unmatched: {}, byEmp: {} };
     if(actorCol<0 || grossCol<0) return res;
     const emps = employees.filter(e=>e.department===dept);
+    res.wholeTab = isDedicatedTab(dept, mk);
     for(let r=1;r<rows.length;r++){
       const row = rows[r];
       if(!row.some(c=>String(c).trim())) continue;
       res.rows++;
       const dateRaw = dateCol>=0 ? String(row[dateCol]||'').trim() : '';
-      if(dateRaw && !sheetDateMonth(dateRaw)) res.badDate++;
-      const inMonth = dept==='to' ? toOrderMonth(row, dateCol, dlCol)===mk : rowInMonth(row, dateCol, mk);
+      if(!res.wholeTab && dateRaw && !sheetDateMonth(dateRaw)) res.badDate++;
+      const inMonth = res.wholeTab || (dept==='to' ? toOrderMonth(row, dateCol, dlCol)===mk : rowInMonth(row, dateCol, mk));
       if(!inMonth){
         if(dateRaw && sheetDateMonth(dateRaw)){ res.otherMonth++; if(!res.otherSample) res.otherSample = dateRaw; }
         continue;
@@ -5542,7 +5566,7 @@ function renderSheetsAudit(){
     const c = d.cols, issues = [];
     if(!c.actor) issues.push(warn('не нашёл колонку «' + (d.dept==='op'?'Кто продал':'Кто делает') + '» в строке ' + d.headerRow));
     if(!c.gross) issues.push(warn('не нашёл колонку «Сумма общая»'));
-    if(!c.date) issues.push(warn('не нашёл колонку даты — строки не делятся по месяцам'));
+    if(!c.date && !d.wholeTab) issues.push(warn('не нашёл колонку даты — строки не делятся по месяцам'));
     if(d.inMonth===0 && d.rows>0) issues.push(warn('ни одна строка не относится к ' + monthLabel(mk) + ' — проверьте даты (год, формат) и что ссылка на вкладку нужного месяца'));
     if(d.badDate) issues.push(warn('даты не распознаны в ' + d.badDate + ' строк(ах) — такие строки не считаются'));
     if(d.otherMonth) issues.push(warn('строк с датой другого месяца: ' + d.otherMonth + ' (например, «' + escapeHtml(d.otherSample) + '») — в ' + monthLabel(mk) + ' они не считаются. Если это опечатка в годе или месяце — исправьте дату в таблице.'));
@@ -5555,7 +5579,7 @@ function renderSheetsAudit(){
       const diff = Math.round(app) !== Math.round(b.sum);
       return `<span class="au-e${diff?' diff':''}">${escapeHtml(e.name)}: ${fmtMoney(b.sum)} (${b.count})${diff ? ' · в приложении ' + fmtMoney(app) : ''}</span>`;
     }).join('');
-    return `<div class="au-d"><b>${label}</b> <span class="au-m">прочитано${d.headerRow>1 ? ', шапка найдена в строке ' + d.headerRow : ''}; строк ${d.rows}, за месяц ${d.inMonth}</span>
+    return `<div class="au-d"><b>${label}</b> <span class="au-m">прочитано${d.headerRow>1 ? ', шапка найдена в строке ' + d.headerRow : ''}; ${d.wholeTab ? 'своя вкладка — считаются все строки (' + d.inMonth + ')' : 'общая вкладка — по датам: строк ' + d.rows + ', за месяц ' + d.inMonth}</span>
       <div class="au-m">Колонки: ${['actor','gross','date','status'].map(k=>c[k] ? '«'+escapeHtml(c[k])+'»' : '—').join(' · ')}</div>
       ${issues.join('')}
       <div class="au-emps">${emps}</div></div>`;
