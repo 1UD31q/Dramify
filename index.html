@@ -228,6 +228,18 @@
   .cal-cell.shifted{box-shadow:inset 0 0 0 1.5px var(--p3);}
   .cal-cell.shifted.today{box-shadow:inset 0 0 0 2px var(--p5);}
   .cal-legend .sw.shifted{background:var(--bg1);box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .shift-defnote{font-size:11px;color:var(--muted);}
+  .shift-today{font-size:12.5px;color:var(--ink3);margin-top:6px;}
+  .shift-today b{color:var(--ink);font-variant-numeric:tabular-nums;}
+  .shift-today.unusual{color:var(--p6);font-weight:600;}
+  .shift-today.unusual b{color:var(--p6);}
+  .shift-days{margin-top:12px;border-top:1px solid var(--bg2);padding-top:10px;}
+  .shift-days-h{font-size:11px;font-weight:600;color:var(--ink4);margin-bottom:4px;}
+  .shift-day{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;}
+  .shift-day b{color:var(--p6);font-variant-numeric:tabular-nums;}
+  .shift-day.today{font-weight:600;}
+  .shift-day.past{color:var(--muted);}
+  .shift-day.past b{color:var(--muted);font-weight:500;}
   .shift-ed{display:flex;flex-direction:column;gap:8px;margin:4px 0 10px;}
   .shift-def{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);}
   .shift-def input,.shift-mode input{width:auto;flex:0 0 auto;padding:7px 10px;}
@@ -2567,7 +2579,10 @@ const LATE_GRACE_MIN = 5;
 let calMode = 'off';          // что делает клик по дню в редакторе: 'off' выходной | 'time' время смены
 let calModeTime = '12:00';
 function validHHMM(v){ return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v||'')); }
-function shiftDefault(empId){ const m = schedules._shift || {}; return validHHMM(m[empId]) ? m[empId] : null; }
+// Если админ/тимлид не задал время — смена начинается в 11:00
+const DEFAULT_SHIFT_START = '11:00';
+function shiftExplicit(empId){ const m = schedules._shift || {}; return validHHMM(m[empId]) ? m[empId] : null; }
+function shiftDefault(empId){ return shiftExplicit(empId) || DEFAULT_SHIFT_START; }
 function shiftOverride(empId, mk, day){
   const m = (((schedules._shiftDay||{})[mk])||{})[empId] || {};
   return validHHMM(m[day]) ? m[day] : null;
@@ -2575,7 +2590,8 @@ function shiftOverride(empId, mk, day){
 function shiftStartFor(empId, mk, day){ return shiftOverride(empId, mk, day) || shiftDefault(empId); }
 async function setShiftDefault(empId, val){
   schedules._shift = Object.assign({}, schedules._shift||{});
-  if(validHHMM(val)) schedules._shift[empId] = val; else delete schedules._shift[empId];
+  // время по умолчанию не храним: если общее время когда-то поменяется, сотрудник поедет вместе с ним
+  if(validHHMM(val) && val !== DEFAULT_SHIFT_START) schedules._shift[empId] = val; else delete schedules._shift[empId];
   return storeSet('app:schedules', schedules, SHARED);
 }
 async function toggleShiftDay(empId, mk, day, val){
@@ -2592,7 +2608,7 @@ function fmtLate(min){ return min>=60 ? Math.floor(min/60)+'ч '+(min%60)+'м' :
 // Панель над редактируемым календарём: обычное начало смены и режим клика
 function renderShiftEditor(empId){
   return `<div class="shift-ed">
-    <label class="shift-def">Начало смены <input type="time" data-shiftdefault="${empId}" value="${shiftDefault(empId)||''}"></label>
+    <label class="shift-def">Начало смены <input type="time" data-shiftdefault="${empId}" value="${shiftDefault(empId)}">${shiftExplicit(empId) ? '' : '<span class="shift-defnote">по умолчанию</span>'}</label>
     <div class="shift-mode">
       <button class="att-btn${calMode==='off'?' on':''}" data-calmode="off">Выходной</button>
       <button class="att-btn${calMode==='time'?' on':''}" data-calmode="time">Другое время</button>
@@ -2627,12 +2643,31 @@ function renderCalendarGrid(empId, monthKey, editable){
     cells += `<div class="${cls.join(' ')}" ${editable?`data-caltoggle="${empId}" data-calday="${d}" data-calmonth="${monthKey}"`:''}>${d}${ov?`<span class="cal-time">${ov}</span>`:''}</div>`;
   }
   const def = shiftDefault(empId);
+  // Для сотрудника — список дней, когда смена начинается не как обычно
+  let special = '';
+  if(!editable){
+    const todayD = new Date(); todayD.setHours(0,0,0,0);
+    const items = [];
+    for(let d=1; d<=total; d++){
+      const ov = !isOffDay(empId, monthKey, d) ? shiftOverride(empId, monthKey, d) : null;
+      if(!ov || ov===def) continue;
+      const dt = new Date(y, m-1, d);
+      const past = dt < todayD, isT = dt.getTime()===todayD.getTime();
+      items.push(`<div class="shift-day${past?' past':''}${isT?' today':''}">
+        <span>${dt.toLocaleDateString('ru-RU',{day:'numeric', month:'short', weekday:'short'})}${isT?' · сегодня':''}</span>
+        <b>с ${ov}</b></div>`);
+    }
+    special = items.length
+      ? `<div class="shift-days"><div class="shift-days-h">Смена не в ${def}</div>${items.join('')}</div>`
+      : '';
+  }
   return `
-    ${!editable && def ? `<div class="hint" style="margin:-4px 0 8px;">Обычное начало смены: <b>${def}</b>. Дни с другим временем отмечены в календаре.</div>` : ''}
+    ${!editable ? `<div class="hint" style="margin:-4px 0 8px;">Обычное начало смены: <b>${def}</b></div>` : ''}
     <div class="cal-wrap">
       <div class="cal-weekdays">${WEEKDAY_LETTERS.map(w=>`<div class="cal-wd">${w}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
-    </div>`;
+    </div>
+    ${special}`;
 }
 
 // ---------------------------------------------------------------------
@@ -5086,6 +5121,12 @@ function renderEmployeeDashboard(forId){
               </button>
             </div>
             <div class="elapsed">Сегодня отработано: <span id="elapsedText">${fmtDuration(todayHoursFor(emp.id))}</span></div>
+            ${(()=>{
+              const n = new Date(), mk = localDayStr(n).slice(0,7), d = n.getDate();
+              if(isOffDay(emp.id, mk, d)) return '<div class="shift-today">Сегодня по графику выходной</div>';
+              const st = shiftStartFor(emp.id, mk, d), unusual = st !== shiftDefault(emp.id);
+              return `<div class="shift-today${unusual?' unusual':''}">Смена сегодня с <b>${st}</b>${unusual ? ' — не как обычно' : ''}</div>`;
+            })()}
             <div class="switch-user" id="switchUser">Выйти</div>
           </div>
         </div>
