@@ -2097,7 +2097,7 @@ function canWriteKey(key){
 
 async function storeSet(key, value, shared){
   if(shared){
-    if(!canWriteKey(key)) return false;
+    if(!canWriteKey(key) || appOutdated) return false;
     // Пока состояние не прочитано успешно — не трогаем важные ключи,
     // иначе можно затереть живые данные пустышкой.
     if(!stateLoaded && GUARDED_KEYS.indexOf(key) >= 0){
@@ -2140,6 +2140,67 @@ async function storeSet(key, value, shared){
   } else {
     try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(e){ console.error(e); return false; }
   }
+}
+
+// ── Сохранение «только своей части» ────────────────────────────────────────
+// Ссылки, KPI, итоги, заказы и т.п. лежат в базе одним объектом на ключ, а
+// раньше каждый браузер перезаписывал объект ЦЕЛИКОМ своей копией. С несколькими
+// админами (и вкладками, открытыми в фоне со вчерашнего дня) чужая устаревшая
+// копия затирала свежие данные: пропадали вставленные ссылки, возвращались
+// старые цифры в истории. Теперь перед записью берём свежий объект из базы и
+// меняем в нём только свои пути (например ['2026-08','op']), остальное не трогаем.
+async function storeGetFresh(key){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, { headers: await sbHeaders() });
+  if(res.status === 401) authOnUnauthorized();
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return (data && data.length) ? JSON.parse(data[0].value) : null;
+}
+function getPath(obj, path){ return path.reduce((o,k)=> (o && typeof o==='object') ? o[k] : undefined, obj); }
+function setPath(obj, path, val){
+  let o = obj;
+  for(let i=0;i<path.length-1;i++){
+    if(!o[path[i]] || typeof o[path[i]] !== 'object' || Array.isArray(o[path[i]])) o[path[i]] = {};
+    o = o[path[i]];
+  }
+  const last = path[path.length-1];
+  if(val === undefined) delete o[last]; else o[last] = JSON.parse(JSON.stringify(val));
+}
+const mergeLocks = {};
+// Возвращает обновлённый объект (свежий из базы + наши пути) или null, если записать не удалось.
+function saveMerged(key, local, paths){
+  const run = async ()=>{
+    if(!canWriteKey(key) || appOutdated) return null;
+    let fresh;
+    try{ fresh = await storeGetFresh(key); }catch(e){ console.error('saveMerged: не прочитал', key, e); return null; }
+    if(!fresh || typeof fresh !== 'object' || Array.isArray(fresh)) fresh = {};
+    paths.forEach(p=> setPath(fresh, p, getPath(local, p)));
+    const ok = await storeSet(key, fresh, SHARED);
+    return ok ? fresh : null;
+  };
+  const p = (mergeLocks[key] || Promise.resolve()).then(run, run);
+  mergeLocks[key] = p.catch(()=>{});
+  return p;
+}
+
+// ── Устаревшая версия приложения ничего не пишет ────────────────────────────
+// Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
+// сверяем версию с сайтом; если она устарела — запись в базу выключается,
+// в фоне вкладка перезагружается сама, на экране просим обновить страницу.
+const APP_BUILD = '2026-10-02.1';
+let appOutdated = false;
+async function checkAppVersion(){
+  if(appOutdated || location.protocol === 'file:') return;
+  try{
+    const res = await fetch(location.href.split('#')[0], {cache:'no-store'});
+    if(!res.ok) return;
+    const m = (await res.text()).match(/const APP_BUILD = '([^']+)'/);
+    if(m && m[1] !== APP_BUILD){
+      appOutdated = true;
+      if(document.visibilityState === 'hidden') location.reload();
+      else showToast('Вышло обновление приложения — обновите страницу. До этого изменения не сохраняются.', 'error');
+    }
+  }catch(e){}
 }
 
 // ---------------------------------------------------------------------
@@ -2585,7 +2646,8 @@ async function toggleOffDay(empId, monthKey, day){
   if(!schedules[monthKey][empId]) schedules[monthKey][empId] = {};
   if(schedules[monthKey][empId][day]) delete schedules[monthKey][empId][day];
   else schedules[monthKey][empId][day] = true;
-  await storeSet('app:schedules', schedules, SHARED);
+  const m = await saveMerged('app:schedules', schedules, [[monthKey, empId]]);
+  if(m) schedules = m;
 }
 
 // ── Время начала смены ─────────────────────────────────────────────────────
@@ -2610,14 +2672,18 @@ async function setShiftDefault(empId, val){
   schedules._shift = Object.assign({}, schedules._shift||{});
   // время по умолчанию не храним: если общее время когда-то поменяется, сотрудник поедет вместе с ним
   if(validHHMM(val) && val !== DEFAULT_SHIFT_START) schedules._shift[empId] = val; else delete schedules._shift[empId];
-  return storeSet('app:schedules', schedules, SHARED);
+  const m = await saveMerged('app:schedules', schedules, [['_shift', empId]]);
+  if(m) schedules = m;
+  return !!m;
 }
 async function toggleShiftDay(empId, mk, day, val){
   const all = schedules._shiftDay = schedules._shiftDay || {};
   const mm = all[mk] = all[mk] || {};
   const em = mm[empId] = mm[empId] || {};
   if(em[day] === val || !validHHMM(val)) delete em[day]; else em[day] = val;
-  return storeSet('app:schedules', schedules, SHARED);
+  const m2 = await saveMerged('app:schedules', schedules, [['_shiftDay', mk, empId]]);
+  if(m2) schedules = m2;
+  return !!m2;
 }
 function hhmmToMin(v){ const [h,m] = v.split(':').map(Number); return h*60+m; }
 function minToHHMM(x){ x = Math.round(x); return String(Math.floor(x/60)%24).padStart(2,'0') + ':' + String(x%60).padStart(2,'0'); }
@@ -3128,16 +3194,11 @@ async function loadOrders(){
   }catch(e){ console.error('loadOrders failed', e); }
 }
 
-async function saveOrders(){
+async function saveOverlay(orderId){
   try{
-    await storeSet('app:ordersData', ordersData, SHARED);
-    await storeSet('app:ordersOverlay', ordersOverlay, SHARED);
+    const m = await saveMerged('app:ordersOverlay', ordersOverlay, orderId ? [[orderId]] : Object.keys(ordersOverlay).map(k=>[k]));
+    if(m) ordersOverlay = m;
   }
-  catch(e){ console.error('saveOrders failed', e); }
-}
-
-async function saveOverlay(){
-  try{ await storeSet('app:ordersOverlay', ordersOverlay, SHARED); }
   catch(e){ console.error('saveOverlay failed', e); }
 }
 
@@ -4096,7 +4157,8 @@ async function autoCloseStaleShifts(){
 async function saveKpiForMonth(monthKey, empId, values){
   ensureMonth(monthKey);
   kpiData[monthKey][empId] = values;
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, [[monthKey, empId]]);
+  if(m) kpiData = m;
 }
 
 async function activateMonth(monthKey){
@@ -4108,7 +4170,8 @@ async function activateMonth(monthKey){
 async function addMonth(monthKey){
   if(!/^\d{4}-\d{2}$/.test(monthKey)) return;
   ensureMonth(monthKey);
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, employees.map(e=>[monthKey, e.id]));
+  if(m) kpiData = m;
   editingMonth = monthKey;
   renderNow();
 }
@@ -4120,7 +4183,8 @@ async function saveEmployee(emp){
   if(idx>=0) employees[idx] = emp; else employees.push(emp);
   ensureMonth(editingMonth);
   await storeSet('app:employees', employees, SHARED);
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, [[editingMonth, emp.id]]);
+  if(m) kpiData = m;
 }
 
 function parseCSV(text, keepEmpty){
@@ -4409,8 +4473,8 @@ async function syncCashSheet(mk, silent){
       prepaidLabel: `${colLetter(prepaidIdx)}${header[prepaidIdx]?` («${rows[0][prepaidIdx]}»)`:''}`,
       pendingLabel: `${colLetter(pendingIdx)}${header[pendingIdx]?` («${rows[0][pendingIdx]}»)`:''}`,
     };
-    await storeSet('app:cashTotals', cashTotals, SHARED);
-    await storeSet('app:cashUrls', cashUrls, SHARED);
+    { const m = await saveMerged('app:cashTotals', cashTotals, [[mk]]); if(m) cashTotals = Object.assign({}, cashTotals, m); }
+    // ссылку здесь больше не пишем: она сохраняется при вводе — иначе старая копия затирала чужие ссылки
     lastCashSyncAt[mk] = Date.now();
     if(!silent){ cashStatus[mk] = `Посчитано по ${counted} строк(-е)`; showToast(cashStatus[mk],'success'); }
   } catch(err){
@@ -4439,8 +4503,7 @@ async function syncTracker(mk, silent){
       return;
     }
     trackerData[mk] = parsed;
-    await storeSet('app:trackerData', trackerData, SHARED);
-    await storeSet('app:trackerUrls', trackerUrls, SHARED);
+    { const m = await saveMerged('app:trackerData', trackerData, [[mk]]); if(m) trackerData = m; }
     lastTrackerSyncAt[mk] = Date.now();
     if(!silent){ trackerStatus[mk] = 'Данные обновлены'; showToast(trackerStatus[mk], 'success'); }
   } catch(err){
@@ -4741,7 +4804,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         // Мёрджим: обновляем ordersData[targetMonth] данными из CSV
         if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
         Object.assign(ordersData[targetMonth], newOrdersData);
-        await storeSet('app:ordersData', ordersData, SHARED);
+        { const m = await saveMerged('app:ordersData', ordersData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) ordersData = m; }
       }
 
     } else {
@@ -4847,12 +4910,14 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       }
       if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
       Object.assign(ordersData[targetMonth], newOrdersData);
-      await storeSet('app:ordersData', ordersData, SHARED);
+      { const m = await saveMerged('app:ordersData', ordersData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) ordersData = m; }
     }
 
-    await storeSet('app:kpiData', kpiData, SHARED);
-    await storeSet('app:sheetUrls', sheetUrls, SHARED);
-    await storeSet('app:ledgerTotals', ledgerTotals, SHARED);
+    // Пишем только этот месяц этого отдела — чужие месяцы и ссылки не трогаем
+    { const m = await saveMerged('app:kpiData', kpiData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) kpiData = m; }
+    if(ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept]){
+      const m = await saveMerged('app:ledgerTotals', ledgerTotals, [[targetMonth, dept]]); if(m) ledgerTotals = m;
+    }
     lastSheetSyncAt[key] = Date.now();
     if(!silent){
       const lt = ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept];
@@ -4881,6 +4946,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
 async function silentAutoSync(){
   if(!stateLoaded) return; // нет связи с базой — не пишем ничего
+  if(document.visibilityState === 'hidden' || appOutdated) return; // фоновая вкладка: данные в ней могут быть устаревшими
   try{
     if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
     if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
@@ -4903,7 +4969,7 @@ function historyMonths(){
   return Object.keys(kpiData).filter(mk=> /^\d{4}-\d{2}$/.test(mk) && mk <= cur).sort().slice(-HISTORY_MONTHS);
 }
 async function syncHistoryMonths(){
-  if(historySyncing || !stateLoaded) return;
+  if(historySyncing || !stateLoaded || appOutdated || document.visibilityState === 'hidden') return;
   const todo = historyMonths().filter(mk=> mk !== activeMonth
     && (Date.now() - (historySyncedAt[mk]||0)) > HISTORY_RESYNC_MS
     && (getSheetUrl('op', mk) || getSheetUrl('to', mk) || (trackerUrls[mk]||'').trim() || (cashUrls[mk]||'').trim()));
@@ -5590,7 +5656,7 @@ async function teamAddEmployee(){
     return null;
   });
   if(r.error){ showToast(r.error, 'error'); return; }
-  try{ ensureMonth(editingMonth); await storeSet('app:kpiData', kpiData, SHARED); }catch(e){}
+  try{ ensureMonth(editingMonth); const nk = employees[employees.length-1]; const m = await saveMerged('app:kpiData', kpiData, nk ? [[editingMonth, nk.id]] : []); if(m) kpiData = m; }catch(e){}
   showToast('Сотрудник добавлен', 'success');
   renderNow();
 }
@@ -7217,7 +7283,9 @@ function attachDelegatedHandlers(){
             else m[i.dataset.planover] = Math.round(Number(raw));
           });
           planOverrides = Object.assign({}, planOverrides, {[editingMonth]: m});
-          const ok = await storeSet('app:planOverrides', planOverrides, SHARED);
+          const merged = await saveMerged('app:planOverrides', planOverrides, Array.from(ovInputs).map(i=>[editingMonth, i.dataset.planover]));
+          if(merged) planOverrides = merged;
+          const ok = !!merged;
           showToast(ok===false ? 'Не удалось сохранить план' : 'Сохранено, план отдела пересчитан', ok===false ? 'error' : 'success');
         }
         renderNow();
@@ -7311,7 +7379,7 @@ function attachDelegatedHandlers(){
       const dept = btn.dataset.dept;
       const input = document.querySelector(`.sheet-url-input[data-month="${mk}"][data-dept="${dept}"]`);
       if(input) setSheetUrl(dept, mk, input.value.trim());
-      await storeSet('app:sheetUrls', sheetUrls, SHARED);
+      { const m = await saveMerged('app:sheetUrls', sheetUrls, [[mk, dept]]); if(m) sheetUrls = m; }
       await syncFromGoogleSheet(dept, mk);
       return;
     }
@@ -7320,7 +7388,7 @@ function attachDelegatedHandlers(){
       const mk = btn.dataset.month;
       const input = document.querySelector(`.cash-url-input[data-month="${mk}"]`);
       if(input) cashUrls[mk] = input.value.trim();
-      await storeSet('app:cashUrls', cashUrls, SHARED);
+      { const m = await saveMerged('app:cashUrls', cashUrls, [[mk]]); if(m) cashUrls = m; }
       await syncCashSheet(mk);
       return;
     }
@@ -7329,7 +7397,7 @@ function attachDelegatedHandlers(){
       const mk = btn.dataset.month;
       const input = document.querySelector(`.tracker-url-input[data-month="${mk}"]`);
       if(input) trackerUrls[mk] = input.value.trim();
-      await storeSet('app:trackerUrls', trackerUrls, SHARED);
+      { const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; }
       await syncTracker(mk);
       return;
     }
@@ -7371,7 +7439,7 @@ function attachDelegatedHandlers(){
       const empListP = (ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId]) || [];
       const ordP = empListP.find(o => o.id === orderId);
       if(ordP && !ordersOverlay[orderId].statusSince) ordersOverlay[orderId].statusSince = ordP.statusSince;
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Заказ на паузе: ' + reason, 'success');
       return;
@@ -7393,7 +7461,7 @@ function attachDelegatedHandlers(){
         pausedAt: null,
         statusSince: Date.now() - pausedDuration,
       });
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Заказ возобновлён', 'success');
       return;
@@ -7427,7 +7495,7 @@ function attachDelegatedHandlers(){
       ordersOverlay[orderId].paused      = false;
       ordersOverlay[orderId].pauseReason = '';
       ordersOverlay[orderId].pausedAt    = null;
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Статус: ' + newStatus, 'success');
       return;
@@ -7458,19 +7526,19 @@ function attachDelegatedHandlers(){
     if(ev.target.classList.contains('sheet-url-input')){
       const mk = ev.target.dataset.month, dept = ev.target.dataset.dept;
       setSheetUrl(dept, mk, ev.target.value.trim());
-      try{ await storeSet('app:sheetUrls', sheetUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:sheetUrls', sheetUrls, [[mk, dept]]); if(m) sheetUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
     if(ev.target.classList.contains('tracker-url-input')){
       const mk = ev.target.dataset.month;
       trackerUrls[mk] = ev.target.value.trim();
-      try{ await storeSet('app:trackerUrls', trackerUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
     if(ev.target.classList.contains('cash-url-input')){
       const mk = ev.target.dataset.month;
       cashUrls[mk] = ev.target.value.trim();
-      try{ await storeSet('app:cashUrls', cashUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:cashUrls', cashUrls, [[mk]]); if(m) cashUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
   });
@@ -7496,7 +7564,7 @@ function attachDelegatedHandlers(){
     commentSaveTimers[orderId] = setTimeout(async ()=>{
       if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
       ordersOverlay[orderId].comment = ta.value;
-      await saveOverlay();
+      await saveOverlay(orderId);
       const saved = document.getElementById('saved-' + empId + '-' + orderId);
       if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
     }, 800);
@@ -7543,6 +7611,12 @@ let orderTimerHandle = null;
   }
   startBackgroundSync();
   autoCloseStaleShifts();   // закрыть смены, которые остались открытыми с прошлых дней
+  // Вкладку открыли снова — сразу свежие данные и проверка версии
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState !== 'visible') return;
+    checkAppVersion().then(()=>{ pollSharedData(); });
+  });
+  setInterval(checkAppVersion, 10*60000);
 })();
 
 // Подчищаем все таймеры при уходе со страницы — без этого при частых
