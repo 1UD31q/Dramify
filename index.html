@@ -228,6 +228,13 @@
   .cal-cell.shifted{box-shadow:inset 0 0 0 1.5px var(--p3);}
   .cal-cell.shifted.today{box-shadow:inset 0 0 0 2px var(--p5);}
   .cal-legend .sw.shifted{background:var(--bg1);box-shadow:inset 0 0 0 1.5px var(--p3);}
+  .au-mon{border-top:1px solid var(--bg2);padding:10px 0;}
+  .au-h{font-weight:700;font-size:14px;margin-bottom:6px;}
+  .au-d{margin:6px 0 8px;font-size:13px;line-height:1.5;}
+  .au-m{color:var(--muted);font-size:12px;font-weight:400;}
+  .au-w{color:var(--rust-dark);font-size:12.5px;}
+  .au-emps{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:12px;color:var(--ink2);}
+  .au-e.diff{color:var(--rust-dark);font-weight:600;}
   .sc-sum{font-size:13px;margin:6px 0 8px;line-height:1.5;}
   .sc-sum span{display:block;color:var(--muted);font-size:12px;}
   .sc-warn{font-size:12.5px;color:var(--rust-dark);background:var(--rust-tint);border-radius:8px;padding:8px 10px;margin:6px 0;line-height:1.45;}
@@ -2090,7 +2097,7 @@ function canWriteKey(key){
 
 async function storeSet(key, value, shared){
   if(shared){
-    if(!canWriteKey(key)) return false;
+    if(!canWriteKey(key) || appOutdated) return false;
     // Пока состояние не прочитано успешно — не трогаем важные ключи,
     // иначе можно затереть живые данные пустышкой.
     if(!stateLoaded && GUARDED_KEYS.indexOf(key) >= 0){
@@ -2133,6 +2140,67 @@ async function storeSet(key, value, shared){
   } else {
     try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(e){ console.error(e); return false; }
   }
+}
+
+// ── Сохранение «только своей части» ────────────────────────────────────────
+// Ссылки, KPI, итоги, заказы и т.п. лежат в базе одним объектом на ключ, а
+// раньше каждый браузер перезаписывал объект ЦЕЛИКОМ своей копией. С несколькими
+// админами (и вкладками, открытыми в фоне со вчерашнего дня) чужая устаревшая
+// копия затирала свежие данные: пропадали вставленные ссылки, возвращались
+// старые цифры в истории. Теперь перед записью берём свежий объект из базы и
+// меняем в нём только свои пути (например ['2026-08','op']), остальное не трогаем.
+async function storeGetFresh(key){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`, { headers: await sbHeaders() });
+  if(res.status === 401) authOnUnauthorized();
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return (data && data.length) ? JSON.parse(data[0].value) : null;
+}
+function getPath(obj, path){ return path.reduce((o,k)=> (o && typeof o==='object') ? o[k] : undefined, obj); }
+function setPath(obj, path, val){
+  let o = obj;
+  for(let i=0;i<path.length-1;i++){
+    if(!o[path[i]] || typeof o[path[i]] !== 'object' || Array.isArray(o[path[i]])) o[path[i]] = {};
+    o = o[path[i]];
+  }
+  const last = path[path.length-1];
+  if(val === undefined) delete o[last]; else o[last] = JSON.parse(JSON.stringify(val));
+}
+const mergeLocks = {};
+// Возвращает обновлённый объект (свежий из базы + наши пути) или null, если записать не удалось.
+function saveMerged(key, local, paths){
+  const run = async ()=>{
+    if(!canWriteKey(key) || appOutdated) return null;
+    let fresh;
+    try{ fresh = await storeGetFresh(key); }catch(e){ console.error('saveMerged: не прочитал', key, e); return null; }
+    if(!fresh || typeof fresh !== 'object' || Array.isArray(fresh)) fresh = {};
+    paths.forEach(p=> setPath(fresh, p, getPath(local, p)));
+    const ok = await storeSet(key, fresh, SHARED);
+    return ok ? fresh : null;
+  };
+  const p = (mergeLocks[key] || Promise.resolve()).then(run, run);
+  mergeLocks[key] = p.catch(()=>{});
+  return p;
+}
+
+// ── Устаревшая версия приложения ничего не пишет ────────────────────────────
+// Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
+// сверяем версию с сайтом; если она устарела — запись в базу выключается,
+// в фоне вкладка перезагружается сама, на экране просим обновить страницу.
+const APP_BUILD = '2026-10-02.1';
+let appOutdated = false;
+async function checkAppVersion(){
+  if(appOutdated || location.protocol === 'file:') return;
+  try{
+    const res = await fetch(location.href.split('#')[0], {cache:'no-store'});
+    if(!res.ok) return;
+    const m = (await res.text()).match(/const APP_BUILD = '([^']+)'/);
+    if(m && m[1] !== APP_BUILD){
+      appOutdated = true;
+      if(document.visibilityState === 'hidden') location.reload();
+      else showToast('Вышло обновление приложения — обновите страницу. До этого изменения не сохраняются.', 'error');
+    }
+  }catch(e){}
 }
 
 // ---------------------------------------------------------------------
@@ -2578,7 +2646,8 @@ async function toggleOffDay(empId, monthKey, day){
   if(!schedules[monthKey][empId]) schedules[monthKey][empId] = {};
   if(schedules[monthKey][empId][day]) delete schedules[monthKey][empId][day];
   else schedules[monthKey][empId][day] = true;
-  await storeSet('app:schedules', schedules, SHARED);
+  const m = await saveMerged('app:schedules', schedules, [[monthKey, empId]]);
+  if(m) schedules = m;
 }
 
 // ── Время начала смены ─────────────────────────────────────────────────────
@@ -2603,14 +2672,18 @@ async function setShiftDefault(empId, val){
   schedules._shift = Object.assign({}, schedules._shift||{});
   // время по умолчанию не храним: если общее время когда-то поменяется, сотрудник поедет вместе с ним
   if(validHHMM(val) && val !== DEFAULT_SHIFT_START) schedules._shift[empId] = val; else delete schedules._shift[empId];
-  return storeSet('app:schedules', schedules, SHARED);
+  const m = await saveMerged('app:schedules', schedules, [['_shift', empId]]);
+  if(m) schedules = m;
+  return !!m;
 }
 async function toggleShiftDay(empId, mk, day, val){
   const all = schedules._shiftDay = schedules._shiftDay || {};
   const mm = all[mk] = all[mk] || {};
   const em = mm[empId] = mm[empId] || {};
   if(em[day] === val || !validHHMM(val)) delete em[day]; else em[day] = val;
-  return storeSet('app:schedules', schedules, SHARED);
+  const m2 = await saveMerged('app:schedules', schedules, [['_shiftDay', mk, empId]]);
+  if(m2) schedules = m2;
+  return !!m2;
 }
 function hhmmToMin(v){ const [h,m] = v.split(':').map(Number); return h*60+m; }
 function minToHHMM(x){ x = Math.round(x); return String(Math.floor(x/60)%24).padStart(2,'0') + ':' + String(x%60).padStart(2,'0'); }
@@ -3121,16 +3194,11 @@ async function loadOrders(){
   }catch(e){ console.error('loadOrders failed', e); }
 }
 
-async function saveOrders(){
+async function saveOverlay(orderId){
   try{
-    await storeSet('app:ordersData', ordersData, SHARED);
-    await storeSet('app:ordersOverlay', ordersOverlay, SHARED);
+    const m = await saveMerged('app:ordersOverlay', ordersOverlay, orderId ? [[orderId]] : Object.keys(ordersOverlay).map(k=>[k]));
+    if(m) ordersOverlay = m;
   }
-  catch(e){ console.error('saveOrders failed', e); }
-}
-
-async function saveOverlay(){
-  try{ await storeSet('app:ordersOverlay', ordersOverlay, SHARED); }
   catch(e){ console.error('saveOverlay failed', e); }
 }
 
@@ -4089,7 +4157,8 @@ async function autoCloseStaleShifts(){
 async function saveKpiForMonth(monthKey, empId, values){
   ensureMonth(monthKey);
   kpiData[monthKey][empId] = values;
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, [[monthKey, empId]]);
+  if(m) kpiData = m;
 }
 
 async function activateMonth(monthKey){
@@ -4101,7 +4170,8 @@ async function activateMonth(monthKey){
 async function addMonth(monthKey){
   if(!/^\d{4}-\d{2}$/.test(monthKey)) return;
   ensureMonth(monthKey);
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, employees.map(e=>[monthKey, e.id]));
+  if(m) kpiData = m;
   editingMonth = monthKey;
   renderNow();
 }
@@ -4113,10 +4183,11 @@ async function saveEmployee(emp){
   if(idx>=0) employees[idx] = emp; else employees.push(emp);
   ensureMonth(editingMonth);
   await storeSet('app:employees', employees, SHARED);
-  await storeSet('app:kpiData', kpiData, SHARED);
+  const m = await saveMerged('app:kpiData', kpiData, [[editingMonth, emp.id]]);
+  if(m) kpiData = m;
 }
 
-function parseCSV(text){
+function parseCSV(text, keepEmpty){
   const rows = []; let row = []; let field=''; let inQuotes=false;
   for(let i=0;i<text.length;i++){
     const c = text[i];
@@ -4132,6 +4203,11 @@ function parseCSV(text){
     }
   }
   if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(keepEmpty){
+    // пустые строки оставляем, чтобы номер в массиве = номер строки в таблице; хвост срезаем
+    while(rows.length && !rows[rows.length-1].some(c=>c.trim()!=='')) rows.pop();
+    return rows;
+  }
   return rows.filter(r=> r.some(c=>c.trim()!==''));
 }
 
@@ -4228,7 +4304,7 @@ function parseGvizJson(text){
 // Универсальный fetch: сначала пробует gviz JSON, при неудаче — CSV.
 // forceCsv=true для «дашборд»-листов (трекер): там нет шапки таблицы,
 // подписи разбросаны по ячейкам, и gviz съедает первую строку как заголовок.
-async function fetchSheetRows(url, forceCsv){
+async function fetchSheetRows(url, forceCsv, keepEmpty){
   if(!forceCsv){
     const gvizUrl = toGvizUrl(url);
     if(gvizUrl){
@@ -4245,7 +4321,7 @@ async function fetchSheetRows(url, forceCsv){
   // Fallback / принудительный путь: CSV — он отдаёт сетку ячеек как есть
   const csvUrl = toCsvUrl(url);
   const text = await fetchCsvWithRetry(csvUrl);
-  return parseCSV(text);
+  return parseCSV(text, keepEmpty);
 }
 
 // Проверка, относится ли строка таблицы к нужному месяцу по колонке даты.
@@ -4397,8 +4473,8 @@ async function syncCashSheet(mk, silent){
       prepaidLabel: `${colLetter(prepaidIdx)}${header[prepaidIdx]?` («${rows[0][prepaidIdx]}»)`:''}`,
       pendingLabel: `${colLetter(pendingIdx)}${header[pendingIdx]?` («${rows[0][pendingIdx]}»)`:''}`,
     };
-    await storeSet('app:cashTotals', cashTotals, SHARED);
-    await storeSet('app:cashUrls', cashUrls, SHARED);
+    { const m = await saveMerged('app:cashTotals', cashTotals, [[mk]]); if(m) cashTotals = Object.assign({}, cashTotals, m); }
+    // ссылку здесь больше не пишем: она сохраняется при вводе — иначе старая копия затирала чужие ссылки
     lastCashSyncAt[mk] = Date.now();
     if(!silent){ cashStatus[mk] = `Посчитано по ${counted} строк(-е)`; showToast(cashStatus[mk],'success'); }
   } catch(err){
@@ -4427,8 +4503,7 @@ async function syncTracker(mk, silent){
       return;
     }
     trackerData[mk] = parsed;
-    await storeSet('app:trackerData', trackerData, SHARED);
-    await storeSet('app:trackerUrls', trackerUrls, SHARED);
+    { const m = await saveMerged('app:trackerData', trackerData, [[mk]]); if(m) trackerData = m; }
     lastTrackerSyncAt[mk] = Date.now();
     if(!silent){ trackerStatus[mk] = 'Данные обновлены'; showToast(trackerStatus[mk], 'success'); }
   } catch(err){
@@ -4465,6 +4540,32 @@ async function fetchCsvWithRetry(url, attempts){
   throw lastErr;
 }
 
+// Чтение листа продаж/заказов. Сначала CSV-выгрузка: она отдаёт ячейки как есть.
+// Прежний способ (gviz) сам угадывает тип колонки и молча отдаёт ПУСТЫМИ ячейки
+// «не того» типа — например, суммы, набранные текстом («15 000 тг») в колонке,
+// где остальные — числа. Так терялись суммы и даты. gviz — запасной вариант.
+// Плюс ищем строку шапки в первых 15 строках: над ней бывает название или пустая строка.
+const LEDGER_HEAD_KEYS = ['кто продал','кто делает','сумма','статус','дата','имя'];
+async function fetchLedgerRows(url){
+  let rows = null, via = 'csv';
+  try{
+    rows = await fetchSheetRows(url, true, true);
+    if(rows && rows.length && /^\s*</.test(String((rows[0]||[])[0]||''))) rows = null; // вместо таблицы пришла страница входа
+  }catch(e){ rows = null; }
+  if(!rows || rows.length < 2){ via = 'gviz'; rows = await fetchSheetRows(url); }
+  let best = 0, bestScore = -1;
+  for(let i=0; i<Math.min(rows.length, 15); i++){
+    const sc = (rows[i]||[]).reduce((a,c)=> a + (LEDGER_HEAD_KEYS.some(k=>String(c||'').toLowerCase().includes(k)) ? 1 : 0), 0);
+    if(sc > bestScore){ bestScore = sc; best = i; }
+  }
+  const out = rows.slice(best).map(r=> (r||[]).map(c=> String(c==null ? '' : c)));
+  // rowOffset: сколько строк над шапкой. Номер строки в таблице = r + rowOffset + 1.
+  // Номер заказа строим от него же — при шапке в первой строке он совпадает с прежним,
+  // поэтому паузы, комментарии и статусы сотрудников остаются на своих заказах.
+  out.headerRow = best + 1; out.rowOffset = best; out.via = via;
+  return out;
+}
+
 async function syncFromGoogleSheet(dept, targetMonth, silent){
   targetMonth = targetMonth || editingMonth;
   const key = dept + '_' + targetMonth;
@@ -4472,7 +4573,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
   if(!rawUrl){ if(!silent) syncStatus[key] = 'Сначала вставьте ссылку на таблицу'; return; }
   if(!silent){ syncing[key] = true; syncStatus[key] = ''; render(); }
   try{
-    const rows = await fetchSheetRows(rawUrl);
+    const rows = await fetchLedgerRows(rawUrl);
     if(rows.length < 2) throw new Error('Таблица пустая или не найдена');
 
     const header = rows[0].map(h=>h.trim());
@@ -4671,7 +4772,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
             const duration   = durationCol>=0 ? (row[durationCol]||'').trim() : '';
 
             // Уникальный ID заказа: строка в таблице (r) + имя клиента
-            const orderId = `r${r}-${emp.id}`;
+            const orderId = `r${r + (rows.rowOffset||0)}-${emp.id}`;
 
             // statusSince: берём из существующего ordersData если статус не изменился,
             // иначе — сейчас (точное время неизвестно из CSV)
@@ -4703,7 +4804,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         // Мёрджим: обновляем ordersData[targetMonth] данными из CSV
         if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
         Object.assign(ordersData[targetMonth], newOrdersData);
-        await storeSet('app:ordersData', ordersData, SHARED);
+        { const m = await saveMerged('app:ordersData', ordersData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) ordersData = m; }
       }
 
     } else {
@@ -4781,7 +4882,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
           const phone       = opPhoneCol>=0     ? (row[opPhoneCol]||'').trim()         : '';
           const dateCreated = dateCol>=0        ? (row[dateCol]||'').trim()            : '';
 
-          const orderId = `r${r}-${emp.id}`;
+          const orderId = `r${r + (rows.rowOffset||0)}-${emp.id}`;
           const existing = ((ordersData[targetMonth]&&ordersData[targetMonth][emp.id])||[]).find(o=>o.id===orderId);
           const statusSince = (existing && existing.status === statusRaw)
             ? existing.statusSince : Date.now();
@@ -4809,12 +4910,14 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       }
       if(!ordersData[targetMonth]) ordersData[targetMonth] = {};
       Object.assign(ordersData[targetMonth], newOrdersData);
-      await storeSet('app:ordersData', ordersData, SHARED);
+      { const m = await saveMerged('app:ordersData', ordersData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) ordersData = m; }
     }
 
-    await storeSet('app:kpiData', kpiData, SHARED);
-    await storeSet('app:sheetUrls', sheetUrls, SHARED);
-    await storeSet('app:ledgerTotals', ledgerTotals, SHARED);
+    // Пишем только этот месяц этого отдела — чужие месяцы и ссылки не трогаем
+    { const m = await saveMerged('app:kpiData', kpiData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) kpiData = m; }
+    if(ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept]){
+      const m = await saveMerged('app:ledgerTotals', ledgerTotals, [[targetMonth, dept]]); if(m) ledgerTotals = m;
+    }
     lastSheetSyncAt[key] = Date.now();
     if(!silent){
       const lt = ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept];
@@ -4843,6 +4946,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
 async function silentAutoSync(){
   if(!stateLoaded) return; // нет связи с базой — не пишем ничего
+  if(document.visibilityState === 'hidden' || appOutdated) return; // фоновая вкладка: данные в ней могут быть устаревшими
   try{
     if(getSheetUrl('op', activeMonth)) await syncFromGoogleSheet('op', activeMonth, true);
     if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
@@ -4865,7 +4969,7 @@ function historyMonths(){
   return Object.keys(kpiData).filter(mk=> /^\d{4}-\d{2}$/.test(mk) && mk <= cur).sort().slice(-HISTORY_MONTHS);
 }
 async function syncHistoryMonths(){
-  if(historySyncing || !stateLoaded) return;
+  if(historySyncing || !stateLoaded || appOutdated || document.visibilityState === 'hidden') return;
   const todo = historyMonths().filter(mk=> mk !== activeMonth
     && (Date.now() - (historySyncedAt[mk]||0)) > HISTORY_RESYNC_MS
     && (getSheetUrl('op', mk) || getSheetUrl('to', mk) || (trackerUrls[mk]||'').trim() || (cashUrls[mk]||'').trim()));
@@ -5295,7 +5399,7 @@ async function runSheetCheck(emp, mk){
   try{
     const url = getSheetUrl(emp.department, mk);
     if(!url) throw new Error('Для этого месяца не указана ссылка на таблицу ' + deptLabel(emp.department));
-    const rows = await fetchSheetRows(url);
+    const rows = await fetchLedgerRows(url);
     if(rows.length < 2) throw new Error('Таблица пустая');
     const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
     const findCol = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
@@ -5329,7 +5433,7 @@ async function runSheetCheck(emp, mk){
       const isDone = status.toLowerCase().includes('успешно');
       const sum = emp.department==='to' ? (isDone ? gross : 0) : gross;
       if(counted){ total += sum; count++; }
-      list.push({ r: r+1, client: nameCol>=0 ? String(row[nameCol]||'').trim() : '', date: dateRaw || (dlRaw ? 'сдача ' + dlRaw : 'без даты'),
+      list.push({ r: r + 1 + (rows.rowOffset||0), client: nameCol>=0 ? String(row[nameCol]||'').trim() : '', date: dateRaw || (dlRaw ? 'сдача ' + dlRaw : 'без даты'),
         gross, status, counted, reason, done: isDone, noDate: !dateRaw });
     }
     sheetCheck[key] = {res:{list, similar, total, count, other}};
@@ -5366,6 +5470,106 @@ function renderSheetCheck(emp, mk){
     <h2>Проверка по таблице · ${monthLabel(mk)}</h2>
     <div class="hint" style="margin-top:-4px;">Заново читает таблицу ${escapeHtml(deptLabel(emp.department))} и показывает, какие строки засчитаны этому сотруднику.</div>
     <button class="btn secondary small" data-sheetcheck="${emp.id}" data-sheetcheck-mk="${mk}" style="margin:10px 0 6px;">${st.res||st.error ? 'Проверить ещё раз' : 'Проверить по таблице'}</button>
+    ${body}
+  </div>`;
+}
+
+// ── Проверка таблиц по всем месяцам истории (вкладка «Данные») ──────────────
+// Для каждого месяца и отдела: прочиталась ли таблица, где шапка, какие колонки
+// найдены, сколько строк за месяц, чьи имена не совпали, строки без суммы/даты.
+let sheetsAudit = null;   // {loading} | {at, months:[...]}
+async function analyzeLedger(dept, mk){
+  const url = getSheetUrl(dept, mk);
+  if(!url) return { dept, missing:true };
+  try{
+    const rows = await fetchLedgerRows(url);
+    const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+    const findCol = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
+    const col = i => i<0 ? null : (rows[0][i] || '') ;
+    const actorCol = findCol([dept==='op' ? 'кто продал' : 'кто делает']);
+    const grossCol = findCol(['сумма общая','сумма']), dateCol = findCol(['дата оформления','дата']);
+    const statusCol = findCol(['статус']), dlCol = dept==='to' ? findCol(['дата сдачи','дедлайн','срок']) : -1;
+    const res = { dept, via: rows.via, headerRow: rows.headerRow, cols: { actor: col(actorCol), gross: col(grossCol), date: col(dateCol), status: col(statusCol) },
+      rows: 0, inMonth: 0, badDate: 0, noActor: 0, noSum: 0, otherMonth: 0, otherSample: '', unmatched: {}, byEmp: {} };
+    if(actorCol<0 || grossCol<0) return res;
+    const emps = employees.filter(e=>e.department===dept);
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r];
+      if(!row.some(c=>String(c).trim())) continue;
+      res.rows++;
+      const dateRaw = dateCol>=0 ? String(row[dateCol]||'').trim() : '';
+      if(dateRaw && !sheetDateMonth(dateRaw)) res.badDate++;
+      const inMonth = dept==='to' ? toOrderMonth(row, dateCol, dlCol)===mk : rowInMonth(row, dateCol, mk);
+      if(!inMonth){
+        if(dateRaw && sheetDateMonth(dateRaw)){ res.otherMonth++; if(!res.otherSample) res.otherSample = dateRaw; }
+        continue;
+      }
+      res.inMonth++;
+      const actorRaw = String(row[actorCol]||'').trim();
+      if(!actorRaw || /^[-—–]$/.test(actorRaw)){ res.noActor++; continue; }
+      const st = statusCol>=0 ? String(row[statusCol]||'') : '';
+      if(isCancelledStatus(st)) continue;
+      const gross = parseNum(row[grossCol]);
+      const emp = emps.find(e=> normName(e.name)===normName(actorRaw));
+      if(!emp){ res.unmatched[actorRaw] = (res.unmatched[actorRaw]||0) + 1; continue; }
+      if(!gross) res.noSum++;
+      const b = res.byEmp[emp.id] = res.byEmp[emp.id] || {count:0, sum:0};
+      b.count++;
+      if(dept==='op' || st.toLowerCase().includes('успешно')) b.sum += gross;
+    }
+    return res;
+  }catch(e){ return { dept, error: e.message }; }
+}
+async function runSheetsAudit(){
+  sheetsAudit = {loading:true};
+  renderNow();
+  const months = Array.from(new Set(historyMonths().concat([activeMonth]))).sort().reverse();
+  const out = [];
+  for(const mk of months){
+    out.push({ mk, plan: (trackerData[mk]||{}).effectivePlan || 0, trackerUrl: !!(trackerUrls[mk]||'').trim(),
+      depts: [await analyzeLedger('op', mk), await analyzeLedger('to', mk)] });
+  }
+  sheetsAudit = {at: Date.now(), months: out};
+  renderNow();
+}
+function renderSheetsAudit(){
+  const a = sheetsAudit;
+  const warn = t => `<div class="au-w">⚠ ${t}</div>`;
+  const deptBlock = (d, mk) => {
+    const label = deptLabel(d.dept);
+    if(d.missing) return `<div class="au-d"><b>${label}</b> <span class="au-m">ссылка не указана</span></div>`;
+    if(d.error) return `<div class="au-d"><b>${label}</b>${warn('не прочиталась: ' + escapeHtml(d.error) + '. Проверьте доступ «Все, у кого есть ссылка» и что ссылка ведёт на нужную вкладку.')}</div>`;
+    const c = d.cols, issues = [];
+    if(!c.actor) issues.push(warn('не нашёл колонку «' + (d.dept==='op'?'Кто продал':'Кто делает') + '» в строке ' + d.headerRow));
+    if(!c.gross) issues.push(warn('не нашёл колонку «Сумма общая»'));
+    if(!c.date) issues.push(warn('не нашёл колонку даты — строки не делятся по месяцам'));
+    if(d.inMonth===0 && d.rows>0) issues.push(warn('ни одна строка не относится к ' + monthLabel(mk) + ' — проверьте даты (год, формат) и что ссылка на вкладку нужного месяца'));
+    if(d.badDate) issues.push(warn('даты не распознаны в ' + d.badDate + ' строк(ах) — такие строки не считаются'));
+    if(d.otherMonth) issues.push(warn('строк с датой другого месяца: ' + d.otherMonth + ' (например, «' + escapeHtml(d.otherSample) + '») — в ' + monthLabel(mk) + ' они не считаются. Если это опечатка в годе или месяце — исправьте дату в таблице.'));
+    const um = Object.keys(d.unmatched);
+    if(um.length) issues.push(warn('имена не совпали ни с одним сотрудником: ' + um.slice(0,6).map(n=>'«'+escapeHtml(n)+'» ('+d.unmatched[n]+')').join(', ')));
+    if(d.noSum) issues.push(warn('строк без суммы у сотрудников: ' + d.noSum));
+    const emps = employees.filter(e=>e.department===d.dept).map(e=>{
+      const b = d.byEmp[e.id] || {count:0, sum:0};
+      const k = getKpi(e.id, mk), app = d.dept==='to' ? (Number(k.netAmount)||0) : (Number(k.revenue)||0);
+      const diff = Math.round(app) !== Math.round(b.sum);
+      return `<span class="au-e${diff?' diff':''}">${escapeHtml(e.name)}: ${fmtMoney(b.sum)} (${b.count})${diff ? ' · в приложении ' + fmtMoney(app) : ''}</span>`;
+    }).join('');
+    return `<div class="au-d"><b>${label}</b> <span class="au-m">прочитано${d.headerRow>1 ? ', шапка найдена в строке ' + d.headerRow : ''}; строк ${d.rows}, за месяц ${d.inMonth}</span>
+      <div class="au-m">Колонки: ${['actor','gross','date','status'].map(k=>c[k] ? '«'+escapeHtml(c[k])+'»' : '—').join(' · ')}</div>
+      ${issues.join('')}
+      <div class="au-emps">${emps}</div></div>`;
+  };
+  let body = '';
+  if(a && a.loading) body = '<div class="empty">Читаю таблицы всех месяцев…</div>';
+  else if(a) body = a.months.map(m=>`<div class="au-mon">
+      <div class="au-h">${monthLabel(m.mk)} <span class="au-m">${m.plan ? 'план ' + fmtMoney(m.plan) : (m.trackerUrl ? 'трекер есть, но план не прочитан' : 'нет ссылки на трекер — план не задан')}</span></div>
+      ${m.depts.map(d=>deptBlock(d, m.mk)).join('')}
+    </div>`).join('') + '<div class="hint">Красным — сотрудники, у которых цифра в приложении отличается от таблицы. После исправлений нажмите «Синхронизировать» у месяца или просто откройте приложение заново.</div>';
+  return `<div class="card">
+    <h2>Проверка таблиц</h2>
+    <div class="hint" style="margin-top:-4px;">Читает таблицы всех месяцев истории и показывает, что приложение в них видит и что мешает правильному подсчёту.</div>
+    <button class="btn small" id="sheetsAuditBtn" style="margin:10px 0 4px;" ${a&&a.loading?'disabled':''}>${a && !a.loading ? 'Проверить ещё раз' : 'Проверить таблицы'}</button>
     ${body}
   </div>`;
 }
@@ -5452,7 +5656,7 @@ async function teamAddEmployee(){
     return null;
   });
   if(r.error){ showToast(r.error, 'error'); return; }
-  try{ ensureMonth(editingMonth); await storeSet('app:kpiData', kpiData, SHARED); }catch(e){}
+  try{ ensureMonth(editingMonth); const nk = employees[employees.length-1]; const m = await saveMerged('app:kpiData', kpiData, nk ? [[editingMonth, nk.id]] : []); if(m) kpiData = m; }catch(e){}
   showToast('Сотрудник добавлен', 'success');
   renderNow();
 }
@@ -6752,6 +6956,7 @@ function renderAdminView(){
 
     <!-- ══════════ ДАННЫЕ ══════════ -->
     <div class="admin-pane${adminTab==='data'?' active':''}" data-pane="data">
+    ${renderSheetsAudit()}
 
     <div class="card">
       <h2>Источники данных</h2>
@@ -7037,6 +7242,7 @@ function attachDelegatedHandlers(){
     if(el.closest('#activateBtn')){ activateMonth(editingMonth); return; }
 
     if(el.closest('#toggleLogsBtn')){ logsExpanded = !logsExpanded; renderNow(); return; }
+    if(el.closest('#sheetsAuditBtn')){ runSheetsAudit(); return; }
     if(el.closest('[data-sheetcheck]')){
       const b = el.closest('[data-sheetcheck]');
       const emp = employees.find(e=>e.id===b.dataset.sheetcheck);
@@ -7077,7 +7283,9 @@ function attachDelegatedHandlers(){
             else m[i.dataset.planover] = Math.round(Number(raw));
           });
           planOverrides = Object.assign({}, planOverrides, {[editingMonth]: m});
-          const ok = await storeSet('app:planOverrides', planOverrides, SHARED);
+          const merged = await saveMerged('app:planOverrides', planOverrides, Array.from(ovInputs).map(i=>[editingMonth, i.dataset.planover]));
+          if(merged) planOverrides = merged;
+          const ok = !!merged;
           showToast(ok===false ? 'Не удалось сохранить план' : 'Сохранено, план отдела пересчитан', ok===false ? 'error' : 'success');
         }
         renderNow();
@@ -7171,7 +7379,7 @@ function attachDelegatedHandlers(){
       const dept = btn.dataset.dept;
       const input = document.querySelector(`.sheet-url-input[data-month="${mk}"][data-dept="${dept}"]`);
       if(input) setSheetUrl(dept, mk, input.value.trim());
-      await storeSet('app:sheetUrls', sheetUrls, SHARED);
+      { const m = await saveMerged('app:sheetUrls', sheetUrls, [[mk, dept]]); if(m) sheetUrls = m; }
       await syncFromGoogleSheet(dept, mk);
       return;
     }
@@ -7180,7 +7388,7 @@ function attachDelegatedHandlers(){
       const mk = btn.dataset.month;
       const input = document.querySelector(`.cash-url-input[data-month="${mk}"]`);
       if(input) cashUrls[mk] = input.value.trim();
-      await storeSet('app:cashUrls', cashUrls, SHARED);
+      { const m = await saveMerged('app:cashUrls', cashUrls, [[mk]]); if(m) cashUrls = m; }
       await syncCashSheet(mk);
       return;
     }
@@ -7189,7 +7397,7 @@ function attachDelegatedHandlers(){
       const mk = btn.dataset.month;
       const input = document.querySelector(`.tracker-url-input[data-month="${mk}"]`);
       if(input) trackerUrls[mk] = input.value.trim();
-      await storeSet('app:trackerUrls', trackerUrls, SHARED);
+      { const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; }
       await syncTracker(mk);
       return;
     }
@@ -7231,7 +7439,7 @@ function attachDelegatedHandlers(){
       const empListP = (ordersData[empViewMonth||activeMonth]&&ordersData[empViewMonth||activeMonth][empId]) || [];
       const ordP = empListP.find(o => o.id === orderId);
       if(ordP && !ordersOverlay[orderId].statusSince) ordersOverlay[orderId].statusSince = ordP.statusSince;
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Заказ на паузе: ' + reason, 'success');
       return;
@@ -7253,7 +7461,7 @@ function attachDelegatedHandlers(){
         pausedAt: null,
         statusSince: Date.now() - pausedDuration,
       });
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Заказ возобновлён', 'success');
       return;
@@ -7287,7 +7495,7 @@ function attachDelegatedHandlers(){
       ordersOverlay[orderId].paused      = false;
       ordersOverlay[orderId].pauseReason = '';
       ordersOverlay[orderId].pausedAt    = null;
-      await saveOverlay();
+      await saveOverlay(orderId);
       renderNow();
       showToast('Статус: ' + newStatus, 'success');
       return;
@@ -7318,19 +7526,19 @@ function attachDelegatedHandlers(){
     if(ev.target.classList.contains('sheet-url-input')){
       const mk = ev.target.dataset.month, dept = ev.target.dataset.dept;
       setSheetUrl(dept, mk, ev.target.value.trim());
-      try{ await storeSet('app:sheetUrls', sheetUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:sheetUrls', sheetUrls, [[mk, dept]]); if(m) sheetUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
     if(ev.target.classList.contains('tracker-url-input')){
       const mk = ev.target.dataset.month;
       trackerUrls[mk] = ev.target.value.trim();
-      try{ await storeSet('app:trackerUrls', trackerUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
     if(ev.target.classList.contains('cash-url-input')){
       const mk = ev.target.dataset.month;
       cashUrls[mk] = ev.target.value.trim();
-      try{ await storeSet('app:cashUrls', cashUrls, SHARED); }catch(e){ console.error(e); }
+      try{ const m = await saveMerged('app:cashUrls', cashUrls, [[mk]]); if(m) cashUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
   });
@@ -7356,7 +7564,7 @@ function attachDelegatedHandlers(){
     commentSaveTimers[orderId] = setTimeout(async ()=>{
       if(!ordersOverlay[orderId]) ordersOverlay[orderId] = {};
       ordersOverlay[orderId].comment = ta.value;
-      await saveOverlay();
+      await saveOverlay(orderId);
       const saved = document.getElementById('saved-' + empId + '-' + orderId);
       if(saved){ saved.classList.add('show'); setTimeout(()=>saved.classList.remove('show'), 1800); }
     }, 800);
@@ -7403,6 +7611,12 @@ let orderTimerHandle = null;
   }
   startBackgroundSync();
   autoCloseStaleShifts();   // закрыть смены, которые остались открытыми с прошлых дней
+  // Вкладку открыли снова — сразу свежие данные и проверка версии
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState !== 'visible') return;
+    checkAppVersion().then(()=>{ pollSharedData(); });
+  });
+  setInterval(checkAppVersion, 10*60000);
 })();
 
 // Подчищаем все таймеры при уходе со страницы — без этого при частых
