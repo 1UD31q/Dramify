@@ -2281,7 +2281,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.5';
+const APP_BUILD = '2026-10-03.6';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -7518,7 +7518,8 @@ function renderOsAlerts(mk, staffView){
         : ['info', 'Не привязаны к ОС (прошлый месяц): ' + un.count + ' на ' + fmtMoney(un.sum) + '.' + more]);
     }
     if(P.sales.badSums) out.push(['amber', 'Лист продаж: ' + P.sales.badSums + ' ' + anPlural(P.sales.badSums, 'строка', 'строки', 'строк') + ' с непонятной суммой — не учтено.']);
-    if(P.sales.badDates) out.push(['amber', 'Лист продаж: ' + P.sales.badDates + ' ' + anPlural(P.sales.badDates, 'строка', 'строки', 'строк') + ' без понятной даты оформления — не учтено.']);
+    // «N строк без понятной даты оформления» не показываем: это старые строки, где время
+    // заполняли по-другому; в показатели они по-прежнему не идут
     const note = osUnknownNote(P.sales.unknown, 'Лист продаж'); if(note) out.push(['amber', note]);
   }
   if(!P.link.ups) out.push(['info', 'Лист апсейлов не подключён — апсейл появится, когда админ добавит ссылку.']);
