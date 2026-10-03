@@ -2489,7 +2489,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.19';
+const APP_BUILD = '2026-10-03.20';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5728,8 +5728,7 @@ function renderTopUser(){
   // аватарка и имя — кнопка профиля
   const html = ntfBellHtml() + '<div class="tu-me" data-prfopen="1" role="button" tabindex="0" title="Профиль: фото' + (authIsAdmin() ? ', имя и должность' : '') + '">' +
     avaHtml(myAvatarIds()[0], name, 'tu-ava') +
-    '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div></div>' +
-    '<button type="button" class="tu-out" id="topLogoutBtn">Выйти</button>';
+    '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div></div>';   // «Выйти» — в профиле
   // не перерисовываем без изменений: колокольчик успевает докачаться, счётчик не «прыгает» зря
   if(box._html === html) return;
   box._html = html; box.innerHTML = html;
