@@ -313,6 +313,16 @@
   .ntf-text{font-size:13px;color:var(--ink2);line-height:1.35;overflow-wrap:anywhere;}
   .ntf-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.35;overflow-wrap:anywhere;}
   .ntf-time{font-size:11.5px;color:var(--ink3);}
+  #ntfStack{position:fixed;right:20px;bottom:20px;z-index:940;display:flex;flex-direction:column;gap:8px;width:360px;max-width:calc(100vw - 32px);}
+  #ntfStack:empty{display:none;}
+  .ntf-card{display:flex;gap:10px;align-items:flex-start;padding:12px 10px 12px 12px;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-left:3px solid var(--p5);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.18);cursor:pointer;animation:ntfIn .2s ease-out;}
+  .ntf-card:hover{border-color:var(--p3);border-left-color:var(--p5);}
+  .ntf-card .ntf-body{flex:1;}
+  .ntf-card .ntf-x{flex:none;margin:-4px -2px 0 0;}
+  .ntf-stack-foot{display:flex;justify-content:space-between;gap:8px;}
+  .ntf-stack-foot button{border:1px solid var(--bg3);background:var(--bg0);color:var(--ink2);border-radius:20px;padding:5px 12px;font:12px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);}
+  .ntf-stack-foot button:hover{border-color:var(--p3);}
+  @media (max-width:899px){ #ntfStack{left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));width:auto;max-width:none;} }
   .ntf-empty{padding:18px 12px 22px;font-size:13px;color:var(--ink3);line-height:1.5;}
   @media (max-width:899px){ .ntf-bell{width:32px;height:32px;} .ntf-panel{top:calc(56px + env(safe-area-inset-top, 0px));right:16px;left:16px;width:auto;max-width:none;} }
   .ov-dept-os{grid-column:1 / -1;}
@@ -2357,7 +2367,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.9';
+const APP_BUILD = '2026-10-03.10';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5355,6 +5365,7 @@ function _doRender(){
     const emp = employees.find(e=>e.id===myEmployeeId);
     salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
   }
+  ntfVisitedTasks();
   renderTopUser();
   const teamTabEl = document.getElementById('teamTab');
   if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
@@ -6366,6 +6377,36 @@ function ntfBeep(){
 }
 function ntfUnread(){ const s = ntfSeenAt(); return ntfEvents().filter(e=>e.at > s); }
 
+// ── Карточки, которые висят, пока их не закроют ──
+// Уходят сами, только когда человек зашёл во вкладку «Задачи» или открыл колокольчик;
+// иначе — крестиком или нажатием (тогда открывается задача).
+function ntfDismissedKey(){ return 'dramify-ntf-closed:' + (tkMe() || ''); }
+function ntfDismissed(){ try{ return JSON.parse(localStorage.getItem(ntfDismissedKey()) || '[]'); }catch(e){ return []; } }
+function ntfDismiss(ids){
+  const keep = new Set(ntfEvents().map(e=>e.id));   // старые id подчищаем, чтобы список не рос
+  const list = ntfDismissed().filter(id=>keep.has(id)).concat(ids);
+  try{ localStorage.setItem(ntfDismissedKey(), JSON.stringify([...new Set(list)])); }catch(e){}
+  ntfRenderStack();
+}
+function ntfSticky(){ const d = new Set(ntfDismissed()); return ntfUnread().filter(e=>!d.has(e.id)); }
+function ntfOnTasks(){ return mode==='tasks' || (mode==='admin' && adminTab==='tasks'); }
+// Зашёл во вкладку «Задачи» — всё увидел
+function ntfVisitedTasks(){ if(ntfOnTasks() && ntfUnread().length){ ntfMarkSeen(); ntfRenderStack(); } }
+function ntfRenderStack(){
+  let host = document.getElementById('ntfStack');
+  if(!host){ host = document.createElement('div'); host.id = 'ntfStack'; host.setAttribute('aria-live', 'polite'); document.body.appendChild(host); }
+  const list = (authSession && tkMe()) ? ntfSticky() : [];
+  if(!list.length){ host.innerHTML = ''; return; }
+  const ico = {new:'＋', done:'✓', cm:'💬', due:'⏰', task:'•'};
+  const shown = list.slice(0, window.innerWidth < 900 ? 2 : 3), more = list.length - shown.length;   // на телефоне — не больше двух
+  host.innerHTML = shown.map(e=>`<div class="ntf-card" data-ntfcard="${escapeHtml(e.id)}" data-ntftask="${escapeHtml(e.task)}" role="button" tabindex="0">
+      <span class="ntf-ico ${e.kind}">${ico[e.kind]||'•'}</span>
+      <span class="ntf-body"><span class="ntf-text">${escapeHtml(e.text)}</span><span class="ntf-title">${escapeHtml(e.title)}</span><span class="ntf-time">${ntfAgo(e.at)}</span></span>
+      <button class="ntf-x" data-ntfclosecard="${escapeHtml(e.id)}" aria-label="Закрыть уведомление">✕</button>
+    </div>`).join('') +
+    (list.length > 1 ? `<div class="ntf-stack-foot">${more > 0 ? `<button data-ntfall="1">Ещё ${more} — показать все</button>` : '<span></span>'}<button data-ntfcloseall="1">Закрыть все</button></div>` : '');
+}
+
 // Вызывается после каждой подгрузки задач: сообщает о новом
 function ntfCheck(){
   if(!authSession || !tkMe()) return;
@@ -6373,7 +6414,7 @@ function ntfCheck(){
   if(ntfKnown === null){   // первая проверка после входа — одно общее сообщение вместо пачки
     ntfKnown = new Set(ev.map(e=>e.id));
     const n = ev.filter(e=>e.at > s).length;
-    if(n && document.visibilityState === 'visible') showToast(`Новых уведомлений: ${n} — нажмите на колокольчик`, 'success');
+    ntfVisitedTasks();
     ntfRenderBell(); return;
   }
   const fresh = ev.filter(e=>!ntfKnown.has(e.id) && e.at > s);
@@ -6381,7 +6422,11 @@ function ntfCheck(){
   if(fresh.length){
     const top = fresh[0];
     const msg = fresh.length > 1 ? `Новых уведомлений: ${fresh.length}. ${top.text} — ${top.title}` : `${top.text} — ${top.title}`;
-    if(document.visibilityState === 'visible'){ showToast(msg, 'success'); ntfBeep(); }
+    if(document.visibilityState === 'visible'){
+      ntfBeep();
+      // уже во вкладке «Задачи» — хватит короткого сообщения, карточка не нужна
+      if(ntfOnTasks()){ showToast(msg, 'success'); ntfMarkSeen(); }
+    }
     ntfSystem(fresh);
   }
   ntfRenderBell();
@@ -6391,7 +6436,7 @@ async function ntfSystem(list){
   if(document.visibilityState === 'visible' && document.hasFocus()) return;   // сайт перед глазами — хватит всплывашки
   const top = list[0];
   const title = list.length > 1 ? `Dramify · новых: ${list.length}` : 'Dramify · ' + top.text;
-  const opts = {body: list.length > 1 ? list.slice(0,3).map(e=>e.text + ' — ' + e.title).join('\n') : top.title, tag:'dramify-ntf', renotify:true, icon:'favicon.ico', data:{url:location.href.split('#')[0]}};
+  const opts = {body: list.length > 1 ? list.slice(0,3).map(e=>e.text + ' — ' + e.title).join('\n') : top.title, tag:'dramify-ntf', renotify:true, requireInteraction:true, icon:'favicon.ico', data:{url:location.href.split('#')[0]}};
   try{
     const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
     if(reg){ await reg.showNotification(title, opts); return; }
@@ -6421,6 +6466,7 @@ function ntfRenderBell(){
   if(b){ if(!html) b.remove(); else b.outerHTML = html; }
   else renderTopUser();
   if(ntfOpen) ntfRenderPanel();
+  ntfRenderStack();
 }
 function ntfAgo(at){
   const m = Math.round((Date.now() - at) / 60000);
@@ -6469,6 +6515,14 @@ function attachNtfHandlers(){
   document.addEventListener('click', e=>{
     const el = e.target;
     if(el.closest('#ntfBell')){ ntfToggle(); return; }
+    if(el.closest('#ntfStack')){
+      const x = el.closest('[data-ntfclosecard]'); if(x){ ntfDismiss([x.dataset.ntfclosecard]); return; }
+      if(el.closest('[data-ntfcloseall]')){ ntfDismiss(ntfSticky().map(e=>e.id)); return; }
+      if(el.closest('[data-ntfall]')){ ntfToggle(true); return; }
+      const c = el.closest('[data-ntfcard]');
+      if(c){ ntfDismiss([c.dataset.ntfcard]); if(tasks.some(t=>t.id===c.dataset.ntftask)) tkOpen(c.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
+      return;
+    }
     if(!el.closest('#ntfPanel')) return;
     if(el.closest('[data-ntfclose]')){ ntfToggle(false); return; }
     if(el.closest('[data-ntfask]')){ ntfAskPermission(); return; }
@@ -6481,7 +6535,10 @@ function attachNtfHandlers(){
     const it = el.closest('[data-ntftask]');
     if(it){ ntfToggle(false); if(tasks.some(t=>t.id===it.dataset.ntftask)) tkOpen(it.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
   });
-  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && ntfOpen) ntfToggle(false); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && ntfOpen) ntfToggle(false);
+    if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#ntfStack [data-ntfcard]')){ e.preventDefault(); e.target.click(); }
+  });
   document.addEventListener('visibilitychange', ntfHiddenPoll);
   if('serviceWorker' in navigator && location.protocol !== 'file:' && 'Notification' in window && Notification.permission === 'granted')
     navigator.serviceWorker.register('sw.js').catch(()=>{});
