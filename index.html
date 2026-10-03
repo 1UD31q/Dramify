@@ -251,7 +251,7 @@
   .tk-ava{width:20px;height:20px;border-radius:50%;background:var(--p6);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none;}
   .tk-prog{height:4px;border-radius:4px;background:var(--bg2);overflow:hidden;margin-top:8px;}
   .tk-prog i{display:block;height:100%;background:var(--p5);}
-  .tk-ghost{position:fixed;pointer-events:none;z-index:1000;box-shadow:var(--tk-shadow);transform:rotate(2deg);width:260px;}
+  .tk-ghost{position:fixed;pointer-events:none;z-index:1000;box-shadow:var(--tk-shadow);width:260px;transform-origin:120px 20px;will-change:transform;}
   .tk-days{display:flex;flex-direction:column;gap:14px;max-width:760px;}
   .tk-grp{background:var(--bg0);border:1px solid var(--bg2);border-radius:14px;padding:6px 14px;}
   .tk-grp-h{display:flex;align-items:center;gap:8px;padding:8px 0;font-weight:700;font-size:13px;}
@@ -356,7 +356,7 @@
   .tk-chk.checking{background:var(--green);border-color:var(--green);transform:scale(1.12);transition:transform .2s cubic-bezier(.3,1.5,.5,1), background .15s;}
   .tk-chk svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;animation:tkDraw .3s .05s ease-out forwards;}
   @keyframes tkDraw{to{stroke-dashoffset:0;}}
-  @keyframes tkLift{from{transform:rotate(0) scale(1);box-shadow:var(--tk-shadow);}to{transform:rotate(2deg) scale(1.04);box-shadow:0 18px 40px rgba(20,10,40,.28);}}
+  @keyframes tkLift{from{box-shadow:var(--tk-shadow);}to{box-shadow:0 18px 40px rgba(20,10,40,.28);}}
   .tk-ghost{animation:tkLift .18s ease-out forwards;}
   .tk-col{transition:background .2s, box-shadow .2s, transform .2s;}
   .tk-col.drop{transform:scale(1.01);}
@@ -2457,7 +2457,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.14';
+const APP_BUILD = '2026-10-03.15';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -6733,7 +6733,22 @@ function tkStartDrag(x, y){
   const card = document.querySelector(`.tk-card[data-tkid="${CSS.escape(tkDrag.id)}"]`) || tkDrag.card;
   tkDrag.ghost = card.cloneNode(true); tkDrag.ghost.classList.add('tk-ghost');
   document.body.appendChild(tkDrag.ghost); card.classList.add('dragging');
+  tkDrag.phys = {a:0, w:0, vx:0, lx:x, lt:performance.now(), t0:performance.now()};
   tkMoveGhost(x, y);
+  requestAnimationFrame(tkPhysics);
+}
+// Физика карточки в руке: висит на курсоре, как на нитке. Рывок вбок —
+// отклоняется пропорционально скорости, потом покачивается и успокаивается (пружина).
+function tkPhysics(now){
+  const d = tkDrag; if(!d || !d.on || !d.ghost || !d.ghost.isConnected) return;
+  const ph = d.phys, calm = uxCalm();
+  ph.vx *= 0.86;                                            // рука остановилась — скорость гаснет
+  const target = calm ? 0 : Math.max(-24, Math.min(24, ph.vx * 26));
+  ph.w += -0.11 * (ph.a - target) - 0.16 * ph.w;            // пружина + затухание
+  ph.a += ph.w;
+  const lift = calm ? 1 : 1 + 0.04 * Math.min(1, (now - ph.t0) / 160);
+  d.ghost.style.transform = `rotate(${ph.a.toFixed(2)}deg) scale(${lift.toFixed(3)})`;
+  requestAnimationFrame(tkPhysics);
 }
 // На телефоне колонки шире экрана и листаются вбок: у края экрана доска
 // прокручивается сама, пока карточку держат там
@@ -6753,6 +6768,9 @@ function tkMoveGhost(x, y){
     requestAnimationFrame(tkAutoScroll);
   }
   tkDrag.lastX = x; tkDrag.lastY = y;
+  const ph = tkDrag.phys;
+  if(ph){ const t = performance.now(), dt = Math.max(8, t - ph.lt), v = (x - ph.lx) / dt;   // px/мс
+    ph.vx = ph.vx * 0.5 + v * 0.5; ph.lx = x; ph.lt = t; }
   tkDrag.ghost.style.left = Math.max(4, Math.min(window.innerWidth - 264, x - 120)) + 'px'; tkDrag.ghost.style.top = (y - 20) + 'px';
   document.querySelectorAll('.tk-col').forEach(c=>c.classList.remove('drop'));
   const el = document.elementFromPoint(x, y), col = el && el.closest('.tk-col');
@@ -9377,14 +9395,20 @@ function attachUxHandlers(){
     uxSwipe(dir);
   }, {passive:true});
   document.addEventListener('touchcancel', ()=>{ sw = null; }, {passive:true});
-  // тачпад: копим сдвиг вбок за один жест; инерция после переключения не листает дальше
-  let acc = 0, idle = null, locked = false;
+  // тачпад: копим сдвиг вбок за один жест. После переключения тачпад ещё ~секунду
+  // шлёт затухающую «инерцию» — её пропускаем, но новый жест (сдвиг снова растёт
+  // или пошёл в другую сторону) узнаём сразу, не дожидаясь конца инерции.
+  let acc = 0, idle = null, locked = false, lockedAt = 0, lastAbs = 0, lastSign = 0;
   window.addEventListener('wheel', e=>{
-    if(e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5){ return; }
-    clearTimeout(idle); idle = setTimeout(()=>{ acc = 0; locked = false; }, 220);
-    if(locked || uxBlocked(e.target) || uxScrollsX(e.target, e.deltaX > 0 ? 1 : -1)) return;
+    if(e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5) return;
+    const abs = Math.abs(e.deltaX), sign = Math.sign(e.deltaX), now = performance.now();
+    clearTimeout(idle); idle = setTimeout(()=>{ acc = 0; locked = false; lastAbs = 0; }, 140);
+    if(locked && now - lockedAt > 180 && ((abs > lastAbs * 1.4 + 2) || (sign !== lastSign && abs > 3))){ locked = false; acc = 0; }
+    lastAbs = abs; lastSign = sign;
+    if(locked || uxBlocked(e.target) || uxScrollsX(e.target, sign)) return;
+    if(acc && Math.sign(acc) !== sign) acc = 0;
     acc += e.deltaX;
-    if(Math.abs(acc) > 140){ locked = true; const d = acc > 0 ? 1 : -1; acc = 0; uxSwipe(d); }
+    if(Math.abs(acc) > 120){ locked = true; lockedAt = now; const d = acc > 0 ? 1 : -1; acc = 0; uxSwipe(d); }
   }, {passive:true});
   // волна от кнопки START/END
   document.addEventListener('pointerdown', e=>{ const b = e.target.closest && e.target.closest('#punchBtn'); if(b && !viewEmpId) uxPunchWave(b); });
