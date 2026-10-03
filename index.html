@@ -2489,7 +2489,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.20';
+const APP_BUILD = '2026-10-03.21';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3999,21 +3999,12 @@ function renderAdminsCard(){
   const list = Object.keys(admins).sort((a,b)=> a===me ? -1 : b===me ? 1 : (admins[a].name||a).localeCompare(admins[b].name||b, 'ru'));
   return `<div class="card">
     <h2>Админы</h2>
-    <div class="hint" style="margin:-4px 0 12px;">У каждого своя подпись: имя и должность меняет только сам человек. Права админа выдаются в Supabase. В списке появляется каждый админ, который хотя бы раз вошёл на сайт.</div>
-    ${list.length ? list.map(em=>{ const a = admins[em]||{}, k = escapeHtml(em);
-      if(em !== me) return `<div class="adm-line">
+    <div class="hint" style="margin:-4px 0 6px;">Своё имя, должность и фото каждый меняет в профиле — нажмите на аватарку вверху.</div>
+    ${list.length ? list.map(em=>{ const a = admins[em]||{};
+      return `<div class="adm-line">
           ${avaHtml('@' + em, a.name || em, 'adm-ava')}
-          <span class="adm-who"><b>${escapeHtml(a.name || 'Имя пока не указано')}</b><span>${escapeHtml(a.title || '—')} · ${k}</span></span>
-        </div>`;
-      return `<div class="emp-access-card">
-        <div class="emp-access-top"><div class="emp-access-badges"><span class="emp-access-dept" style="text-transform:none;letter-spacing:0;">${k}</span><span class="emp-access-role">это вы</span></div></div>
-        <div class="emp-access-grid">
-          <div class="fld full"><label class="field-label">Имя</label><input type="text" data-admname="${k}" value="${escapeHtml(a.name||'')}" placeholder="Имя" maxlength="60" autocomplete="off"></div>
-          <div class="fld full"><label class="field-label">Должность</label><input type="text" data-admtitle="${k}" value="${escapeHtml(a.title||'')}" placeholder="Например: CEO" list="admTitles" maxlength="60" autocomplete="off"></div>
-        </div>
-        <div class="emp-save-row"><button class="btn small" data-admsave="${k}">Сохранить</button></div>
-      </div>`; }).join('') : '<div class="empty">Пока никто из админов не входил</div>'}
-    ${adminTitlesDatalist()}
+          <span class="adm-who"><b>${escapeHtml(a.name || 'Имя пока не указано')}${em===me ? ' <span class="emp-access-role">это вы</span>' : ''}</b><span>${escapeHtml(a.title || '—')} · ${escapeHtml(em)}</span></span>
+        </div>`; }).join('') : '<div class="empty">Пока никто из админов не входил</div>'}
   </div>`;
 }
 function attachAdminHandlers(){
