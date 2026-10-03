@@ -2635,7 +2635,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.25';
+const APP_BUILD = '2026-10-03.26';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5100,6 +5100,20 @@ function sheetDateMonth(str){
   const y = m[3].length===2 ? '20' + m[3] : m[3];
   return y + '-' + String(mo).padStart(2,'0');
 }
+// Полная дата строки 'ГГГГ-ММ-ДД' (для итогов по дням и неделям) или null
+function sheetDateDay(str){
+  const t = String(str||'').trim();
+  if(!t) return null;
+  let m = t.match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/), y, mo, d;
+  if(m){ y = m[1]; mo = Number(m[2]); d = Number(m[3]); }
+  else {
+    m = t.match(/^(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{2,4})/);
+    if(!m) return null;
+    d = Number(m[1]); mo = Number(m[2]); y = m[3].length===2 ? '20' + m[3] : m[3];
+  }
+  if(mo<1 || mo>12 || d<1 || d>31) return null;
+  return y + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
 // Строка относится к месяцу по колонке даты. Строку без даты считаем только
 // в текущем месяце (раньше она попадала во ВСЕ месяцы сразу и раздувала цифры).
 function rowInMonth(row, dateCol, targetMonth){
@@ -5412,6 +5426,8 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       // касса компании должна видеть все строки, даже те, где мультфильм ещё никому не отдан.
       let allPrepaid = 0, allPending = 0, allGross = 0, allRows = 0;
       const unmatchedNames = new Set();
+      // Продажи по дням (дата оформления): для «Итогов недели». {день: {sum, n, by:{имя: сумма}}}
+      const days = {};
       for(let r=1;r<rows.length;r++){
         const row = rows[r];
         if(!inThisMonth(row)) continue;
@@ -5429,6 +5445,13 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
         if(!actor || actor==='-' || actor==='—' || actor==='–' || actor==='n/a') continue; // строка вообще не про этот отдел (исполнитель не указан) — не считаем её сюда
         const statusText = statusCol>=0 ? (row[statusCol]||'').toLowerCase() : '';
         const isDone = statusText.includes('успешно');
+        const dd = dateCol>=0 ? sheetDateDay(row[dateCol]) : null;
+        if(dd && grossVal>0 && !isCancelledStatus(statusText)){
+          const emp = deptEmployees.find(e=>normName(e.name)===actor);
+          const nm = emp ? emp.name : String(row[actorCol]||'').trim();
+          const D = days[dd] = days[dd] || {sum:0, n:0, by:{}};
+          D.sum += grossVal; D.n++; D.by[nm] = (D.by[nm]||0) + grossVal;
+        }
         ledgerGross += grossVal;
         if(isDone) ledgerNet += grossVal;
         ledgerPending += pendingVal;
@@ -5456,7 +5479,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
       ledgerTotals[targetMonth][dept] = {
         net: ledgerNet, pending: ledgerPending, gross: ledgerGross, prepaid: ledgerPrepaid,
         allPrepaid, allPending, allGross, allRows,
-        count: ledgerCount, unmatched: ledgerUnmatched, diag
+        count: ledgerCount, unmatched: ledgerUnmatched, diag, days
       };
 
       // deadlineCol уже объявлен ниже в блоке парсинга ordersData — объявляем здесь заранее для ТО KPI
@@ -10494,27 +10517,36 @@ function wkLabel(r){
   return f(r.start) + ' – ' + f(last);
 }
 function wkMonths(r){ const a = localDayStr(r.start).slice(0,7), b = localDayStr(new Date(r.end.getTime() - 864e5)).slice(0,7); return a===b ? [a] : [a, b]; }
+// Продажи ОП за неделю — из отчёта по продажам («Сумма общая» по дате оформления, без отменённых)
 function wkSales(r){
-  const by = {}; let n = 0, sum = 0;
-  wkMonths(r).forEach(mk=>{ ensureSaleTimes(mk); (saleTimes[mk]||[]).forEach(x=>{
-    if(x.ts < r.start.getTime() || x.ts >= r.end.getTime()) return;
-    const id = x.empId || ('?' + (x.empName||'')); const nm = x.empId ? tkName(x.empId) : (x.empName || 'без имени');
-    by[id] = by[id] || {name:nm, n:0, sum:0}; by[id].n++; by[id].sum += Number(x.total)||0; n++; sum += Number(x.total)||0; }); });
-  return {n, sum, top: Object.values(by).sort((a,b)=>b.sum-a.sum)};
+  const by = {}; let n = 0, sum = 0, missing = false;
+  const a = localDayStr(r.start), b = localDayStr(new Date(r.end.getTime() - 864e5));
+  wkMonths(r).forEach(mk=>{
+    const op = (ledgerTotals[mk]||{}).op;
+    if(!op || !op.days){ missing = true; return; }
+    Object.keys(op.days).forEach(d=>{
+      if(d < a || d > b) return;
+      const D = op.days[d]; n += D.n; sum += D.sum;
+      Object.keys(D.by||{}).forEach(nm=>{ by[nm] = by[nm] || {name:nm, sum:0, n:0}; by[nm].sum += D.by[nm]; });
+    });
+  });
+  return {n, sum, missing, top: Object.values(by).sort((x,y)=>y.sum-x.sum)};
 }
 function wkAttendance(r){
   const today = localDayStr(new Date());
   wkMonths(r).forEach(mk=>ensureAttMonth(mk));
   return employees.map(e=>{
-    let days = 0, late = 0, lateMin = 0, missed = 0;
+    let days = 0, late = 0, lateMin = 0, odd = 0;
     for(let d = new Date(r.start); d < r.end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
       const ds = localDayStr(d); if(ds > today) break;
       if(isOffDay(e.id, ds.slice(0,7), d.getDate())) continue;
       const st = attDayStats(e.id, ds);
-      if(st.firstIn){ days++; if(st.late){ late++; lateMin += st.late; } }
-      else if(ds < today) missed++;
+      if(st.firstIn){ days++;
+        // пришёл на 4+ часа позже начала смены — скорее, у человека другое время смены, а не опоздание
+        if(st.late && st.late >= 240) odd++;
+        else if(st.late){ late++; lateMin += st.late; } }
     }
-    return {e, days, late, lateMin, missed};
+    return {e, days, late, lateMin, odd};
   });
 }
 function wkTasks(r){
@@ -10530,9 +10562,10 @@ function renderWeekCard(){
   if(!authIsAdmin()) return '';
   const r = wkRange(wkOffset), prev = wkRange(wkOffset - 1);
   const sales = wkSales(r), salesPrev = wkSales(prev), att = wkAttendance(r), tk = wkTasks(r);
-  const delta = salesPrev.sum > 0 ? Math.round((sales.sum - salesPrev.sum) / salesPrev.sum * 100) : null;
+  let delta = salesPrev.sum > 0 && !salesPrev.missing ? Math.round((sales.sum - salesPrev.sum) / salesPrev.sum * 100) : null;
+  if(delta != null && Math.abs(delta) > 500) delta = null;   // прошлая неделя почти пустая — процент ничего не говорит
   const lateList = att.filter(x=>x.late > 0).sort((a,b)=>b.late-a.late || b.lateMin-a.lateMin);
-  const missList = att.filter(x=>x.missed > 0).sort((a,b)=>b.missed-a.missed);
+  const oddList = att.filter(x=>x.odd > 0);
   const lateTotal = att.reduce((s,x)=>s + x.late, 0);
   const mk = currentMonthKey(), fin = companyFinance(mk);
   const dow = new Date().getDay(), open = (dow === 1 || dow === 2) && wkOffset === -1;
@@ -10546,13 +10579,13 @@ function renderWeekCard(){
         <div class="wk-h">Продажи ОП</div>
         <div class="wk-big">${fmtMoney(sales.sum)}</div>
         <div class="wk-sub">${wkPl(sales.n, 'продажа', 'продажи', 'продаж')}${delta!=null ? ` · <b class="${delta>=0?'up':'down'}">${delta>=0?'+':''}${delta}%</b> к неделе раньше` : ''}</div>
-        ${sales.top.slice(0,3).map((x,i)=>`<div class="wk-row"><span>${i+1}. ${escapeHtml(x.name)}</span><span>${fmtMoney(x.sum)} · ${x.n}</span></div>`).join('') || '<div class="wk-sub">Продаж через вкладку «Продажа» не было</div>'}
+        ${sales.top.slice(0,3).map((x,i)=>`<div class="wk-row"><span>${i+1}. ${escapeHtml(x.name)}</span><span>${fmtMoney(x.sum)}</span></div>`).join('') || `<div class="wk-sub">${sales.missing ? 'Нет данных по дням — нажмите «Обновить» у таблицы продаж в «Данных»' : 'Продаж за эти дни в отчёте нет'}</div>`}
       </div>
       <div class="wk-box">
         <div class="wk-h">Дисциплина</div>
         <div class="wk-big">${lateTotal} <small>${wkPl(lateTotal, 'опоздание', 'опоздания', 'опозданий').split(' ')[1]}</small></div>
         ${lateList.slice(0,5).map(x=>`<div class="wk-row"><span>${escapeHtml(x.e.name)}</span><span>${x.late}× · ${fmtLate(x.lateMin)}</span></div>`).join('') || '<div class="wk-sub">Все приходили вовремя 👍</div>'}
-        ${missList.length ? `<div class="wk-sub" style="margin-top:6px">Не отмечались в рабочий день: ${missList.slice(0,5).map(x=>escapeHtml(x.e.name) + (x.missed>1 ? ' ×' + x.missed : '')).join(', ')}</div>` : ''}
+        ${oddList.length ? `<div class="wk-sub" style="margin-top:6px">Приходили на 4+ часа позже начала смены (не считали опозданием): ${oddList.map(x=>escapeHtml(x.e.name) + (x.odd>1 ? ' ×' + x.odd : '')).join(', ')}. Проверьте время смены в графике.</div>` : ''}
       </div>
       <div class="wk-box">
         <div class="wk-h">Задачи</div>
@@ -10566,7 +10599,7 @@ function renderWeekCard(){
         <div class="wk-sub">тенденция: <b class="${fin.trendPct>=100?'up':fin.trendPct<70?'down':''}">${isFinite(fin.trendPct) ? fin.trendPct + '%' : '—'}</b> · осталось ${fmtMoney(fin.pendingCash)}</div>
       </div>
     </div>
-    <div class="wk-foot">Продажи — по отметкам во вкладке «Продажа»; опоздания — больше ${LATE_GRACE_MIN} мин после начала смены.</div>
+    <div class="wk-foot">Продажи — по отчёту по продажам: «Сумма общая» по дате оформления, без отменённых. Опоздание — больше ${LATE_GRACE_MIN} мин после начала смены.</div>
   </details>`;
 }
 function attachWeekHandlers(){
