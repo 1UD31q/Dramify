@@ -207,6 +207,86 @@
   .kpi-box .value{font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-.03em;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
   .kpi-box .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3;}
   .kpi-box.span-all{grid-column:1 / -1;}
+  /* ── Задачи ── */
+  :root{ --tk-amber:#92400e; --tk-amber-tint:rgba(245,158,11,.16); --tk-shadow:0 8px 24px rgba(20,10,40,.14); }
+  @media (prefers-color-scheme: dark){ :root:not(.light){ --tk-amber:#fbbf24; --tk-amber-tint:rgba(251,191,36,.13); --tk-shadow:0 10px 30px rgba(0,0,0,.5); } }
+  html.dark{ --tk-amber:#fbbf24; --tk-amber-tint:rgba(251,191,36,.13); --tk-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .tk-wrap{max-width:1180px;}
+  .tk-top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .tk-h1{font-size:22px;letter-spacing:-.02em;margin:0;}
+  .tk-sub{font-size:12.5px;color:var(--ink3);margin-top:2px;}
+  .tk-top-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .tk-seg{display:inline-flex;background:var(--bg2);border-radius:10px;padding:3px;gap:2px;}
+  .tk-seg button{border:0;background:transparent;padding:7px 12px;border-radius:8px;font:600 13px var(--font);color:var(--ink3);cursor:pointer;}
+  .tk-seg button.on{background:var(--bg0);color:var(--p6);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+  .tk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;}
+  .tk-lbl{font-size:12px;color:var(--ink3);}
+  .tk-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .tk-chip{border:1px solid var(--bg3);background:var(--bg0);border-radius:20px;padding:5px 11px;font:500 12.5px var(--font);cursor:pointer;color:var(--ink2);}
+  .tk-chip.on{background:var(--p6);border-color:var(--p6);color:#fff;}
+  .tk-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch;}
+  @media (max-width:760px){ .tk-board{grid-template-columns:repeat(3,85%);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;} .tk-col{scroll-snap-align:start;} }
+  .tk-board.dragging{scroll-snap-type:none;}
+  .tk-col{background:var(--bg1);border-radius:14px;padding:10px;min-height:300px;transition:background .15s, box-shadow .15s;}
+  .tk-col.drop{background:var(--p1);box-shadow:inset 0 0 0 2px var(--p3);}
+  .tk-col-h{display:flex;align-items:center;gap:8px;padding:4px 4px 10px;font-weight:700;font-size:13px;}
+  .tk-dot{width:8px;height:8px;border-radius:50%;background:var(--ink4);}
+  .tk-dot.doing{background:var(--p5);} .tk-dot.done{background:var(--green);}
+  .tk-cnt{font-size:11px;font-weight:700;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:1px 8px;}
+  .tk-add{margin-left:auto;border:0;background:transparent;color:var(--ink3);font-size:18px;line-height:1;cursor:pointer;padding:0 4px;}
+  .tk-add:hover{color:var(--p6);}
+  .tk-cards{display:flex;flex-direction:column;gap:8px;min-height:40px;}
+  .tk-card{background:var(--bg0);border:1px solid var(--bg2);border-radius:12px;padding:10px 12px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:pan-y;transition:box-shadow .15s;}
+  .tk-card:hover{box-shadow:var(--tk-shadow);}
+  .tk-card.dragging{opacity:.35;}
+  .tk-card.done .tk-t{color:var(--ink3);text-decoration:line-through;}
+  .tk-t{font-weight:600;line-height:1.35;margin-bottom:8px;overflow-wrap:anywhere;}
+  .tk-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11.5px;color:var(--ink3);}
+  .tk-empty{padding:10px 4px;}
+  .tk-pill{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:2px 8px;background:var(--bg1);font-weight:500;white-space:nowrap;}
+  .tk-pill.over,.tk-pill.urgent{background:var(--rust-tint);color:var(--rust-dark);font-weight:600;}
+  .tk-pill.today,.tk-pill.important{background:var(--tk-amber-tint);color:var(--tk-amber);font-weight:600;}
+  .tk-pill.rep{background:var(--p1);color:var(--p6);}
+  .tk-who{display:inline-flex;align-items:center;gap:5px;}
+  .tk-ava{width:20px;height:20px;border-radius:50%;background:var(--p6);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none;}
+  .tk-prog{height:4px;border-radius:4px;background:var(--bg2);overflow:hidden;margin-top:8px;}
+  .tk-prog i{display:block;height:100%;background:var(--p5);}
+  .tk-ghost{position:fixed;pointer-events:none;z-index:1000;box-shadow:var(--tk-shadow);transform:rotate(2deg);width:260px;}
+  .tk-days{display:flex;flex-direction:column;gap:14px;max-width:760px;}
+  .tk-grp{background:var(--bg0);border:1px solid var(--bg2);border-radius:14px;padding:6px 14px;}
+  .tk-grp-h{display:flex;align-items:center;gap:8px;padding:8px 0;font-weight:700;font-size:13px;}
+  .tk-grp-h.over{color:var(--rust-dark);}
+  .tk-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--bg2);cursor:pointer;}
+  .tk-chk{width:22px;height:22px;border-radius:6px;border:2px solid var(--bg3);background:var(--bg0);flex:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;padding:0;}
+  .tk-chk.on{background:var(--green);border-color:var(--green);}
+  .tk-rt{flex:1;min-width:0;}
+  .tk-rt b{font-weight:600;display:block;overflow-wrap:anywhere;}
+  .tk-row.done .tk-rt b{color:var(--ink3);text-decoration:line-through;}
+  .tk-st{font-size:11px;font-weight:600;color:var(--p6);white-space:nowrap;}
+  .tk-scrim{position:fixed;inset:0;background:rgba(10,8,20,.45);display:flex;align-items:flex-start;justify-content:center;padding:max(24px, env(safe-area-inset-top, 0px)) 16px 24px;overflow-y:auto;z-index:900;}
+  .tk-sheet{background:var(--bg0);color:var(--ink);border-radius:16px;width:100%;max-width:620px;padding:20px;box-shadow:var(--tk-shadow);}
+  .tk-sheet h2{margin:0 0 12px;font-size:18px;}
+  .tk-f{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;min-width:0;}
+  .tk-f > span{font-size:12px;color:var(--ink3);font-weight:500;}
+  .tk-fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;}
+  @media (max-width:520px){ .tk-fgrid{grid-template-columns:1fr;} }
+  .tk-sheet textarea{width:100%;min-height:70px;resize:vertical;font:inherit;color:var(--ink);background:var(--bg1);border:1.5px solid var(--bg3);border-radius:12px;padding:10px 12px;}
+  .tk-title-in{font-size:17px !important;font-weight:600;}
+  .tk-cl{display:flex;flex-direction:column;gap:6px;}
+  .tk-cl-row{display:flex;align-items:center;gap:8px;}
+  .tk-cl-row input[type=text]{flex:1;}
+  .tk-x{border:0;background:transparent;color:var(--ink4);cursor:pointer;font-size:16px;}
+  .tk-comments{display:flex;flex-direction:column;gap:8px;}
+  .tk-cm{background:var(--bg1);border-radius:10px;padding:8px 10px;font-size:13px;line-height:1.4;}
+  .tk-cm small{display:block;color:var(--ink3);font-size:11px;margin-bottom:2px;}
+  .tk-hist{font-size:11.5px;color:var(--ink3);line-height:1.6;margin-top:6px;}
+  .tk-ro{font-size:12px;color:var(--ink3);margin-bottom:8px;}
+  .tk-actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .tk-actions-r{display:flex;gap:8px;}
+  .tk-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;}
+  .tk-strip b{display:block;font-size:14px;}
+  .tk-strip span{font-size:12.5px;color:var(--ink3);}
+  .tk-strip em{font-style:normal;color:var(--rust-dark);font-weight:600;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -1683,6 +1763,7 @@
       <div class="tab active" data-mode="employee">Сотрудник</div>
       <div class="tab" id="salesTab" data-mode="sales" style="display:none;">Продажа</div>
       <div class="tab" id="teamTab" data-mode="team" style="display:none;">Команда</div>
+      <div class="tab" id="tasksTab" data-mode="tasks" style="display:none;">Задачи</div>
       <!-- Admin tab hidden; access via secret gesture -->
     </div>
     <div class="top-user" id="topUser"></div>
@@ -2103,6 +2184,7 @@ function canWriteKey(key){
   if(authIsAdmin()) return true;
   if(STAFF_WRITE_KEYS.indexOf(key) >= 0 || String(key).indexOf('saletime:') === 0) return true;
   if(String(key).indexOf('att:') === 0) return true; // свои отметки; чужие база не пропустит
+  if(String(key).indexOf('task:') === 0) return true; // задачи: кто что может — проверяет база (security.sql)
   const me = employees.find(e=>e.id===myEmployeeId);
   return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
 }
@@ -2199,7 +2281,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.4';
+const APP_BUILD = '2026-10-03.5';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2410,6 +2492,7 @@ let pollTimer = null;
 let lastSyncSnapshot = '';
 
 function isEditingSomething(){
+  if(typeof tkDrag!=='undefined' && tkDrag && tkDrag.on) return true;   // тащим карточку задачи — не перерисовываем
   const a = document.activeElement;
   if(!a) return false;
   const tag = a.tagName;
@@ -2478,7 +2561,7 @@ async function pollSharedData(){
   isPolling = true;
   try{
     storeReadFailed = false;
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv] = await Promise.all([
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       loadAttendance(),
@@ -2494,6 +2577,7 @@ async function pollSharedData(){
       storeGet('app:cashUrls', SHARED),
       storeGet('app:cashTotals', SHARED),
       storeGet('app:planOverrides', SHARED),
+      loadTasks(),
     ]);
     // Если чтение упало — данные могли прийти из локального кэша.
     // Применять их поверх текущих не нужно: в памяти уже актуальнее.
@@ -2519,7 +2603,7 @@ async function pollSharedData(){
       showToast('Связь с базой восстановлена', 'success');
     }
 
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv});
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks});
     if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
@@ -2559,6 +2643,7 @@ async function pollSharedData(){
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
     if(freshPlanOv && typeof freshPlanOv === 'object') planOverrides = freshPlanOv;
+    if(Array.isArray(freshTasks)) tasks = freshTasks;
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
@@ -3765,6 +3850,7 @@ async function loadAll(){
   editingMonth = activeMonth;
 
   try { logs = await loadAttendance(); } catch(e) { console.error(e); }
+  try { const t = await loadTasks(); if(Array.isArray(t)) tasks = t; } catch(e) { console.error(e); }
   if(!Array.isArray(logs)) logs = [];
 
   myEmployeeId = null;   // определяется по почте после входа (linkAuthIdentity)
@@ -5128,6 +5214,7 @@ function currentViewKey(){
   // переигрываться на каждое нажатие клавиши и выглядеть как тряска.
   if(viewEmpId && (mode==='admin' || mode==='team')) return 'view-emp:'+viewEmpId;
   if(mode==='team') return 'team-view';
+  if(mode==='tasks') return 'tasks-view';
   if(mode==='employee'){
     if(myEmployeeId) return 'emp-dashboard:'+myEmployeeId;
     if(selectingEmpId) return 'emp-pingate';
@@ -5195,6 +5282,8 @@ function _doRender(){
   renderTopUser();
   const teamTabEl = document.getElementById('teamTab');
   if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
+  const tasksTabEl = document.getElementById('tasksTab');
+  if(tasksTabEl) tasksTabEl.style.display = (myEmployeeId || authIsAdmin()) ? '' : 'none';
   const viewKey = currentViewKey();
   const scrollY = window.scrollY; // запоминаем позицию до перезаписи DOM
 
@@ -5213,6 +5302,7 @@ function _doRender(){
   else if(mode==='employee')  html = renderEmployeeArea();
   else if(mode==='sales')     html = renderSalesView();
   else if(mode==='team')      html = renderTeamView();
+  else if(mode==='tasks')     html = renderTasksView();
   else                         html = renderAdminView();
   // Ничего не изменилось — DOM не трогаем: не сбрасываются прокрутка, фокус и раскрытые блоки
   if(html === _lastHtml && viewKey === lastViewKey) return;
@@ -5404,6 +5494,7 @@ function renderEmployeeDashboard(forId){
   return `${forId ? '<div class="ro-bar"><button class="btn small secondary" id="viewBackBtn">← Назад</button><span>Карточка сотрудника · только просмотр</span></div>' : ''}
     <div class="emp-dashboard-grid${forId ? ' ro-view' : ''}">
       <div class="emp-col-left">
+        ${forId ? '' : renderMyTasksStrip()}
         <div class="card">
           <div class="punch-wrap">
             <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)}${empRoleLabel(emp)?' · '+escapeHtml(empRoleLabel(emp)):''} · ${checkedIn?'на смене':'не на смене'}</div>
@@ -5709,6 +5800,444 @@ function renderSheetsAudit(){
   </div>`;
 }
 
+// =========================================================================
+// ЗАДАЧИ — доска «Новые → В работе → Готово» и вид «по дням»
+// Каждая задача — отдельная строка в базе: task:<id>. Права проверяет сама база
+// (security.sql): видят админ, исполнитель, автор и тимлид отдела исполнителя;
+// ставят админ (всем) и тимлид (себе и своему отделу); не-автор двигает статус,
+// отмечает чек-лист и дописывает комментарии; удаляет только админ.
+// Новую задачу пишем «вставкой», а изменения — обычным «обновлением» (PATCH):
+// «вставить или обновить» база проверяет и по правилу вставки, а создавать
+// задачи сотрудник не может — его правки статуса не прошли бы.
+// =========================================================================
+let tasks = [];
+let tasksView = (()=>{ try{ return localStorage.getItem('dramify-tasks-view') || 'board'; }catch(e){ return 'board'; } })();
+let tasksWho = 'all';
+let tkDraft = null;          // открытая в окне задача
+let tkDrag = null;           // перетаскивание карточки
+let tkBusy = false;
+const TK_STATUSES = [
+  {id:'new',   name:'Новые'},
+  {id:'doing', name:'В работе'},
+  {id:'done',  name:'Готово'},
+];
+const TK_PRI = {normal:'Обычная', important:'Важно', urgent:'Срочно'};
+const TK_REPEAT = {none:'Не повторять', daily:'Каждый день', weekdays:'По будням', weekly:'Каждую неделю'};
+
+async function loadTasks(){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('task:')}*&select=value&limit=5000`, { headers: await sbHeaders() });
+    if(res.status === 401) authOnUnauthorized();
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return (await res.json()).map(r=>{ try{ const v = JSON.parse(r.value); return typeof v==='string' ? JSON.parse(v) : v; }catch(e){ return null; } }).filter(t=> t && t.id);
+  }catch(e){
+    console.error('loadTasks failed', e);
+    storeReadFailed = true;
+    return null;
+  }
+}
+// Обновление существующей строки. Возвращает {ok} или {error} с текстом от базы.
+async function storePatch(key, value){
+  if(appOutdated) return {error:'Вышло обновление — обновите страницу'};
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}`, {
+      method:'PATCH',
+      headers: await sbHeaders({'Content-Type':'application/json', 'Prefer':'return=representation'}),
+      body: JSON.stringify({ value: JSON.stringify(value), updated_at: new Date().toISOString() })
+    });
+    if(res.status === 401) authOnUnauthorized();
+    const text = await res.text();
+    if(!res.ok){ let m = ''; try{ m = JSON.parse(text).message || ''; }catch(e){} return {error: m || ('HTTP ' + res.status)}; }
+    let rows = []; try{ rows = JSON.parse(text); }catch(e){}
+    return Array.isArray(rows) && rows.length ? {ok:true} : {error:'нет доступа к этой задаче'};
+  }catch(e){ return {error: e.message}; }
+}
+async function storeDelete(key){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}`, {
+      method:'DELETE', headers: await sbHeaders({'Prefer':'return=representation'})
+    });
+    if(!res.ok) return false;
+    const rows = await res.json().catch(()=>[]);
+    return Array.isArray(rows) && rows.length > 0;
+  }catch(e){ return false; }
+}
+
+// ── Кто я и что могу (зеркало правил базы) ──
+function tkMe(){ return authIsAdmin() ? '@' + authEmail() : (myEmployeeId || ''); }
+function tkMeEmp(){ return employees.find(e=>e.id===myEmployeeId) || null; }
+function tkIsTeamlead(){ const m = tkMeEmp(); return !!(m && m.role==='teamlead'); }
+function tkDeptOf(id){ const e = employees.find(x=>x.id===id); return e ? normDept(e.department) : ''; }
+function tkAccess(t){
+  if(authIsAdmin()) return true;
+  const me = tkMe(); if(!me) return false;
+  return t.who===me || t.by===me || (tkIsTeamlead() && tkDeptOf(t.who) && tkDeptOf(t.who)===tkDeptOf(me));
+}
+function tkCanEdit(t){ return authIsAdmin() || (t.by===tkMe() && !!tkMe()); }
+function tkCanCreate(){ return authIsAdmin() || tkIsTeamlead(); }
+function tkAssignable(){
+  if(authIsAdmin()) return employees.slice();
+  if(!tkIsTeamlead()) return [];
+  const me = tkMeEmp();
+  return employees.filter(e=> e.id===me.id || normDept(e.department)===normDept(me.department));
+}
+function tkName(id){
+  if(!id) return '—';
+  if(String(id).startsWith('@')) return 'Админ';
+  const e = employees.find(x=>x.id===id);
+  return e ? e.name : 'бывший сотрудник';
+}
+function tkInitials(n){ return String(n).split(/\s+/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '?'; }
+
+// ── Даты ──
+function tkToday(){ return localDayStr(new Date()); }
+function tkDate(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function tkDiff(s){ return Math.round((tkDate(s) - tkDate(tkToday())) / 864e5); }
+function tkDueLabel(s){
+  if(!s) return '';
+  const d = tkDiff(s);
+  if(d===0) return 'Сегодня'; if(d===1) return 'Завтра'; if(d===-1) return 'Вчера';
+  return tkDate(s).toLocaleDateString('ru-RU', {weekday:'short', day:'numeric', month:'short'});
+}
+function tkNextDue(base, rep){
+  let d = tkDate(base);
+  const step = ()=>{ d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); };
+  if(rep==='weekly') d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+  else if(rep==='weekdays'){ do{ step(); }while(d.getDay()===0 || d.getDay()===6); }
+  else step();
+  return localDayStr(d);
+}
+const tkOverdue = t => !!t.due && t.status!=='done' && tkDiff(t.due) < 0;
+const tkOrder = t => (t.due ? tkDate(t.due).getTime() : 9e15) - ({urgent:2, important:1, normal:0}[t.pri]||0) * 1e3;
+
+function tkVisible(){ return tasks.filter(tkAccess).filter(t=> tasksWho==='all' || t.who===tasksWho); }
+// Мои открытые задачи — для плашки на главном экране
+function tkMyOpen(){
+  const me = tkMe();
+  return tasks.filter(t=> t.status!=='done' && t.who===me);
+}
+
+// ── Смена статуса; у повторяющейся при «Готово» — следующий срок ──
+function tkApplyStatus(t, st){
+  const now = Date.now(), who = tkMe();
+  t.hist = t.hist || []; t.doneLog = t.doneLog || [];
+  if(st==='done' && t.rep && t.rep!=='none'){
+    const base = (t.due && t.due > tkToday()) ? t.due : tkToday();
+    t.doneLog.push(t.due || tkToday());
+    t.due = tkNextDue(base, t.rep);
+    t.status = 'new';
+    t.cl = (t.cl||[]).map(c=>({t:c.t, d:false}));
+    t.hist.push({who, at:now, text:'выполнено, следующий раз — ' + tkDueLabel(t.due).toLowerCase()});
+    return 'Готово. Следующий раз — ' + tkDueLabel(t.due).toLowerCase();
+  }
+  t.status = st;
+  t.hist.push({who, at:now, text:'→ ' + TK_STATUSES.find(s=>s.id===st).name});
+  return st==='done' ? 'Задача закрыта' : '';
+}
+// Изменение задачи: берём свежую строку из базы, применяем изменение, сохраняем
+async function tkUpdate(id, change, okMsg){
+  const key = 'task:' + id;
+  let fresh = null;
+  try{ fresh = await storeGetFresh(key); }catch(e){}
+  if(typeof fresh === 'string'){ try{ fresh = JSON.parse(fresh); }catch(e){ fresh = null; } }
+  if(!fresh){ const loc = tasks.find(t=>t.id===id); fresh = loc ? JSON.parse(JSON.stringify(loc)) : null; }
+  if(!fresh){ showToast('Задача не найдена — возможно, её удалили', 'error'); return false; }
+  const msg = change(fresh);
+  const r = await storePatch(key, fresh);
+  if(r.error){ showToast('Не сохранилось: ' + r.error, 'error'); return false; }
+  const i = tasks.findIndex(t=>t.id===id); if(i>=0) tasks[i] = fresh; else tasks.push(fresh);
+  const m = msg || okMsg; if(m) showToast(m, 'success');
+  return fresh;
+}
+async function tkSetStatus(id, st){
+  const t = tasks.find(x=>x.id===id);
+  if(!t || !tkAccess(t)){ showToast('Эту задачу двигает тот, кому она назначена', 'error'); return; }
+  if(t.status===st) return;
+  await tkUpdate(id, f=> tkApplyStatus(f, st));
+  renderNow(); tkRenderModal();
+}
+
+// ── Отрисовка ──
+function tkMeta(t){
+  const over = tkOverdue(t), today = t.due && t.status!=='done' && tkDiff(t.due)===0;
+  const name = tkName(t.who), dept = tkDeptOf(t.who);
+  return `<span class="tk-who"><span class="tk-ava">${escapeHtml(tkInitials(name))}</span>${escapeHtml(name)}${dept ? ' · ' + escapeHtml(deptLabel(dept)) : ''}</span>`
+    + (t.due ? `<span class="tk-pill ${over?'over':today?'today':''}">${over?'просрочено · ':''}${tkDueLabel(t.due)}${t.time?' '+escapeHtml(t.time):''}</span>` : '')
+    + (t.pri && t.pri!=='normal' ? `<span class="tk-pill ${t.pri}">${TK_PRI[t.pri]}</span>` : '')
+    + (t.rep && t.rep!=='none' ? `<span class="tk-pill rep">↻ ${TK_REPEAT[t.rep].toLowerCase()}</span>` : '');
+}
+function tkProgress(t){
+  const cl = t.cl || []; if(!cl.length) return '';
+  const d = cl.filter(c=>c.d).length;
+  return `<div class="tk-meta" style="margin-top:8px">${d} из ${cl.length}</div><div class="tk-prog"><i style="width:${Math.round(d/cl.length*100)}%"></i></div>`;
+}
+function renderTasksView(){
+  const me = tkMeEmp();
+  const sub = authIsAdmin() ? 'Все задачи команды' : tkIsTeamlead() ? `Тимлид ${deptLabel(me.department)}: свои задачи и задачи отдела` : 'Мои задачи';
+  const L = tkVisible();
+  const people = employees.filter(e=> tasks.some(t=> tkAccess(t) && t.who===e.id));
+  const chips = people.length > 1 ? `<div class="tk-bar"><span class="tk-lbl">Кому:</span><div class="tk-chips">
+      <button class="tk-chip ${tasksWho==='all'?'on':''}" data-tkwho="all">Все</button>
+      ${people.map(e=>`<button class="tk-chip ${tasksWho===e.id?'on':''}" data-tkwho="${e.id}">${escapeHtml(e.name)}</button>`).join('')}
+    </div></div>` : '';
+  let body;
+  if(tasksView==='board'){
+    body = `<div class="tk-board">${TK_STATUSES.map(s=>{
+      const items = L.filter(t=>t.status===s.id).sort((a,b)=>tkOrder(a)-tkOrder(b));
+      return `<section class="tk-col" data-tkcol="${s.id}">
+        <div class="tk-col-h"><span class="tk-dot ${s.id}"></span>${s.name}<span class="tk-cnt">${items.length}</span>${tkCanCreate() && s.id!=='done' ? `<button class="tk-add" data-tkaddto="${s.id}" aria-label="Добавить в «${s.name}»">+</button>` : ''}</div>
+        <div class="tk-cards">${items.map(t=>`<article class="tk-card ${t.status==='done'?'done':''}" data-tkid="${escapeHtml(t.id)}" tabindex="0">
+          <div class="tk-t">${escapeHtml(t.title)}</div><div class="tk-meta">${tkMeta(t)}</div>${tkProgress(t)}</article>`).join('') || '<div class="tk-meta tk-empty">Пусто</div>'}</div>
+      </section>`;}).join('')}</div>`;
+  } else {
+    const open = L.filter(t=>t.status!=='done');
+    const dow = new Date().getDay(), endWeek = 7 - (dow || 7);
+    const row = t => `<div class="tk-row ${t.status==='done'?'done':''}" data-tkrow="${escapeHtml(t.id)}">
+        <button class="tk-chk ${t.status==='done'?'on':''}" data-tkdone="${escapeHtml(t.id)}" aria-label="Отметить выполненной">${t.status==='done'?'✓':''}</button>
+        <div class="tk-rt"><b>${escapeHtml(t.title)}</b><div class="tk-meta" style="margin-top:4px">${tkMeta(t)}</div></div>
+        <span class="tk-st">${t.status==='doing'?'В работе':''}</span></div>`;
+    const grp = (name, items, cls) => items.length ? `<div class="tk-grp"><div class="tk-grp-h ${cls||''}">${name}<span class="tk-cnt">${items.length}</span></div>${items.sort((a,b)=>tkOrder(a)-tkOrder(b)).map(row).join('')}</div>` : '';
+    const html =
+      grp('Просрочено', open.filter(t=>t.due && tkDiff(t.due)<0), 'over') +
+      grp('Сегодня', open.filter(t=>t.due && tkDiff(t.due)===0)) +
+      grp('Завтра', open.filter(t=>t.due && tkDiff(t.due)===1)) +
+      grp('До конца недели', open.filter(t=>t.due && tkDiff(t.due)>1 && tkDiff(t.due)<=endWeek)) +
+      grp('Позже', open.filter(t=>t.due && tkDiff(t.due)>endWeek)) +
+      grp('Без срока', open.filter(t=>!t.due)) +
+      grp('Готово', L.filter(t=>t.status==='done'));
+    body = `<div class="tk-days">${html || '<div class="tk-grp"><div class="tk-grp-h">Задач пока нет</div></div>'}</div>`;
+  }
+  return `<div class="tk-wrap">
+    <div class="tk-top">
+      <div><h1 class="tk-h1">Задачи</h1><div class="tk-sub">${escapeHtml(sub)}</div></div>
+      <div class="tk-top-r">
+        <div class="tk-seg"><button class="${tasksView==='board'?'on':''}" data-tkview="board">Доска</button><button class="${tasksView==='days'?'on':''}" data-tkview="days">По дням</button></div>
+        ${tkCanCreate() ? '<button class="btn" data-tknew="new">+ Задача</button>' : ''}
+      </div>
+    </div>
+    ${chips}
+    ${body}
+  </div>`;
+}
+// Плашка «задачи на сегодня» для главного экрана сотрудника и тимлида
+function renderMyTasksStrip(){
+  const mine = tkMyOpen();
+  if(!mine.length) return '';
+  const over = mine.filter(tkOverdue).length, today = mine.filter(t=>t.due && tkDiff(t.due)===0).length;
+  return `<div class="card tk-strip" data-tkgo="1">
+    <div><b>Мои задачи</b><span>${today ? 'на сегодня: ' + today : 'открытых: ' + mine.length}${over ? ` · <em>просрочено: ${over}</em>` : ''}</span></div>
+    <button class="btn small secondary">Открыть</button>
+  </div>`;
+}
+// Строки для «Требует внимания» в сводке админа
+function tkOverdueAttRows(){
+  return tasks.filter(tkOverdue).sort((a,b)=>tkOrder(a)-tkOrder(b)).slice(0,6).map(t=>`
+    <div class="ov-att-row" data-tkopen="${escapeHtml(t.id)}" style="cursor:pointer">
+      <span class="who">${escapeHtml(tkName(t.who))}</span>
+      <span class="what">Задача: ${escapeHtml(t.title)}</span>
+      <span class="when">просрочена на ${-tkDiff(t.due)} дн.</span>
+    </div>`).join('');
+}
+
+// ── Окно задачи ──
+function tkOpen(id, presetStatus){
+  if(id){
+    const t = tasks.find(x=>x.id===id); if(!t) return;
+    tkDraft = JSON.parse(JSON.stringify(t)); tkDraft._new = false;
+  } else {
+    const who = (tkAssignable().find(e=> tasksWho!=='all' && e.id===tasksWho) || tkAssignable()[0] || {}).id || '';
+    tkDraft = {id:'', title:'', desc:'', who, by:tkMe(), due:tkToday(), time:'', pri:'normal', status:presetStatus||'new', rep:'none', cl:[], cm:[], hist:[], doneLog:[], _new:true};
+  }
+  tkRenderModal();
+  setTimeout(()=>{ const el = document.getElementById('tkTitle'); if(el && tkDraft && tkDraft._new) el.focus(); }, 30);
+}
+function tkClose(){ tkDraft = null; const m = document.getElementById('tkModal'); if(m) m.innerHTML = ''; }
+function tkRenderModal(){
+  let host = document.getElementById('tkModal');
+  if(!host){ host = document.createElement('div'); host.id = 'tkModal'; document.body.appendChild(host); }
+  if(!tkDraft){ host.innerHTML = ''; return; }
+  // после сохранения подтягиваем свежую версию (статус, комментарии)
+  if(!tkDraft._new){
+    const live = tasks.find(x=>x.id===tkDraft.id);
+    if(live){
+      tkDraft.status = live.status; tkDraft.cm = live.cm; tkDraft.hist = live.hist;
+      if(!tkCanEdit(tkDraft)){ tkDraft.due = live.due; tkDraft.cl = live.cl; }   // автор держит свои несохранённые правки
+    }
+  }
+  const t = tkDraft, ed = t._new || tkCanEdit(t), dis = ed ? '' : 'disabled';
+  const people = ed ? tkAssignable() : employees.filter(e=>e.id===t.who);
+  const whoOpts = people.map(e=>`<option value="${e.id}" ${e.id===t.who?'selected':''}>${escapeHtml(e.name)} · ${escapeHtml(deptLabel(e.department))}${e.role==='teamlead'?' (тимлид)':''}</option>`).join('');
+  const fmtAt = ts => new Date(ts).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+  host.innerHTML = `<div class="tk-scrim" data-tkclose="1"><div class="tk-sheet" role="dialog" aria-modal="true" aria-label="Задача">
+    <h2>${t._new ? 'Новая задача' : 'Задача'}</h2>
+    <div class="tk-f"><input class="tk-title-in" type="text" id="tkTitle" value="${escapeHtml(t.title)}" placeholder="Что нужно сделать" ${dis}></div>
+    ${t._new ? '' : `<div class="tk-f"><span>Статус</span><div class="tk-chips">${TK_STATUSES.map(s=>`<button class="tk-chip ${t.status===s.id?'on':''}" data-tkst="${s.id}">${s.name}</button>`).join('')}</div></div>`}
+    <div class="tk-fgrid">
+      <label class="tk-f"><span>Кому</span><select id="tkWho" ${dis}>${whoOpts}</select></label>
+      <label class="tk-f"><span>Приоритет</span><select id="tkPri" ${dis}>${Object.entries(TK_PRI).map(([k,v])=>`<option value="${k}" ${t.pri===k?'selected':''}>${v}</option>`).join('')}</select></label>
+      <label class="tk-f"><span>Срок</span><input type="date" id="tkDue" value="${t.due||''}" ${dis}></label>
+      <label class="tk-f"><span>Время (необязательно)</span><input type="time" id="tkTime" value="${t.time||''}" ${dis}></label>
+      <label class="tk-f"><span>Повтор</span><select id="tkRep" ${dis}>${Object.entries(TK_REPEAT).map(([k,v])=>`<option value="${k}" ${t.rep===k?'selected':''}>${v}</option>`).join('')}</select></label>
+    </div>
+    <label class="tk-f"><span>Описание</span><textarea id="tkDesc" placeholder="Подробности, ссылки на таблицы" ${dis}>${escapeHtml(t.desc||'')}</textarea></label>
+    <div class="tk-f"><span>Чек-лист</span><div class="tk-cl">${(t.cl||[]).map((c,i)=>`<div class="tk-cl-row"><input type="checkbox" data-tkcl="${i}" ${c.d?'checked':''} aria-label="Готово"><input type="text" data-tkclt="${i}" value="${escapeHtml(c.t)}" ${dis}>${ed?`<button class="tk-x" data-tkcldel="${i}" aria-label="Убрать пункт">×</button>`:''}</div>`).join('')}
+      ${ed ? '<div class="tk-cl-row"><input type="text" id="tkClNew" placeholder="Добавить пункт и нажать Enter"></div>' : ''}</div></div>
+    ${t._new ? '' : `<div class="tk-f"><span>Комментарии</span><div class="tk-comments">${(t.cm||[]).map(c=>`<div class="tk-cm"><small>${escapeHtml(tkName(c.who))} · ${fmtAt(c.at)}</small>${escapeHtml(c.text)}</div>`).join('')}
+      <div class="tk-cl-row"><input type="text" id="tkCmNew" placeholder="Написать комментарий и нажать Enter"></div></div>
+      <div class="tk-hist">${(t.hist||[]).slice(-8).map(h=>`${escapeHtml(tkName(h.who))} ${escapeHtml(h.text)} · ${fmtAt(h.at)}`).join('<br>')}</div></div>`}
+    ${ed ? '' : '<div class="tk-ro">Название, срок и исполнителя меняет тот, кто поставил задачу. Вы можете двигать статус, отмечать чек-лист и писать комментарии.</div>'}
+    <div class="tk-actions">
+      <div>${!t._new && authIsAdmin() ? '<button class="btn danger" id="tkDelBtn">Удалить</button>' : ''}</div>
+      <div class="tk-actions-r"><button class="btn secondary" data-tkclose="1">${ed ? 'Отмена' : 'Закрыть'}</button>${ed ? `<button class="btn" id="tkSaveBtn" ${tkBusy?'disabled':''}>${t._new?'Поставить задачу':'Сохранить'}</button>` : ''}</div>
+    </div>
+  </div></div>`;
+}
+function tkCollect(){
+  const g = id => document.getElementById(id);
+  if(!tkDraft || !g('tkTitle') || g('tkTitle').disabled) return;
+  Object.assign(tkDraft, {title:g('tkTitle').value.trim(), who:g('tkWho').value, pri:g('tkPri').value, due:g('tkDue').value, time:g('tkTime').value, rep:g('tkRep').value, desc:g('tkDesc').value});
+  document.querySelectorAll('[data-tkclt]').forEach(i=>{ if(tkDraft.cl[i.dataset.tkclt]) tkDraft.cl[i.dataset.tkclt].t = i.value; });
+}
+async function tkSave(){
+  tkCollect();
+  const d = tkDraft;
+  if(!d.title){ showToast('Напишите, что нужно сделать', 'error'); document.getElementById('tkTitle').focus(); return; }
+  if(!d.who){ showToast('Выберите, кому задача', 'error'); return; }
+  tkBusy = true; tkRenderModal();
+  try{
+    if(d._new){
+      const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      const t = {id, title:d.title, desc:d.desc, who:d.who, by:tkMe(), due:d.due, time:d.time, pri:d.pri, status:d.status||'new', rep:d.rep,
+        cl:d.cl, cm:[], hist:[{who:tkMe(), at:Date.now(), text:'поставил(а) задачу'}], doneLog:[], createdAt:Date.now()};
+      const ok = await storeSet('task:' + id, t, SHARED);
+      if(!ok){ showToast('Не сохранилось — проверьте связь или права', 'error'); return; }
+      tasks.push(t); showToast('Задача поставлена: ' + tkName(t.who), 'success'); tkClose();
+    } else {
+      const fields = {title:d.title, desc:d.desc, who:d.who, due:d.due, time:d.time, pri:d.pri, rep:d.rep, cl:d.cl};
+      const r = await tkUpdate(d.id, f=>{ Object.assign(f, fields); f.hist = f.hist || []; f.hist.push({who:tkMe(), at:Date.now(), text:'изменил(а) задачу'}); }, 'Сохранено');
+      if(r) tkClose();
+    }
+  } finally { tkBusy = false; if(tkDraft) tkRenderModal(); renderNow(); }
+}
+
+// ── Клики и клавиши (подключается один раз) ──
+function attachTaskHandlers(){
+  document.addEventListener('click', async e=>{
+    const el = e.target;
+    if(el.closest('[data-tkview]')){ tasksView = el.closest('[data-tkview]').dataset.tkview; try{ localStorage.setItem('dramify-tasks-view', tasksView); }catch(_){} renderNow(); return; }
+    if(el.closest('[data-tkwho]')){ tasksWho = el.closest('[data-tkwho]').dataset.tkwho; renderNow(); return; }
+    if(el.closest('[data-tknew]')){ tkOpen(null); return; }
+    if(el.closest('[data-tkaddto]')){ tkOpen(null, el.closest('[data-tkaddto]').dataset.tkaddto); return; }
+    if(el.closest('[data-tkgo]')){ mode = 'tasks'; viewEmpId = null; renderNow(); return; }
+    if(el.closest('[data-tkopen]')){ tkOpen(el.closest('[data-tkopen]').dataset.tkopen); return; }
+    const dn = el.closest('[data-tkdone]');
+    if(dn){ const t = tasks.find(x=>x.id===dn.dataset.tkdone); if(t) await tkSetStatus(t.id, t.status==='done' ? 'new' : 'done'); return; }
+    const row = el.closest('[data-tkrow]'); if(row){ tkOpen(row.dataset.tkrow); return; }
+    if(!el.closest('#tkModal')) return;
+    if(el.dataset.tkclose){ tkClose(); return; }
+    const st = el.closest('[data-tkst]');
+    if(st && tkDraft && !tkDraft._new){ tkCollect(); await tkSetStatus(tkDraft.id, st.dataset.tkst); return; }
+    const del = el.closest('[data-tkcldel]');
+    if(del && tkDraft){ tkCollect(); tkDraft.cl.splice(+del.dataset.tkcldel, 1); tkDraft._dirty = true; tkRenderModal(); return; }
+    if(el.id==='tkSaveBtn'){ await tkSave(); return; }
+    if(el.id==='tkDelBtn' && tkDraft){
+      if(!el.dataset.sure){ el.dataset.sure = '1'; el.textContent = 'Точно удалить?'; return; }
+      const ok = await storeDelete('task:' + tkDraft.id);
+      if(ok){ tasks = tasks.filter(t=>t.id!==tkDraft.id); showToast('Задача удалена', 'success'); tkClose(); renderNow(); }
+      else showToast('Не удалось удалить', 'error');
+    }
+  });
+  document.addEventListener('change', async e=>{
+    const cb = e.target.closest && e.target.closest('#tkModal [data-tkcl]');
+    if(!cb || !tkDraft) return;
+    const i = +cb.dataset.tkcl, val = cb.checked;
+    tkCollect();
+    tkDraft.cl[i].d = val;
+    if(tkDraft._new || tkDraft._dirty) return;      // сохранится кнопкой
+    await tkUpdate(tkDraft.id, f=>{ if(f.cl && f.cl[i]) f.cl[i].d = val; });
+    renderNow();
+  });
+  document.addEventListener('keydown', async e=>{
+    if(e.target.closest && e.target.closest('#tkModal')){
+      if(e.key==='Escape'){ tkClose(); return; }
+      if(e.key!=='Enter') return;
+      if(e.target.id==='tkClNew' && e.target.value.trim()){ tkCollect(); tkDraft.cl.push({t:e.target.value.trim(), d:false}); tkDraft._dirty = true; tkRenderModal(); document.getElementById('tkClNew').focus(); }
+      if(e.target.id==='tkCmNew' && e.target.value.trim() && tkDraft && !tkDraft._new){
+        const text = e.target.value.trim(); e.target.value = '';
+        tkCollect();
+        await tkUpdate(tkDraft.id, f=>{ f.cm = f.cm || []; f.cm.push({who:tkMe(), text, at:Date.now()}); });
+        tkRenderModal(); const n = document.getElementById('tkCmNew'); if(n) n.focus();
+      }
+      return;
+    }
+    const c = e.target.closest && e.target.closest('.tk-card');
+    if(c && e.key==='Enter') tkOpen(c.dataset.tkid);
+  });
+
+  // Перетаскивание: мышь сразу, палец — после короткого удержания (иначе это прокрутка)
+  document.addEventListener('pointerdown', e=>{
+    const card = e.target.closest && e.target.closest('.tk-card'); if(!card || e.button>0) return;
+    tkDrag = {id:card.dataset.tkid, card, x:e.clientX, y:e.clientY, on:false, touch:e.pointerType==='touch', timer:null};
+    if(tkDrag.touch) tkDrag.timer = setTimeout(()=>{ if(tkDrag) tkStartDrag(e.clientX, e.clientY); }, 280);
+  });
+  document.addEventListener('pointermove', e=>{
+    if(!tkDrag) return;
+    if(!tkDrag.on){
+      const far = Math.abs(e.clientX-tkDrag.x) + Math.abs(e.clientY-tkDrag.y) > 6;
+      if(tkDrag.touch){ if(far){ clearTimeout(tkDrag.timer); tkDrag = null; } return; }
+      if(far) tkStartDrag(e.clientX, e.clientY);
+      return;
+    }
+    e.preventDefault(); tkMoveGhost(e.clientX, e.clientY);
+  }, {passive:false});
+  document.addEventListener('touchmove', e=>{ if(tkDrag && tkDrag.on) e.preventDefault(); }, {passive:false});
+  document.addEventListener('pointerup', async ()=>{
+    if(!tkDrag) return;
+    const d = tkDrag; tkDrag = null; clearTimeout(d.timer);
+    if(d.on){
+      if(d.ghost) d.ghost.remove();
+      document.querySelectorAll('.tk-col').forEach(c=>c.classList.remove('drop'));
+      const bd = document.querySelector('.tk-board'); if(bd) bd.classList.remove('dragging');
+      if(d.over) await tkSetStatus(d.id, d.over.dataset.tkcol); else renderNow();
+      return;
+    }
+    tkOpen(d.id);
+  });
+  document.addEventListener('pointercancel', ()=>{ if(tkDrag){ if(tkDrag.ghost) tkDrag.ghost.remove(); tkDrag = null; renderNow(); } });
+}
+function tkStartDrag(x, y){
+  const t = tasks.find(k=>k.id===tkDrag.id);
+  if(!t || !tkAccess(t)){ showToast('Эту задачу двигает тот, кому она назначена', 'error'); tkDrag = null; return; }
+  tkDrag.on = true;
+  const card = document.querySelector(`.tk-card[data-tkid="${CSS.escape(tkDrag.id)}"]`) || tkDrag.card;
+  tkDrag.ghost = card.cloneNode(true); tkDrag.ghost.classList.add('tk-ghost');
+  document.body.appendChild(tkDrag.ghost); card.classList.add('dragging');
+  tkMoveGhost(x, y);
+}
+// На телефоне колонки шире экрана и листаются вбок: у края экрана доска
+// прокручивается сама, пока карточку держат там
+function tkAutoScroll(){
+  if(!tkDrag || !tkDrag.on) return;
+  const board = document.querySelector('.tk-board'), x = tkDrag.lastX, edge = 48;
+  if(board && board.scrollWidth > board.clientWidth){
+    const dx = x < edge ? -14 : x > window.innerWidth - edge ? 14 : 0;
+    if(dx){ board.scrollLeft += dx; tkMoveGhost(tkDrag.lastX, tkDrag.lastY); }
+  }
+  requestAnimationFrame(tkAutoScroll);
+}
+function tkMoveGhost(x, y){
+  if(!tkDrag.scrolling){
+    tkDrag.scrolling = true;
+    const bd = document.querySelector('.tk-board'); if(bd) bd.classList.add('dragging');   // без «примагничивания» колонок, иначе прокрутка откатывается
+    requestAnimationFrame(tkAutoScroll);
+  }
+  tkDrag.lastX = x; tkDrag.lastY = y;
+  tkDrag.ghost.style.left = Math.max(4, Math.min(window.innerWidth - 264, x - 120)) + 'px'; tkDrag.ghost.style.top = (y - 20) + 'px';
+  document.querySelectorAll('.tk-col').forEach(c=>c.classList.remove('drop'));
+  const el = document.elementFromPoint(x, y), col = el && el.closest('.tk-col');
+  if(col) col.classList.add('drop'); tkDrag.over = col;
+}
+
 function renderViewedCard(){
   const me = employees.find(e=>e.id===myEmployeeId);
   const target = employees.find(e=>e.id===viewEmpId);
@@ -5845,6 +6374,7 @@ function renderTeamView(){
     </div>`;
   const logCard = renderDayAttendance(mates, 'Отметки за день · ' + escapeHtml(deptLabel(dept)));
   return `<div class="admin-dashboard-grid"><div class="admin-col-left">
+    ${renderMyTasksStrip()}
     ${plateCard}
     ${dept==='to' ? renderLoadCard(dept, mk) + renderDeadlinesCard(dept, mk) : ''}
     <div class="card"><h2>Моя команда · ${deptLabel(dept)} · ${monthLabel(mk)}</h2>${rows || '<div class="empty">В отделе пока нет сотрудников</div>'}</div>
@@ -7294,6 +7824,7 @@ function renderAdminView(){
     ['summary',  'Сводка'],
     ['analytics','Аналитика'],
     ['team',     'Команда'],
+    ['tasks',    'Задачи'],
     ['data',     'Данные'],
     ['settings', 'Настройки'],
   ];
@@ -7347,8 +7878,8 @@ function renderAdminView(){
       </div>
 
       <div class="ov-attention">
-        <div class="ov-attention-head">${icon('hourglass',14)} Требует внимания${(att.overdue.length+att.paused.length)>0?` · ${att.overdue.length+att.paused.length}`:''}</div>
-        ${attRows || '<div class="ov-att-empty">Просроченных и зависших заказов нет</div>'}
+        <div class="ov-attention-head">${icon('hourglass',14)} Требует внимания${(att.overdue.length+att.paused.length+tasks.filter(tkOverdue).length)>0?` · ${att.overdue.length+att.paused.length+tasks.filter(tkOverdue).length}`:''}</div>
+        ${(tkOverdueAttRows() + attRows) || '<div class="ov-att-empty">Просроченных и зависших заказов и задач нет</div>'}
       </div>
     </div>
 
@@ -7493,6 +8024,11 @@ function renderAdminView(){
     </div><!-- /team-split -->
 
     </div><!-- /pane team -->
+
+    <!-- ══════════ ЗАДАЧИ ══════════ -->
+    <div class="admin-pane${adminTab==='tasks'?' active':''}" data-pane="tasks">
+    ${adminTab==='tasks' ? renderTasksView() : ''}
+    </div><!-- /pane tasks -->
 
     <!-- ══════════ ДАННЫЕ ══════════ -->
     <div class="admin-pane${adminTab==='data'?' active':''}" data-pane="data">
@@ -8141,6 +8677,7 @@ let orderTimerHandle = null;
 
 (async function init(){
   attachDelegatedHandlers();
+  attachTaskHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
