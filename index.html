@@ -302,9 +302,12 @@
   .ntf-item.unread::after{animation:ntfDot 1.4s ease-out 2;}
   .ntf-badge{animation:ntfBadge .38s cubic-bezier(.3,1.4,.5,1);}
   .ntf-bell svg{transform-origin:50% 15%;}
+  /* наведение мышкой: колокольчик коротко звякает (только где есть мышь) */
+  @keyframes ntfHover{0%{transform:rotate(0);}20%{transform:rotate(14deg);}45%{transform:rotate(-10deg);}70%{transform:rotate(5deg);}100%{transform:rotate(0);}}
+  @media (hover:hover){ .ntf-bell:hover svg{animation:ntfHover .55s ease-out;} }
   .ntf-bell:active{transform:scale(.92);}
   .ntf-card:active{transform:scale(.985);}
-  @media (prefers-reduced-motion: reduce){ .ntf-panel,.ntf-item,.ntf-badge,.ntf-item.unread::after{animation:none !important;} }
+  @media (prefers-reduced-motion: reduce){ .ntf-panel,.ntf-item,.ntf-badge,.ntf-item.unread::after,.ntf-bell svg{animation:none !important;} }
   .ntf-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;font-size:15px;}
   .ntf-head-r{display:flex;align-items:center;gap:4px;}
   .ntf-snd{border:1px solid var(--bg3);background:var(--bg1);color:var(--ink2);border-radius:20px;padding:4px 10px;font:12px var(--font);cursor:pointer;}
@@ -2378,7 +2381,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.11';
+const APP_BUILD = '2026-10-03.12';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
