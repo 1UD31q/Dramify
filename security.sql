@@ -18,6 +18,10 @@
 --   • подписи админов (app:admins — имя и должность): каждый админ меняет только
 --     свою строку, чужие не трогает;
 --   • фото профиля (avatar:<id сотрудника>) — каждый ставит и меняет только своё;
+--   • база знаний (kb:page:*): страницы раздела «Общее» видят все, страницы
+--     отдела — только этот отдел (и админы); правят админы и тимлид — в разделе
+--     своего отдела; отметку «прочитал» (kbread:<id сотрудника>:<страница>)
+--     сотрудник ставит только себе;
 --   • админы (app_metadata.role = 'admin') — всё.
 -- =====================================================================
 
@@ -175,6 +179,17 @@ exception when others then
 end;
 $$;
 
+-- Отдел к одному виду: «ОП» и «op» — одно и то же
+create or replace function public.dramify_dept_norm(d text)
+returns text
+language sql
+immutable
+as $$
+  select case lower(trim(coalesce(d, '')))
+    when 'оп' then 'op' when 'то' then 'to' when 'ос' then 'os'
+    else lower(trim(coalesce(d, ''))) end;
+$$;
+
 create or replace function public.dramify_emp_dept(emp text)
 returns text
 language sql
@@ -182,7 +197,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select lower(trim(e ->> 'department')) from jsonb_array_elements(public.dramify_employees()) e
+  select public.dramify_dept_norm(e ->> 'department') from jsonb_array_elements(public.dramify_employees()) e
   where e ->> 'id' = emp limit 1;
 $$;
 
@@ -301,6 +316,51 @@ as $$
   );
 $$;
 
+-- ── База знаний ──────────────────────────────────────────────────────────
+-- kb:page:<id> — страница {id, folder, title, body, must, order, ver, by};
+-- folder: 'gen' (Общее, видят все) или отдел 'op' / 'to' / 'os'.
+-- kbread:<id сотрудника>:<id страницы> — отметка «прочитал» {emp, page, ver, at}.
+create or replace function public.dramify_kb_can_see(j jsonb)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select j is not null and (
+    public.dramify_is_admin()
+    or (public.dramify_is_staff()
+        and (coalesce(j ->> 'folder', 'gen') = 'gen'
+             or j ->> 'folder' = public.dramify_emp_dept(public.dramify_my_emp_id())))
+  );
+$$;
+
+create or replace function public.dramify_kb_can_edit(k text, j jsonb)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select j is not null and k = 'kb:page:' || (j ->> 'id') and (
+    public.dramify_is_admin()
+    or (public.dramify_is_teamlead()
+        and j ->> 'folder' = public.dramify_emp_dept(public.dramify_my_emp_id()))
+  );
+$$;
+
+create or replace function public.dramify_kbread_ok(k text, j jsonb)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select j is not null and public.dramify_is_staff()
+    and k = 'kbread:' || (j ->> 'emp') || ':' || (j ->> 'page')
+    and (public.dramify_is_admin() or j ->> 'emp' = public.dramify_my_emp_id());
+$$;
+
 -- Добавление ключа с учётом задач (поверх общего правила)
 create or replace function public.dramify_can_insert_any(k text, v text)
 returns boolean
@@ -314,6 +374,8 @@ as $$
       public.dramify_task_assign_ok(public.dramify_json(v))
       and k = 'task:' || (public.dramify_json(v) ->> 'id')
     when k like 'avatar:%' then public.dramify_avatar_ok(k, v)
+    when k like 'kb:page:%' then public.dramify_kb_can_edit(k, public.dramify_json(v))
+    when k like 'kbread:%' then public.dramify_kbread_ok(k, public.dramify_json(v))
     else public.dramify_can_insert(k, v)
   end;
 $$;
@@ -369,7 +431,8 @@ end $$;
 create policy dramify_read on public.kv_store
   for select to authenticated
   using (public.dramify_is_staff()
-         and (key not like 'task:%' or public.dramify_task_access(public.dramify_json(value::text))));
+         and (key not like 'task:%' or public.dramify_task_access(public.dramify_json(value::text)))
+         and (key not like 'kb:page:%' or public.dramify_kb_can_see(public.dramify_json(value::text))));
 
 create policy dramify_insert on public.kv_store
   for insert to authenticated
@@ -379,9 +442,13 @@ create policy dramify_update on public.kv_store
   for update to authenticated
   using (case when key like 'task:%' then public.dramify_task_access(public.dramify_json(value::text))
               when key like 'avatar:%' then public.dramify_avatar_ok(key, value::text)
+              when key like 'kb:page:%' then public.dramify_kb_can_edit(key, public.dramify_json(value::text))
+              when key like 'kbread:%' then public.dramify_kbread_ok(key, public.dramify_json(value::text))
               else public.dramify_can_update(key) end)
   with check (case when key like 'task:%' then public.dramify_task_access(public.dramify_json(value::text))
                    when key like 'avatar:%' then public.dramify_avatar_ok(key, value::text)
+                   when key like 'kb:page:%' then public.dramify_kb_can_edit(key, public.dramify_json(value::text))
+                   when key like 'kbread:%' then public.dramify_kbread_ok(key, public.dramify_json(value::text))
                    else public.dramify_can_update(key) end);
 
 create policy dramify_delete on public.kv_store
