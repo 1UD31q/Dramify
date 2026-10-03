@@ -339,6 +339,65 @@
   @media (max-width:899px){ #ntfStack{left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));width:auto;max-width:none;} }
   .ntf-empty{padding:18px 12px 22px;font-size:13px;color:var(--ink3);line-height:1.5;}
   @media (max-width:899px){ .ntf-bell{width:32px;height:32px;} .ntf-panel{top:calc(56px + env(safe-area-inset-top, 0px));right:16px;left:16px;width:auto;max-width:none;} }
+  /* ── Анимации интерфейса ── */
+  html, body{overscroll-behavior-x:none;}   /* свайп по тачпаду не листает историю браузера */
+  .tabs.has-ink .tab.active::after{opacity:0;}
+  .tab-ink{position:absolute;left:0;top:0;border-radius:2px 2px 0 0;background:var(--p4);pointer-events:none;opacity:0;
+    transition:transform .38s cubic-bezier(.3,1.25,.45,1), width .38s cubic-bezier(.3,1.25,.45,1), opacity .2s;}
+  .admin-tabs{position:relative;}
+  .admin-tab{position:relative;z-index:1;}
+  .admin-pill{position:absolute;left:0;top:0;border-radius:9px;background:var(--bg0);box-shadow:var(--shadow-sm);pointer-events:none;z-index:0;}
+  .admin-tabs.has-pill .admin-tab.active{background:transparent;box-shadow:none;}
+  /* задачи */
+  @keyframes tkFlash{0%{box-shadow:0 0 0 0 rgba(124,82,200,.55);}100%{box-shadow:0 0 0 12px rgba(124,82,200,0);}}
+  @keyframes tkFlashDone{0%{box-shadow:0 0 0 0 rgba(29,185,84,.5);background-color:rgba(29,185,84,.16);}100%{box-shadow:0 0 0 12px rgba(29,185,84,0);}}
+  .tk-flash{animation:tkFlash .9s ease-out;}
+  .tk-flash-done{animation:tkFlashDone 1s ease-out;}
+  .tk-chk.checking{background:var(--green);border-color:var(--green);transform:scale(1.12);transition:transform .2s cubic-bezier(.3,1.5,.5,1), background .15s;}
+  .tk-chk svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;animation:tkDraw .3s .05s ease-out forwards;}
+  @keyframes tkDraw{to{stroke-dashoffset:0;}}
+  @keyframes tkLift{from{transform:rotate(0) scale(1);box-shadow:var(--tk-shadow);}to{transform:rotate(2deg) scale(1.04);box-shadow:0 18px 40px rgba(20,10,40,.28);}}
+  .tk-ghost{animation:tkLift .18s ease-out forwards;}
+  .tk-col{transition:background .2s, box-shadow .2s, transform .2s;}
+  .tk-col.drop{transform:scale(1.01);}
+  /* окно задачи: на компьютере увеличивается, на телефоне выезжает снизу */
+  @keyframes tkScrimIn{from{background:rgba(10,8,20,0);}}
+  @keyframes tkSheetIn{from{opacity:0;transform:translateY(10px) scale(.97);}}
+  .tk-scrim.entering{animation:tkScrimIn .22s ease-out;}
+  .tk-scrim.entering .tk-sheet{animation:tkSheetIn .26s cubic-bezier(.2,.9,.3,1.05);}
+  .tk-scrim.leaving{transition:background .18s;background:rgba(10,8,20,0);pointer-events:none;}
+  .tk-scrim.leaving .tk-sheet{transition:opacity .18s, transform .18s;opacity:0;transform:translateY(8px) scale(.98);}
+  @media (max-width:600px){
+    .tk-scrim{align-items:flex-end;padding:40px 0 0;}
+    .tk-sheet{border-radius:18px 18px 0 0;max-height:92vh;overflow-y:auto;padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));}
+    @keyframes tkSheetUp{from{transform:translateY(100%);}}
+    .tk-scrim.entering .tk-sheet{animation:tkSheetUp .32s cubic-bezier(.2,.9,.3,1);}
+    .tk-scrim.leaving .tk-sheet{transform:translateY(100%);opacity:1;transition:transform .2s ease-in;}
+  }
+  /* кнопка START/END: волна и кольцо смены */
+  .punch-wave{position:fixed;border-radius:50%;pointer-events:none;z-index:50;border:3px solid #1db954;}
+  .punch-wave.out{border-color:#e5484d;}
+  .punch-progress{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);transform:rotate(-90deg);pointer-events:none;}
+  .punch-progress circle{fill:none;stroke-width:2.5;}
+  .punch-progress .pp-track{stroke:var(--bg2);}
+  .punch-progress .pp-val{stroke:var(--green);stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1);}
+  /* новая ставка */
+  @keyframes rateUp{0%,100%{box-shadow:0 0 0 0 rgba(124,82,200,0);}30%{box-shadow:0 0 0 4px rgba(124,82,200,.35), 0 0 30px rgba(124,82,200,.45);}}
+  .kpi-box.rate-up{position:relative;animation:rateUp 1.6s ease-in-out 2;}
+  .rate-badge{position:absolute;top:8px;right:8px;font-size:10.5px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--p5),var(--p4));border-radius:20px;padding:2px 8px;animation:ntfBadge .4s cubic-bezier(.3,1.4,.5,1);}
+  .ux-confetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2000;}
+  /* заготовки при загрузке */
+  .skel-wrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+  @media (max-width:899px){ .skel-wrap{grid-template-columns:1fr;} .skel-col + .skel-col{display:none;} }
+  .skel-col{display:flex;flex-direction:column;gap:16px;}
+  .skel-card{background:var(--bg0);border:1px solid var(--bg2);border-radius:var(--radius-lg, 18px);padding:22px;display:flex;flex-direction:column;gap:12px;}
+  .skel-card i{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--bg2) 0%,var(--bg1) 45%,var(--bg2) 90%);background-size:200% 100%;animation:skel 1.3s ease-in-out infinite;}
+  .skel-card i.big{height:64px;border-radius:12px;}
+  @keyframes skel{from{background-position:120% 0;}to{background-position:-80% 0;}}
+  @media (prefers-reduced-motion: reduce){
+    .tab-ink,.tk-col,.punch-progress .pp-val{transition:none;}
+    .tk-flash,.tk-flash-done,.tk-ghost,.kpi-box.rate-up,.skel-card i,.tk-scrim.entering,.tk-scrim.entering .tk-sheet{animation:none !important;}
+  }
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -1883,7 +1942,10 @@
     <div class="top-user" id="topUser"></div>
     <button class="theme-btn" id="themeBtn" title="Сменить тему" style="position:absolute;top:12px;right:12px;">☀️</button>
   </header>
-  <main id="main"></main>
+  <main id="main"><div class="skel-wrap" aria-label="Загрузка" role="status">
+    <div class="skel-col"><div class="skel-card"><i style="width:40%"></i><i class="big"></i><i style="width:70%"></i></div><div class="skel-card"><i style="width:30%"></i><i></i><i style="width:85%"></i><i style="width:60%"></i></div></div>
+    <div class="skel-col"><div class="skel-card"><i style="width:45%"></i><i></i><i style="width:75%"></i></div><div class="skel-card"><i style="width:35%"></i><i class="big"></i></div></div>
+  </div></main>
 </div>
 <div id="toastHost" aria-live="polite"></div>
 <div id="tgNotifOverlay" onclick="if(event.target===this)closeTgNotif()">
@@ -2395,7 +2457,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.13';
+const APP_BUILD = '2026-10-03.14';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -4107,15 +4169,17 @@ function slotRoll(container) {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n));
   container.querySelectorAll('.kpi-box .value, .finance-box .value').forEach((el, idx) => {
+    if(el.children.length) return;   // внутри есть значки («фикс.») — не трогаем, иначе пропадут
     const finalText = el.textContent.trim();
     const match = finalText.match(/^(.*?)(\d(?:[\d\s]{0,18}\d)?)(.*)$/);
     if (!match) return;
     const target = parseInt(match[2].replace(/\s/g, ''), 10);
     if (isNaN(target)) return;
     const key = valueKey(el, idx, 'v');
-    const prev = shownValues[key];
+    let prev = shownValues[key];
     shownValues[key] = target;
-    if (reduce || prev === undefined || prev === target) return;
+    if (prev === undefined) prev = 0;   // первый показ — докручиваем от нуля
+    if (reduce || prev === target) return;
     const DURATION = 600, start = performance.now();
     const tick = (now) => {
       const t = Math.min((now - start) / DURATION, 1);
@@ -4134,9 +4198,10 @@ function animatePlanBarsIn(container) {
   (container || document).querySelectorAll('.plan-bar-fill').forEach((bar, idx) => {
     const target = parseFloat(bar.style.width) || 0;
     const key = valueKey(bar, idx, 'b');
-    const prev = shownBars[key];
+    let prev = shownBars[key];
     shownBars[key] = target;
-    if (reduce || prev === undefined || prev === target) return;
+    if (prev === undefined) prev = 0;   // первый показ — заполняется от нуля
+    if (reduce || prev === target) return;
     bar.style.transition = 'none';
     bar.style.width = prev + '%';
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -5429,7 +5494,7 @@ function _doRender(){
   else if(mode==='tasks')     html = renderTasksView();
   else                         html = renderAdminView();
   // Ничего не изменилось — DOM не трогаем: не сбрасываются прокрутка, фокус и раскрытые блоки
-  if(html === _lastHtml && viewKey === lastViewKey) return;
+  if(html === _lastHtml && viewKey === lastViewKey){ uxTabInk(); return; }
   _lastHtml = html;
   // Запоминаем прокрутку внутренних блоков и раскрытые <details>
   const innerScroll = {}, cnt = {};
@@ -5475,6 +5540,7 @@ function _doRender(){
     });
     main.querySelectorAll('details').forEach((d,i)=>{ if(openDetails[i]) d.open = true; });
   }
+  uxAfterRender();
   // обработчики событий навешаны один раз через делегирование (см. attachDelegatedHandlers),
   // поэтому после каждого render() их не нужно перевешивать заново — это и есть оптимизация
 }
@@ -5490,6 +5556,7 @@ function tickEmployeeClock(){
   if(!clockEl || !elapsedEl){ render(); return; } // структура не найдена — подстрахуемся полным рендером
   clockEl.textContent = fmtTime(Date.now());
   elapsedEl.textContent = fmtDuration(todayHoursFor(myEmployeeId));
+  uxPunchRing();
 }
 
 function renderEmployeeArea(){
@@ -5570,7 +5637,7 @@ function renderEmployeeDashboard(forId){
     const pctRaw = hasPlan ? num/den*100 : null;
     const pctShow = pctRaw!=null ? (Math.round(pctRaw*10)/10).toLocaleString('ru-RU') : null;
     const rate = currentRateFor(emp, num, den);
-    const nowBox = `<div class="kpi-box"><div class="label">Ставка сейчас</div><div class="value">${rate}%${fixed!=null?' <span class="kpi-tag">фикс.</span>':''}</div><div class="sub">${pctShow!=null ? 'выполнено ' + pctShow + '% плана' : 'фиксированная ставка'}</div></div>`;
+    const nowBox = `<div class="kpi-box"${!forId && fixed==null ? ` data-rate="${escapeHtml(emp.id)}|${viewMonth}|${rate}"` : ''}><div class="label">Ставка сейчас</div><div class="value">${rate}%${fixed!=null?' <span class="kpi-tag">фикс.</span>':''}</div><div class="sub">${pctShow!=null ? 'выполнено ' + pctShow + '% плана' : 'фиксированная ставка'}</div></div>`;
     let nextBox;
     if(fixed!=null) nextBox = `<div class="kpi-box"><div class="label">До следующей ставки</div><div class="value">—</div><div class="sub">ставка фиксированная</div></div>`;
     else {
@@ -5623,6 +5690,7 @@ function renderEmployeeDashboard(forId){
           <div class="punch-wrap">
             <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)}${empRoleLabel(emp)?' · '+escapeHtml(empRoleLabel(emp)):''} · ${checkedIn?'на смене':'не на смене'}</div>
             <div class="punch-ring ${checkedIn?'on-shift':''}">
+              ${checkedIn && !forId ? '<svg class="punch-progress" viewBox="0 0 100 100" aria-hidden="true"><title>Кольцо заполняется за 8 часов работы</title><circle class="pp-track" cx="50" cy="50" r="48" pathLength="1"/><circle class="pp-val" cx="50" cy="50" r="48" pathLength="1"/></svg>' : ''}
               <button class="punch-btn ${checkedIn?'ready-out':'ready-in'}" id="punchBtn">
                 ${checkedIn?'END':'START'}
                 <span class="sub" id="punchClock">${fmtTime(Date.now())}</span>
@@ -5644,7 +5712,7 @@ function renderEmployeeDashboard(forId){
           ${monthBar}
           ${dept.workOnly ? `${renderOsCard(emp, viewMonth)}` : `
           <div class="kpi-grid">${kpiBoxes}</div>
-          <div class="plan-bar-wrap">
+          <div class="plan-bar-wrap"${!forId && isCurrentMonth && den>0 && num>=den ? ` data-celebrate="${escapeHtml(emp.id)}:${viewMonth}"` : ''}>
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
             <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${ratioPct}%"></div></div>
           </div>`}
@@ -6077,8 +6145,9 @@ async function tkSetStatus(id, st){
   const t = tasks.find(x=>x.id===id);
   if(!t || !tkAccess(t)){ showToast('Эту задачу двигает тот, кому она назначена', 'error'); return; }
   if(t.status===st) return;
-  await tkUpdate(id, f=> tkApplyStatus(f, st));
+  const ok = await tkUpdate(id, f=> tkApplyStatus(f, st));
   renderNow(); tkRenderModal();
+  if(ok) uxTaskFlash(id, st);
 }
 
 // ── Отрисовка ──
@@ -6175,11 +6244,20 @@ function tkOpen(id, presetStatus){
   tkRenderModal();
   setTimeout(()=>{ const el = document.getElementById('tkTitle'); if(el && tkDraft && tkDraft._new) el.focus(); }, 30);
 }
-function tkClose(){ tkDraft = null; const m = document.getElementById('tkModal'); if(m) m.innerHTML = ''; }
+function tkClose(){
+  tkDraft = null;
+  const m = document.getElementById('tkModal'); if(!m) return;
+  const scrim = m.querySelector('.tk-scrim');
+  if(!scrim || uxCalm()){ m.innerHTML = ''; return; }
+  // окно уходит плавно; если за это время открыли другое — его не трогаем
+  scrim.classList.add('leaving');
+  setTimeout(()=>{ if(m.firstElementChild === scrim) m.innerHTML = ''; }, 200);
+}
 function tkRenderModal(){
   let host = document.getElementById('tkModal');
   if(!host){ host = document.createElement('div'); host.id = 'tkModal'; document.body.appendChild(host); }
   if(!tkDraft){ host.innerHTML = ''; return; }
+  const tkFirstOpen = !host.querySelector('.tk-scrim:not(.leaving)');   // анимация — только при открытии, не на каждой перерисовке
   // после сохранения подтягиваем свежую версию (статус, комментарии)
   if(!tkDraft._new){
     const live = tasks.find(x=>x.id===tkDraft.id);
@@ -6215,6 +6293,7 @@ function tkRenderModal(){
       <div class="tk-actions-r"><button class="btn secondary" data-tkclose="1">${ed ? 'Отмена' : 'Закрыть'}</button>${ed ? `<button class="btn" id="tkSaveBtn" ${tkBusy?'disabled':''}>${t._new?'Поставить задачу':'Сохранить'}</button>` : ''}</div>
     </div>
   </div></div>`;
+  if(tkFirstOpen){ const sc = host.querySelector('.tk-scrim'); if(sc) sc.classList.add('entering'); }
 }
 function tkCollect(){
   const g = id => document.getElementById(id);
@@ -6255,7 +6334,13 @@ function attachTaskHandlers(){
     if(el.closest('[data-tkgo]')){ mode = 'tasks'; viewEmpId = null; renderNow(); return; }
     if(el.closest('[data-tkopen]')){ tkOpen(el.closest('[data-tkopen]').dataset.tkopen); return; }
     const dn = el.closest('[data-tkdone]');
-    if(dn){ const t = tasks.find(x=>x.id===dn.dataset.tkdone); if(t) await tkSetStatus(t.id, t.status==='done' ? 'new' : 'done'); return; }
+    if(dn){ const t = tasks.find(x=>x.id===dn.dataset.tkdone);
+      if(t && t.status!=='done' && !uxCalm()){   // галочка «рисуется», строка вспыхивает — потом сохраняем
+        dn.classList.add('checking'); dn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+        const row = dn.closest('.tk-row'); if(row) row.classList.add('tk-flash-done');
+        await new Promise(r=>setTimeout(r, 380));
+      }
+      if(t) await tkSetStatus(t.id, t.status==='done' ? 'new' : 'done'); return; }
     const row = el.closest('[data-tkrow]'); if(row){ tkOpen(row.dataset.tkrow); return; }
     if(!el.closest('#tkModal')) return;
     if(el.dataset.tkclose){ tkClose(); return; }
@@ -9108,6 +9193,204 @@ function attachDelegatedHandlers(){
 
 }
 
+
+// =========================================================================
+// АНИМАЦИИ И СВАЙПЫ
+// Всё лёгкое и короткое; при «уменьшить движение» в системе — без движения.
+// =========================================================================
+function uxCalm(){ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
+function uxAnim(el, frames, opts){
+  if(!el || uxCalm() || !el.animate) return Promise.resolve();
+  try{ return el.animate(frames, Object.assign({fill:'none'}, opts)).finished.catch(()=>{}); }catch(e){ return Promise.resolve(); }
+}
+
+// ── Полоска под активной вкладкой переезжает, а не прыгает ──
+let uxInkReady = false;
+function uxTabInk(){
+  const box = document.querySelector('header .tabs'); if(!box) return;
+  const tab = box.querySelector('.tab.active');
+  let ink = box.querySelector('.tab-ink');
+  if(!tab || tab.style.display==='none' || box.style.display==='none'){ if(ink) ink.style.opacity = '0'; return; }
+  const cs = getComputedStyle(tab, '::after');
+  if(!cs || cs.content==='none'){ if(ink) ink.style.opacity = '0'; return; }
+  if(!ink){ ink = document.createElement('span'); ink.className = 'tab-ink'; box.appendChild(ink); }
+  const l = parseFloat(cs.left)||0, r = parseFloat(cs.right)||0, b = parseFloat(cs.bottom)||0, h = parseFloat(cs.height)||2;
+  const x = tab.offsetLeft + l, w = tab.offsetWidth - l - r, y = tab.offsetTop + tab.offsetHeight - b - h;
+  if(!uxInkReady || uxCalm()) ink.style.transition = 'none';
+  ink.style.width = w + 'px'; ink.style.height = h + 'px';
+  ink.style.transform = `translate(${x}px, ${y}px)`; ink.style.opacity = '1';
+  box.classList.add('has-ink');
+  if(!uxInkReady){ void ink.offsetWidth; uxInkReady = true; }
+  requestAnimationFrame(()=>{ ink.style.transition = ''; });
+}
+
+// ── Вкладки админки: подложка активной переезжает (FLIP) ──
+let uxAdminPrev = null;   // {id, x, y, w, h}
+function uxAdminPill(){
+  const box = document.querySelector('#main .admin-tabs'); if(!box) { uxAdminPrev = null; return; }
+  const tab = box.querySelector('.admin-tab.active'); if(!tab) return;
+  let pill = box.querySelector('.admin-pill');
+  if(!pill){ pill = document.createElement('span'); pill.className = 'admin-pill'; box.prepend(pill); }
+  box.classList.add('has-pill');
+  const now = {id:tab.dataset.adminTab, x:tab.offsetLeft, y:tab.offsetTop, w:tab.offsetWidth, h:tab.offsetHeight};
+  Object.assign(pill.style, {width:now.w+'px', height:now.h+'px', transform:`translate(${now.x}px, ${now.y}px)`});
+  const prev = uxAdminPrev; uxAdminPrev = now;
+  if(prev && prev.id !== now.id){
+    uxAnim(pill, [{transform:`translate(${prev.x}px, ${prev.y}px)`, width:prev.w+'px', height:prev.h+'px'},
+                  {transform:`translate(${now.x}px, ${now.y}px)`, width:now.w+'px', height:now.h+'px'}],
+           {duration:340, easing:'cubic-bezier(.3,1.2,.4,1)'});
+  }
+}
+
+// ── Задачи: вспышка карточки после смены статуса ──
+function uxTaskFlash(id, st){
+  requestAnimationFrame(()=>{
+    document.querySelectorAll(`[data-tkid="${CSS.escape(id)}"], [data-tkrow="${CSS.escape(id)}"]`).forEach(el=>{
+      el.classList.remove('tk-flash', 'tk-flash-done'); void el.offsetWidth;
+      el.classList.add(st==='done' ? 'tk-flash-done' : 'tk-flash');
+      setTimeout(()=>el.classList.remove('tk-flash', 'tk-flash-done'), 1200);
+    });
+  });
+}
+
+// ── Кнопка START/END: волна при нажатии, кольцо смены ──
+const UX_SHIFT_MS = 8 * 3600000;   // полный круг кольца — 8 часов работы
+function uxPunchWave(btn){
+  if(uxCalm()) return;
+  const r = btn.getBoundingClientRect(), out = btn.classList.contains('ready-out');
+  for(let k=0; k<2; k++){
+    const w = document.createElement('span'); w.className = 'punch-wave' + (out ? ' out' : '');
+    Object.assign(w.style, {left:r.left+'px', top:r.top+'px', width:r.width+'px', height:r.height+'px'});
+    document.body.appendChild(w);
+    uxAnim(w, [{transform:'scale(1)', opacity:.55}, {transform:'scale(1.9)', opacity:0}], {duration:900, delay:k*180, easing:'cubic-bezier(.2,.7,.3,1)', fill:'both'}).then(()=>w.remove());
+  }
+}
+function uxPunchRing(){
+  const c = document.querySelector('.punch-progress .pp-val'); if(!c || !myEmployeeId) return;
+  const p = Math.min(1, todayHoursFor(myEmployeeId) / UX_SHIFT_MS);
+  c.style.strokeDashoffset = String(Math.round((1 - p) * 1000) / 1000);
+}
+
+// ── Конфетти: план выполнен (раз в месяц) ──
+function uxConfetti(){
+  if(uxCalm()) return;
+  const cv = document.createElement('canvas'); cv.className = 'ux-confetti';
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr; document.body.appendChild(cv);
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  const colors = ['#7c52c8', '#9b74e0', '#bfa3f0', '#1db954', '#f59e0b', '#e5484d', '#ffffff'];
+  const parts = [];
+  for(let i=0; i<160; i++){
+    const left = i % 2 === 0, a = (left ? -60 : -120) * Math.PI / 180 + (Math.random() - .5) * .9;
+    const v = 9 + Math.random() * 9;
+    parts.push({x: left ? -10 : W + 10, y: H * .75, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: Math.random() * Math.PI,
+      vr: (Math.random() - .5) * .4, w: 6 + Math.random() * 6, h: 3 + Math.random() * 4, c: colors[i % colors.length]});
+  }
+  const t0 = performance.now();
+  const tick = now => {
+    const t = now - t0; ctx.clearRect(0, 0, W, H);
+    parts.forEach(p=>{ p.vy += .32; p.vx *= .985; p.vy *= .985; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.globalAlpha = Math.max(0, 1 - Math.max(0, t - 1800) / 700);
+      ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore(); });
+    if(t < 2500) requestAnimationFrame(tick); else cv.remove();
+  };
+  requestAnimationFrame(tick);
+}
+// Праздник и «новая ставка»: проверяется после каждой перерисовки (дёшево)
+function uxCelebrate(){
+  const main = document.getElementById('main'); if(!main) return;
+  const done = main.querySelector('[data-celebrate]');
+  if(done){
+    const k = 'dramify-confetti:' + done.dataset.celebrate;
+    let seen = true; try{ seen = !!localStorage.getItem(k); if(!seen) localStorage.setItem(k, '1'); }catch(e){}
+    if(!seen){ setTimeout(uxConfetti, 450); showToast('План месяца выполнен! 🎉', 'success'); }
+  }
+  main.querySelectorAll('[data-rate]').forEach(box=>{
+    const [emp, mk, rate] = box.dataset.rate.split('|'), k = 'dramify-rate:' + emp + ':' + mk;
+    let prev = null; try{ prev = localStorage.getItem(k); localStorage.setItem(k, rate); }catch(e){}
+    if(prev != null && Number(rate) > Number(prev)){
+      box.classList.add('rate-up');
+      if(!box.querySelector('.rate-badge')){ const b = document.createElement('span'); b.className = 'rate-badge'; b.textContent = 'Новая ставка!'; box.appendChild(b); }
+      setTimeout(()=>box.classList.remove('rate-up'), 4000);
+    }
+  });
+}
+
+// После каждой перерисовки
+function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(); }
+
+// ── Свайпы: телефон — пальцем, Mac — двумя пальцами по тачпаду ──
+function uxTabsList(){
+  if(mode==='admin' && adminUnlocked && !viewEmpId) return {kind:'admin', ids:[...document.querySelectorAll('#main .admin-tab')].map(t=>t.dataset.adminTab), cur:adminTab};
+  const tabs = [...document.querySelectorAll('header .tabs .tab')].filter(t=>t.style.display!=='none');
+  return {kind:'top', ids:tabs.map(t=>t.dataset.mode), cur:mode};
+}
+function uxBlocked(target){
+  if(viewEmpId || (typeof tkDrag!=='undefined' && tkDrag) || document.querySelector('#tkModal .tk-scrim:not(.leaving), #ntfPanel .ntf-panel, #modalHost.open')) return true;
+  if(document.body.classList.contains('auth-out')) return true;
+  return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable], .tk-ghost'));
+}
+// Элемент, который сам листается вбок (доска задач, таблицы) — свайп отдаём ему
+function uxScrollsX(target, dir){
+  for(let el = target; el && el !== document.body; el = el.parentElement){
+    if(el.scrollWidth > el.clientWidth + 2){
+      const ox = getComputedStyle(el).overflowX;
+      if(ox === 'auto' || ox === 'scroll'){
+        if(dir === 0) return true;
+        if(dir > 0 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2) return true;
+        if(dir < 0 && el.scrollLeft > 2) return true;
+      }
+    }
+  }
+  return false;
+}
+function uxSwipe(dir){   // dir: +1 — следующая вкладка, -1 — предыдущая
+  const L = uxTabsList(), i = L.ids.indexOf(L.cur), j = i + dir;
+  if(i < 0 || j < 0 || j >= L.ids.length){
+    // край — лёгкий «отскок», чтобы было понятно, что дальше вкладок нет
+    uxAnim(document.getElementById('main'), [{transform:'translateX(0)'}, {transform:`translateX(${-dir*14}px)`}, {transform:'translateX(0)'}], {duration:260, easing:'ease-out'});
+    return;
+  }
+  if(L.kind === 'admin') adminTab = L.ids[j]; else { mode = L.ids[j]; viewEmpId = null; }
+  const main = document.getElementById('main');
+  renderNow();
+  if(L.kind === 'admin'){   // экран админки тот же — анимацию появления делаем сами
+    const pane = main.querySelector('.admin-pane.active');
+    uxAnim(pane, [{transform:`translateX(${dir*28}px)`, opacity:0}, {transform:'none', opacity:1}], {duration:300, easing:'cubic-bezier(.2,.8,.2,1)'});
+  } else uxAnim(main, [{transform:`translateX(${dir*28}px)`}, {transform:'none'}], {duration:300, easing:'cubic-bezier(.2,.8,.2,1)'});
+}
+function attachUxHandlers(){
+  // телефон
+  let sw = null;
+  document.addEventListener('touchstart', e=>{
+    if(e.touches.length !== 1){ sw = null; return; }
+    const t = e.touches[0];
+    if(t.clientX < 24 || t.clientX > innerWidth - 24 || uxBlocked(e.target)){ sw = null; return; }   // у края — жест «назад» системы
+    sw = {x:t.clientX, y:t.clientY, at:Date.now(), target:e.target};
+  }, {passive:true});
+  document.addEventListener('touchend', e=>{
+    if(!sw) return;
+    const t = e.changedTouches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y, s = sw; sw = null;
+    if(Date.now() - s.at > 700 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return;
+    const dir = dx < 0 ? 1 : -1;
+    if(uxScrollsX(s.target, dx < 0 ? 1 : -1) || uxBlocked(s.target)) return;
+    uxSwipe(dir);
+  }, {passive:true});
+  document.addEventListener('touchcancel', ()=>{ sw = null; }, {passive:true});
+  // тачпад: копим сдвиг вбок за один жест; инерция после переключения не листает дальше
+  let acc = 0, idle = null, locked = false;
+  window.addEventListener('wheel', e=>{
+    if(e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5){ return; }
+    clearTimeout(idle); idle = setTimeout(()=>{ acc = 0; locked = false; }, 220);
+    if(locked || uxBlocked(e.target) || uxScrollsX(e.target, e.deltaX > 0 ? 1 : -1)) return;
+    acc += e.deltaX;
+    if(Math.abs(acc) > 140){ locked = true; const d = acc > 0 ? 1 : -1; acc = 0; uxSwipe(d); }
+  }, {passive:true});
+  // волна от кнопки START/END
+  document.addEventListener('pointerdown', e=>{ const b = e.target.closest && e.target.closest('#punchBtn'); if(b && !viewEmpId) uxPunchWave(b); });
+  window.addEventListener('resize', ()=>{ uxInkReady = false; uxTabInk(); uxAdminPrev = null; uxAdminPill(); });
+}
+
 let sheetSyncTimer = null;
 
 let orderTimerHandle = null;
@@ -9116,6 +9399,7 @@ let orderTimerHandle = null;
   attachDelegatedHandlers();
   attachTaskHandlers();
   attachNtfHandlers();
+  attachUxHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
