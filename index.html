@@ -2199,7 +2199,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.2';
+const APP_BUILD = '2026-10-03.3';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -6740,7 +6740,11 @@ function osEmpMap(){
 function osHeaderIdx(hl){ return hl.findIndex(h=>{ const t = String(h||'').replace(/\s+/g,' ').trim(); return t==='ос' || t==='os'; }); }
 // «Сдали» — только точное значение: «не сдали» сюда попадать не должно
 function osIsDone(v){ const t = String(v||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); return t==='сдали' || t==='сдан' || t==='сдано' || t==='сдана'; }
-function osNameFromRow(row, col){ return col>=0 ? String(row[col]==null ? '' : row[col]).trim() : ''; }
+// Невидимые символы (нулевой пробел и т.п.) делают «пустую» ячейку непустой — чистим
+function osClean(v){ return String(v==null ? '' : v).replace(/[\u200b-\u200f\u2060\ufeff\u202a-\u202e]/g, '').replace(/\u00a0/g, ' ').trim(); }
+// Похоже ли на имя человека: буквы, 1–3 слова, без цифр. «6» или «скинул сценарий и персов» — это заметки, а не имя.
+function osLooksLikeName(t){ t = osClean(t); return t.length > 0 && t.length <= 40 && /^[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё.'’\-]*(\s+[A-Za-zА-Яа-яЁё.'’\-]+){0,2}$/.test(t); }
+function osNameFromRow(row, col){ return col>=0 ? osClean(row[col]) : ''; }
 
 // Лист с шапкой «где-то в первых строках»: ищем строку, где есть все нужные подписи
 async function osLoadGrid(url, needles){
@@ -6758,6 +6762,59 @@ async function osLoadGrid(url, needles){
   }
   if(best < 0) return { rows: rows, header: -1 };
   return { rows: rows.slice(best), header: best };
+}
+
+// Лист продаж бывает двух видов:
+//  • с шапкой («Имя», «Сумма», «Статус», … «ОС») — как «Отчёт по продажам <Месяц>»;
+//  • вкладка «ОС»: шапки нет, сверху название блока («ВЗЯТЬ В РАБОТУ»…), потом заказы, все месяцы подряд.
+async function osLoadSalesGrid(url){
+  let rows = null;
+  try{
+    rows = await fetchSheetRows(url, true, true);
+    if(rows && rows.length && /^\s*</.test(String((rows[0]||[])[0]||''))) rows = null;   // страница входа вместо таблицы
+  }catch(e){ rows = null; }
+  if(!rows || rows.length < 1) rows = await fetchSheetRows(url);
+  rows = (rows||[]).map(r=> (r||[]).map(c=> String(c==null ? '' : c)));
+  for(let i=0; i<Math.min(rows.length, 15); i++){
+    const hl = rows[i].map(h=>osClean(h).toLowerCase());
+    if(hl.some(h=>h.includes('имя')) && hl.some(h=>h.includes('сумма') || h.includes('дата') || h.includes('статус'))) return { mode:'header', rows: rows.slice(i) };
+  }
+  return { mode:'tab', rows: rows };
+}
+
+const OS_TAB_STATUS = ['взять в работу', 'в работе', 'ждём оплату', 'ждем оплату', 'успешно завершено'];
+// Вкладка «ОС» без шапки. Колонки как в скрипте: A имя, B дата оформления, F сумма, K статус, S имя ОС.
+// Месяц — по дате оформления (B): во вкладке все месяцы подряд.
+function parseOsTab(rows, mk, empMap){
+  const out = { per:{}, unassigned:{count:0, sum:0, list:[]}, unknown:{}, badSums:0, badDates:0, rows:0, warn:'', tab:true };
+  const orders = rows.filter(r => OS_TAB_STATUS.indexOf(osClean((r||[])[10]).toLowerCase()) >= 0 && osClean((r||[])[0]));
+  if(!orders.length){ out.warn = 'Во вкладке не нашёл заказов (ожидаю имя в колонке A, дату оформления в B, статус в K — как во вкладке «ОС»)'; return out; }
+  const okDate = orders.filter(r => sheetDateMonth(osClean(r[1]))).length;
+  const okSum = orders.filter(r => /\d/.test(String(r[5]==null ? '' : r[5]))).length;
+  if(okDate / orders.length < 0.7 || okSum / orders.length < 0.7){ out.warn = 'Структура вкладки не похожа на «ОС»: ожидаю дату оформления в колонке B и сумму в F'; return out; }
+  // Имя ОС — колонка S. Скрытые колонки Q и R (лист и строка) в выгрузке бывают и не бывают,
+  // поэтому S то 19-я, то 17-я колонка. Определяем по Q: там название листа «Отчёт по продажам …».
+  const hiddenExported = orders.some(r => /^отч[её]т по продажам/i.test(osClean(r[16])));
+  let osCol = hiddenExported ? 18 : 16;
+  const hits = c => orders.filter(r => empMap[normName(osClean(r[c]))]).length;
+  const alt = osCol === 18 ? 16 : 18;
+  if(hits(osCol) === 0 && hits(alt) > 0) osCol = alt;
+  for(const r of orders){
+    const rowMk = sheetDateMonth(osClean(r[1]));
+    if(!rowMk){ out.badDates++; continue; }
+    if(rowMk !== mk) continue;
+    const rawSum = String(r[5]==null ? '' : r[5]).trim(), gross = parseNum(rawSum);
+    if(rawSum && !/\d/.test(rawSum)){ out.badSums++; continue; }
+    if(gross <= 0) continue;                                      // без суммы — не заказ
+    out.rows++;
+    const who = osClean(r[osCol]);
+    const id = empMap[normName(who)];
+    if(id){ const p = out.per[id] || (out.per[id] = { accepted:0, volume:0 }); p.accepted++; p.volume += gross; continue; }
+    if(who && osLooksLikeName(who)){ out.unknown[who] = (out.unknown[who]||0) + 1; continue; }
+    out.unassigned.count++; out.unassigned.sum += gross;          // пусто или заметка вместо имени — ОС не выбран
+    if(out.unassigned.list.length < 30) out.unassigned.list.push({ name: osClean(r[0]) || '—', date: osClean(r[1]), sum: gross });
+  }
+  return out;
 }
 
 function parseOsSales(rows, mk, wholeTab, empMap){
@@ -6852,16 +6909,17 @@ async function syncOsData(mk, silent){
       [K.sales, K.ups, K.react].forEach((k, i)=>{ const v = got[i]; if(v && typeof v === 'object' && !Array.isArray(v)) k.set(Object.assign({}, k.get(), v)); });
     }catch(e){}
     const empMap = osEmpMap();
-    // 1) лист продаж: колонка «ОС». Берём из ТАБЛИЦЫ ОС; если ссылка не задана — из листов ТО/ОП
-    const ownUrl = (osSalesUrls[mk]||'').trim();
+    // 1) лист продаж: колонка «ОС». Источник по порядку: ссылка на месяц → общая ссылка
+    //    «на все месяцы» (вкладка «ОС») → листы ТО/ОП из раздела Google Таблица
+    const ownUrl = (osSalesUrls[mk]||'').trim(), allUrl = (osSalesUrls['*']||'').trim();
     const sdept = getSheetUrl('to', mk) ? 'to' : (getSheetUrl('op', mk) ? 'op' : '');
-    const salesUrl = ownUrl || (sdept ? getSheetUrl(sdept, mk) : '');
+    const salesUrl = ownUrl || allUrl || (sdept ? getSheetUrl(sdept, mk) : '');
     if(salesUrl){
       P.link.sales = true;
       try{
-        const rows = await fetchLedgerRows(salesUrl);
-        const whole = ownUrl ? osSalesDedicated(ownUrl, mk) : isDedicatedTab(sdept, mk);
-        P.sales = parseOsSales(rows, mk, whole, empMap);
+        const g = await osLoadSalesGrid(salesUrl);
+        const whole = ownUrl ? osSalesDedicated(ownUrl, mk) : (allUrl ? false : isDedicatedTab(sdept, mk));
+        P.sales = g.mode === 'header' ? parseOsSales(g.rows, mk, whole, empMap) : parseOsTab(g.rows, mk, empMap);
       }catch(e){ P.err.sales = 'Не получилось прочитать лист продаж: ' + e.message; }
     } else { P.sales = null; }
     // 2) лист апсейлов
@@ -6918,13 +6976,16 @@ function renderOsAlerts(mk){
   else if(P.err.sales) out.push(['amber', escapeHtml(P.err.sales)]);
   else if(P.sales && P.sales.warn) out.push(['amber', escapeHtml(P.sales.warn)]);
   if(P.sales && !P.sales.warn){
-    const un = P.sales.unassigned;
+    const un = P.sales.unassigned, cur = (mk === currentMonthKey());
     if(un.count){
       const items = un.list.map(x=>'<li>' + escapeHtml(x.name) + (x.date ? ' · ' + escapeHtml(x.date) : '') + (x.sum ? ' · ' + fmtMoney(x.sum) : '') + '</li>').join('');
-      out.push(['bad', '<b>Заказы без ОС: ' + un.count + '</b> на ' + fmtMoney(un.sum) + '. Выберите ОС в таблице (колонка «ОС»).' +
-        '<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--ink3);font-size:12px;">Показать заказы</summary><ul>' + items + (un.count > un.list.length ? '<li>… и ещё ' + (un.count - un.list.length) + '</li>' : '') + '</ul></details>']);
+      const more = '<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--ink3);font-size:12px;">Показать заказы</summary><ul>' + items + (un.count > un.list.length ? '<li>… и ещё ' + (un.count - un.list.length) + '</li>' : '') + '</ul></details>';
+      out.push(cur
+        ? ['bad', '<b>Заказы без ОС: ' + un.count + '</b> на ' + fmtMoney(un.sum) + '. Выберите ОС в таблице (колонка «ОС»).' + more]
+        : ['info', 'Не привязаны к ОС (прошлый месяц): ' + un.count + ' на ' + fmtMoney(un.sum) + '.' + more]);
     }
     if(P.sales.badSums) out.push(['amber', 'Лист продаж: ' + P.sales.badSums + ' ' + anPlural(P.sales.badSums, 'строка', 'строки', 'строк') + ' с непонятной суммой — не учтено.']);
+    if(P.sales.badDates) out.push(['amber', 'Лист продаж: ' + P.sales.badDates + ' ' + anPlural(P.sales.badDates, 'строка', 'строки', 'строк') + ' без понятной даты оформления — не учтено.']);
     const note = osUnknownNote(P.sales.unknown, 'Лист продаж'); if(note) out.push(['amber', note]);
   }
   if(!P.link.ups) out.push(['info', 'Лист апсейлов не подключён — апсейл появится, когда админ добавит ссылку.']);
@@ -6969,31 +7030,42 @@ function renderOsCard(emp, mk){
 function renderOsLinkGroup(kind){
   const K = osKinds()[kind], urls = K.get();
   const META = {
-    sales: { title:'Таблица ОС · отчёт по продажам', hint:'колонка «ОС»', ph:'Ссылка на вкладку «Отчёт по продажам <Месяц>» из таблицы ОС',
-             note:'Это таблица ОС, не та, откуда берём ТО и ОП. Нужна вкладка «Отчёт по продажам» нужного месяца (в ней колонка «ОС»). Если ссылку не задать, колонку «ОС» поищем в листах «ТО» и «ОП» из раздела Google Таблица.' },
+    sales: { title:'Таблица ОС · отчёт по продажам', hint:'колонка «ОС»', ph:'Ссылка на вкладку «ОС» или «Отчёт по продажам <Месяц>»',
+             note:'Таблица ОС — не та, откуда берём ТО и ОП. Проще всего вставить <b>одну ссылку на вкладку «ОС»</b> в верхнее поле: в ней все месяцы подряд, месяц берётся по дате оформления заказа. Ссылку на отдельный месяц (например, на вкладку «Отчёт по продажам Октябрь») можно указать ниже — она важнее общей. Если не задано ничего, колонку «ОС» поищем в листах «ТО» и «ОП».' },
     ups:   { title:'Лист апсейлов', hint:'колонки «Сумма», «Сдали/не сдали», «Чей»', ph:'Ссылка на вкладку месяца', note:'' },
     react: { title:'Лист видеореакций', hint:'каждая строка — одна видеореакция, колонка «Чей»', ph:'Ссылка на вкладку месяца', note:'' },
   }[kind];
+  const infoFor = (P, mk) => {
+    const part = P ? P[kind] : null, err = P ? P.err[kind] : '';
+    if(err) return err;
+    if(part && part.warn) return part.warn;
+    if(part && kind==='sales') return (part.tab ? 'Из вкладки «ОС»' : 'Из листа продаж') + ': заказов за ' + monthLabel(mk).toLowerCase() + ' — ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '') + (part.badDates ? ' · без даты: ' + part.badDates : '');
+    if(part && kind==='ups') return 'Строк с данными: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
+    if(part) return 'Видеореакций: ' + part.rows;
+    return '';
+  };
+  const allRow = kind !== 'sales' ? '' : (() => {
+    const url = urls['*'] || '', P = osParts[activeMonth], busy = !!osSyncing[activeMonth], info = infoFor(P, activeMonth);
+    return `<div style="margin-top:12px;border:1px solid var(--p5);border-radius:10px;padding:12px 16px 14px;">
+        <div style="font-weight:600;display:flex;align-items:center;gap:8px;"><span style="flex:1;">Одна ссылка на все месяцы</span>${url ? '<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>' : ''}</div>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" class="${K.cls}" data-month="*" value="${escapeHtml(url)}" placeholder="Ссылка на вкладку «ОС»">
+          <button class="btn small os-link-btn ${busy?'secondary':''}" data-kind="sales" data-month="*" ${busy?'disabled':''}>${busy?'Считаю…':'Обновить'}</button>
+        </div>
+        ${info && url ? `<div class="hint" style="margin-top:6px;">${escapeHtml(info)}</div>` : ''}
+      </div>`;
+  })();
   return `<details class="settings-group">
       <summary>${META.title}<span class="group-hint">ОС · ${META.hint}</span></summary>
       <div class="group-body">
-      <div class="hint" style="margin-top:0;">${META.note ? META.note + '<br>' : ''}Отдельная ссылка на каждый месяц: откройте нужную вкладку и скопируйте адрес целиком (в нём должно быть <b>gid=…</b>). Доступ к таблице — «Все, у кого есть ссылка», роль «Читатель».</div>
+      <div class="hint" style="margin-top:0;">${META.note ? META.note + '<br>' : ''}Откройте нужную вкладку и скопируйте адрес целиком (в нём должно быть <b>gid=…</b>). Доступ к таблице — «Все, у кого есть ссылка», роль «Читатель».</div>
+      ${allRow}
       ${Object.keys(kpiData).sort().reverse().map(mk => {
-        const url = urls[mk] || '';
-        const P = osParts[mk];
-        const busy = !!osSyncing[mk];
-        const part = P ? P[kind] : null;
-        const err = P ? P.err[kind] : '';
-        let info = '';
-        if(err) info = err;
-        else if(part && part.warn) info = part.warn;
-        else if(part && kind==='sales') info = 'Заказов в листе: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
-        else if(part && kind==='ups') info = 'Строк с данными: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
-        else if(part) info = 'Видеореакций: ' + part.rows;
+        const url = urls[mk] || '', P = osParts[mk], busy = !!osSyncing[mk], info = infoFor(P, mk);
         return `
         <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${mk===editingMonth?'open':''}>
           <summary style="padding:12px 16px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;">
-            <span style="flex:1;">${monthLabel(mk)}</span>
+            <span style="flex:1;">${monthLabel(mk)}${kind==='sales' ? ' <span style="font-weight:400;font-size:11px;color:var(--ink3);">· отдельная ссылка, необязательно</span>' : ''}</span>
             ${url ? `<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>` : ''}
           </summary>
           <div style="padding:0 16px 16px;">
@@ -7001,7 +7073,7 @@ function renderOsLinkGroup(kind){
               <input type="text" class="${K.cls}" data-month="${mk}" value="${escapeHtml(url)}" placeholder="${escapeHtml(META.ph)}">
               <button class="btn small os-link-btn ${busy?'secondary':''}" data-kind="${kind}" data-month="${mk}" ${busy?'disabled':''}>${busy?'Считаю…':'Обновить'}</button>
             </div>
-            ${info ? `<div class="hint" style="margin-top:6px;">${escapeHtml(info)}</div>` : ''}
+            ${info && (url || (kind==='sales' && urls['*'])) ? `<div class="hint" style="margin-top:6px;">${escapeHtml(info)}</div>` : ''}
             ${P && url ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(P.at)}</div>` : ''}
           </div>
         </details>`;
@@ -7859,7 +7931,7 @@ function attachDelegatedHandlers(){
       const store = K.get();
       if(input) store[mk] = input.value.trim();
       { const m = await saveMerged(K.key, store, [[mk]]); if(m) K.set(m); else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }
-      await syncOsData(mk);
+      await syncOsData(mk === '*' ? activeMonth : mk);
       return;
     }
     if(el.closest('#osRefreshBtn')){ await syncOsData(el.closest('#osRefreshBtn').dataset.month); return; }
