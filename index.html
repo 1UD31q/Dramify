@@ -2199,7 +2199,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.3';
+const APP_BUILD = '2026-10-03.4';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -6967,8 +6967,11 @@ function osUnknownNote(map, where){
   if(!names.length) return '';
   return where + ': имя не найдено среди сотрудников ОС — ' + names.map(n=>'«' + escapeHtml(n) + '» (' + map[n] + ')').join(', ') + '. Проверьте написание (регистр и точка не важны).';
 }
-// Предупреждения и «заказы без ОС» — для карточки ОС и сводки админа
-function renderOsAlerts(mk){
+// Предупреждения и «заказы без ОС».
+// staffView=true — карточка ОС: только «Заказы без ОС». Технические сообщения
+// (лист не прочитался, строки без даты, непонятные суммы, неизвестные имена)
+// — только админу в сводке, в карточке ОС их не показываем.
+function renderOsAlerts(mk, staffView){
   const P = osParts[mk];
   if(!P) return '';
   const out = [];
@@ -7002,7 +7005,8 @@ function renderOsAlerts(mk){
     if(P.react.warn) out.push(['amber', escapeHtml(P.react.warn)]);
     const note = osUnknownNote(P.react.unknown, 'Лист видеореакций'); if(note) out.push(['amber', note]);
   }
-  return out.map(a=>'<div class="os-alert ' + a[0] + '">' + a[1] + '</div>').join('');
+  const shown = staffView ? out.filter(a=> a[0]==='bad' || a[0]==='info' && /^Не привязаны к ОС/.test(a[1])) : out;
+  return shown.map(a=>'<div class="os-alert ' + a[0] + '">' + a[1] + '</div>').join('');
 }
 // Карточка самого ОС (и админа, когда он смотрит карточку)
 function renderOsCard(emp, mk){
@@ -7017,14 +7021,14 @@ function renderOsCard(emp, mk){
     grid = '<div class="kpi-grid">' +
       box('Принято заказов', salesOk ? m.accepted : '—', salesOk ? '' : 'нет данных листа продаж') +
       box('Объём клиентов (V)', salesOk ? fmtMoney(m.volume) : '—', salesOk ? 'сумма принятых заказов' : '') +
-      box('Апсейл сдан', upsOk ? fmtMoney(m.upsDone) : '—', upsOk ? '' : 'лист не подключён') +
+      box('Апсейл сдан', upsOk ? fmtMoney(m.upsDone) : '—', upsOk ? '' : (P.link.ups ? 'нет данных' : 'лист не подключён')) +
       box('Апсейл ожидает', upsOk ? fmtMoney(m.upsPending) : '—', upsOk ? 'не сдали или без отметки' : '') +
-      box('Видеореакции', reactOk ? m.reactions : '—', reactOk ? '' : 'лист не подключён') +
+      box('Видеореакции', reactOk ? m.reactions : '—', reactOk ? '' : (P.link.react ? 'нет данных' : 'лист не подключён')) +
       '</div>';
   }
   const refresh = '<div class="kpi-refresh"><span>' + (busy ? 'Обновляю…' : (P ? 'обновлено в ' + fmtTime(P.at) : 'ещё не обновлялось')) + '</span>' +
     '<button class="att-btn" id="osRefreshBtn" data-month="' + mk + '" ' + (busy ? 'disabled' : '') + '>Обновить сейчас</button></div>';
-  return grid + renderOsAlerts(mk) + refresh;
+  return grid + renderOsAlerts(mk, true) + refresh;
 }
 
 function renderOsLinkGroup(kind){
