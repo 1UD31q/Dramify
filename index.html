@@ -287,6 +287,34 @@
   .tk-strip b{display:block;font-size:14px;}
   .tk-strip span{font-size:12.5px;color:var(--ink3);}
   .tk-strip em{font-style:normal;color:var(--rust-dark);font-weight:600;}
+  /* ── Уведомления ── */
+  .ntf-bell{position:relative;width:34px;height:34px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.14);background:transparent;color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s;}
+  .ntf-bell:hover,.ntf-bell.on{background:rgba(255,255,255,.1);color:#fff;}
+  .ntf-badge{position:absolute;top:-4px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e5484d;color:#fff;font:700 10.5px/18px var(--font);text-align:center;box-shadow:0 0 0 2px #131317;}
+  .ntf-scrim{position:fixed;inset:0;z-index:950;}
+  .ntf-panel{position:fixed;top:66px;right:24px;z-index:951;width:380px;max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 90px));display:flex;flex-direction:column;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;animation:ntfIn .16s ease-out;}
+  @keyframes ntfIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .ntf-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;font-size:15px;}
+  .ntf-head-r{display:flex;align-items:center;gap:4px;}
+  .ntf-snd{border:1px solid var(--bg3);background:var(--bg1);color:var(--ink2);border-radius:20px;padding:4px 10px;font:12px var(--font);cursor:pointer;}
+  .ntf-snd:hover{border-color:var(--p3);}
+  .ntf-x{border:0;background:none;color:var(--ink3);font-size:15px;cursor:pointer;padding:4px 6px;border-radius:6px;}
+  .ntf-x:hover{background:var(--bg1);}
+  .ntf-ask{margin:0 12px 8px;border:1px dashed var(--p3);background:var(--bg1);color:var(--ink2);border-radius:10px;padding:9px 12px;font:12.5px/1.4 var(--font);text-align:left;cursor:pointer;}
+  .ntf-ask:hover{border-color:var(--p5);}
+  .ntf-list{overflow-y:auto;padding:0 6px 8px;}
+  .ntf-item{display:flex;gap:10px;align-items:flex-start;width:100%;border:0;background:none;text-align:left;padding:10px;border-radius:10px;cursor:pointer;font:inherit;color:inherit;position:relative;}
+  .ntf-item:hover{background:var(--bg1);}
+  .ntf-item.unread{background:rgba(124,82,200,.09);}
+  .ntf-item.unread::after{content:'';position:absolute;right:10px;top:16px;width:7px;height:7px;border-radius:50%;background:var(--p5);}
+  .ntf-ico{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:var(--bg2);color:var(--ink2);}
+  .ntf-ico.new{background:var(--p6);color:#fff;} .ntf-ico.done{background:var(--green);color:#fff;} .ntf-ico.due{background:var(--amber);color:#fff;}
+  .ntf-body{display:flex;flex-direction:column;gap:2px;min-width:0;padding-right:12px;}
+  .ntf-text{font-size:13px;color:var(--ink2);line-height:1.35;overflow-wrap:anywhere;}
+  .ntf-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.35;overflow-wrap:anywhere;}
+  .ntf-time{font-size:11.5px;color:var(--ink3);}
+  .ntf-empty{padding:18px 12px 22px;font-size:13px;color:var(--ink3);line-height:1.5;}
+  @media (max-width:899px){ .ntf-bell{width:32px;height:32px;} .ntf-panel{top:calc(56px + env(safe-area-inset-top, 0px));right:16px;left:16px;width:auto;max-width:none;} }
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2329,7 +2357,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.7';
+const APP_BUILD = '2026-10-03.9';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2691,7 +2719,7 @@ async function pollSharedData(){
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
     if(freshPlanOv && typeof freshPlanOv === 'object') planOverrides = freshPlanOv;
-    if(Array.isArray(freshTasks)) tasks = freshTasks;
+    if(Array.isArray(freshTasks)){ tasks = freshTasks; ntfCheck(); }
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
@@ -5308,7 +5336,7 @@ function renderTopUser(){
     sub = email;
   }
   const ava = (String(name).trim()[0] || '?').toUpperCase();
-  box.innerHTML = '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
+  box.innerHTML = ntfBellHtml() + '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
     '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div>' +
     '<button type="button" class="tu-out" id="topLogoutBtn">Выйти</button>';
 }
@@ -6258,6 +6286,205 @@ function attachTaskHandlers(){
     tkOpen(d.id);
   });
   document.addEventListener('pointercancel', ()=>{ if(tkDrag){ if(tkDrag.ghost) tkDrag.ghost.remove(); tkDrag = null; renderNow(); } });
+}
+
+// =========================================================================
+// УВЕДОМЛЕНИЯ
+// Отдельно ничего не хранится: события берутся из самих задач — их истории
+// (hist) и комментариев (cm). Мне приходит: новая задача, правка задачи,
+// комментарий — по задачам, где я исполнитель или автор; автору — «взял(а)
+// в работу» / «выполнил(а)»; исполнителю — «срок сегодня» по открытым задачам.
+// Что уже просмотрено, помнит этот браузер. Пока сайт открыт (даже свёрнут
+// во вкладке) — всплывает сообщение и системное уведомление телефона/компьютера.
+// =========================================================================
+let ntfOpen = false;
+let ntfKnown = null;          // id событий, о которых уже сообщили (null — ещё не было первой проверки)
+let ntfHiddenTimer = null;
+const NTF_DAYS = 14;
+
+function ntfSeenKey(){ return 'dramify-ntf-seen:' + (tkMe() || ''); }
+function ntfSeenAt(){
+  try{
+    const v = Number(localStorage.getItem(ntfSeenKey()));
+    if(v) return v;
+  }catch(e){}
+  return Date.now() - 2 * 864e5;   // впервые: новыми считаем события за последние двое суток
+}
+function ntfMarkSeen(){ try{ localStorage.setItem(ntfSeenKey(), String(Date.now())); }catch(e){} }
+
+function ntfEvents(){
+  const me = tkMe(); if(!me) return [];
+  const since = Date.now() - NTF_DAYS * 864e5, out = [];
+  const name = id => tkName(id);
+  tasks.forEach(t=>{
+    const mine = t.who===me, author = t.by===me;
+    if(!mine && !author) return;
+    (t.hist||[]).forEach((h, i)=>{
+      if(!h || h.who===me || !h.at || h.at < since) return;
+      const txt = String(h.text||'');
+      let what = null, kind = 'task';
+      if(mine && txt==='поставил(а) задачу') { what = 'поставил(а) вам задачу'; kind = 'new'; }
+      else if(mine && txt==='изменил(а) задачу') what = 'изменил(а) задачу';
+      else if(author && (txt==='→ Готово' || txt.indexOf('выполнено')===0)) { what = 'выполнил(а) задачу'; kind = 'done'; }
+      else if(author && txt==='→ В работе') what = 'взял(а) в работу';
+      if(what) out.push({id:'h:'+t.id+':'+i+':'+h.at, at:h.at, task:t.id, kind, who:h.who, text:`${name(h.who)} ${what}`, title:t.title});
+    });
+    (t.cm||[]).forEach((c, i)=>{
+      if(!c || c.who===me || !c.at || c.at < since) return;
+      out.push({id:'c:'+t.id+':'+i+':'+c.at, at:c.at, task:t.id, kind:'cm', who:c.who, text:`${name(c.who)}: «${String(c.text||'').slice(0,120)}»`, title:t.title});
+    });
+    // срок сегодня — одно напоминание в день, в начале рабочего дня
+    if(mine && t.status!=='done' && t.due && tkDiff(t.due)===0){
+      const d = tkDate(t.due); d.setHours(9, 0, 0, 0);
+      if(Date.now() >= d.getTime() && !(t.createdAt >= d.getTime())) out.push({id:'d:'+t.id+':'+t.due, at:d.getTime(), task:t.id, kind:'due', text:'Срок сегодня' + (t.time ? ' до ' + t.time : ''), title:t.title});
+    }
+  });
+  return out.sort((a,b)=>b.at-a.at).slice(0, 50);
+}
+// ── Звук ──
+// Короткий двойной сигнал без файлов (Web Audio). Браузер разрешает звук только
+// после первого нажатия на странице — поэтому «будим» звук при первом клике.
+let ntfAudio = null;
+function ntfSoundOn(){ try{ return localStorage.getItem('dramify-ntf-sound') !== 'off'; }catch(e){ return true; } }
+function ntfAudioCtx(){
+  if(!ntfAudio){ const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null; ntfAudio = new AC(); }
+  if(ntfAudio.state === 'suspended') ntfAudio.resume().catch(()=>{});
+  return ntfAudio;
+}
+function ntfBeep(){
+  if(!ntfSoundOn()) return;
+  const ctx = ntfAudioCtx(); if(!ctx || ctx.state !== 'running') return;
+  const t0 = ctx.currentTime;
+  [[880, 0], [1320, 0.13]].forEach(([f, d])=>{
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t0 + d);
+    g.gain.exponentialRampToValueAtTime(0.18, t0 + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.35);
+    o.connect(g).connect(ctx.destination); o.start(t0 + d); o.stop(t0 + d + 0.4);
+  });
+}
+function ntfUnread(){ const s = ntfSeenAt(); return ntfEvents().filter(e=>e.at > s); }
+
+// Вызывается после каждой подгрузки задач: сообщает о новом
+function ntfCheck(){
+  if(!authSession || !tkMe()) return;
+  const ev = ntfEvents(), s = ntfSeenAt();
+  if(ntfKnown === null){   // первая проверка после входа — одно общее сообщение вместо пачки
+    ntfKnown = new Set(ev.map(e=>e.id));
+    const n = ev.filter(e=>e.at > s).length;
+    if(n && document.visibilityState === 'visible') showToast(`Новых уведомлений: ${n} — нажмите на колокольчик`, 'success');
+    ntfRenderBell(); return;
+  }
+  const fresh = ev.filter(e=>!ntfKnown.has(e.id) && e.at > s);
+  ev.forEach(e=>ntfKnown.add(e.id));
+  if(fresh.length){
+    const top = fresh[0];
+    const msg = fresh.length > 1 ? `Новых уведомлений: ${fresh.length}. ${top.text} — ${top.title}` : `${top.text} — ${top.title}`;
+    if(document.visibilityState === 'visible'){ showToast(msg, 'success'); ntfBeep(); }
+    ntfSystem(fresh);
+  }
+  ntfRenderBell();
+}
+async function ntfSystem(list){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible' && document.hasFocus()) return;   // сайт перед глазами — хватит всплывашки
+  const top = list[0];
+  const title = list.length > 1 ? `Dramify · новых: ${list.length}` : 'Dramify · ' + top.text;
+  const opts = {body: list.length > 1 ? list.slice(0,3).map(e=>e.text + ' — ' + e.title).join('\n') : top.title, tag:'dramify-ntf', renotify:true, icon:'favicon.ico', data:{url:location.href.split('#')[0]}};
+  try{
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if(reg){ await reg.showNotification(title, opts); return; }
+  }catch(e){}
+  try{ const n = new Notification(title, opts); n.onclick = ()=>{ window.focus(); n.close(); }; }catch(e){}
+}
+async function ntfAskPermission(){
+  if(!('Notification' in window)){ showToast('Этот браузер не умеет показывать уведомления. На iPhone добавьте сайт на экран «Домой» и откройте оттуда', 'error'); return; }
+  try{
+    if('serviceWorker' in navigator && location.protocol !== 'file:') await navigator.serviceWorker.register('sw.js').catch(()=>{});
+    const r = await Notification.requestPermission();
+    showToast(r === 'granted' ? 'Уведомления включены' : 'Уведомления запрещены в настройках браузера', r === 'granted' ? 'success' : 'error');
+  }catch(e){ showToast('Не удалось включить уведомления', 'error'); }
+  ntfRenderPanel();
+}
+
+// ── Колокольчик и список ──
+function ntfBellHtml(){
+  if(!authSession || !tkMe()) return '';
+  const n = ntfUnread().length;
+  return `<button type="button" class="ntf-bell ${ntfOpen?'on':''}" id="ntfBell" aria-label="Уведомления${n?': новых '+n:''}" aria-expanded="${ntfOpen}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    ${n ? `<span class="ntf-badge">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
+}
+function ntfRenderBell(){
+  const b = document.getElementById('ntfBell'), html = ntfBellHtml();
+  if(b){ if(!html) b.remove(); else b.outerHTML = html; }
+  else renderTopUser();
+  if(ntfOpen) ntfRenderPanel();
+}
+function ntfAgo(at){
+  const m = Math.round((Date.now() - at) / 60000);
+  if(m < 1) return 'только что'; if(m < 60) return m + ' мин назад';
+  const h = Math.round(m / 60); if(h < 24) return h + ' ч назад';
+  return new Date(at).toLocaleDateString('ru-RU', {day:'numeric', month:'short'});
+}
+function ntfRenderPanel(){
+  let host = document.getElementById('ntfPanel');
+  if(!host){ host = document.createElement('div'); host.id = 'ntfPanel'; document.body.appendChild(host); }
+  if(!ntfOpen){ host.innerHTML = ''; return; }
+  const ev = ntfEvents(), seen = Number(host.dataset.seen) || ntfSeenAt();
+  const ico = {new:'＋', done:'✓', cm:'💬', due:'⏰', task:'•'};
+  const ask = ('Notification' in window) && Notification.permission === 'default';
+  host.innerHTML = `<div class="ntf-scrim" data-ntfclose="1"></div><div class="ntf-panel" role="dialog" aria-label="Уведомления">
+    <div class="ntf-head"><b>Уведомления</b><span class="ntf-head-r"><button class="ntf-snd" data-ntfsound="1" aria-pressed="${ntfSoundOn()}">${ntfSoundOn() ? '🔊 Звук вкл.' : '🔇 Звук выкл.'}</button><button class="ntf-x" data-ntfclose="1" aria-label="Закрыть">✕</button></span></div>
+    ${ask ? '<button class="ntf-ask" data-ntfask="1">🔔 Включить уведомления на этом устройстве — придут, даже когда сайт свёрнут</button>' : ''}
+    <div class="ntf-list">${ev.length ? ev.map(e=>`<button class="ntf-item ${e.at > seen ? 'unread' : ''}" data-ntftask="${escapeHtml(e.task)}">
+        <span class="ntf-ico ${e.kind}">${ico[e.kind]||'•'}</span>
+        <span class="ntf-body"><span class="ntf-text">${escapeHtml(e.text)}</span><span class="ntf-title">${escapeHtml(e.title)}</span><span class="ntf-time">${ntfAgo(e.at)}</span></span>
+      </button>`).join('') : '<div class="ntf-empty">Пока ничего нового. Здесь появятся новые задачи, комментарии и выполненные задачи.</div>'}</div>
+  </div>`;
+}
+function ntfToggle(open){
+  ntfOpen = open === undefined ? !ntfOpen : open;
+  let host = document.getElementById('ntfPanel');
+  if(!host){ host = document.createElement('div'); host.id = 'ntfPanel'; document.body.appendChild(host); }
+  // открыли — счётчик гаснет, а новые в списке остаются подсвеченными до закрытия
+  if(ntfOpen){ host.dataset.seen = String(ntfSeenAt()); ntfMarkSeen(); }
+  ntfRenderPanel(); ntfRenderBell();
+}
+// Свёрнутая вкладка: основная синхронизация стоит, а задачи для уведомлений
+// подтягиваем раз в минуту (только чтение, ничего не пишем)
+function ntfHiddenPoll(){
+  clearInterval(ntfHiddenTimer); ntfHiddenTimer = null;
+  if(document.visibilityState !== 'hidden' || !authSession) return;
+  ntfHiddenTimer = setInterval(async ()=>{
+    if(document.visibilityState !== 'hidden'){ clearInterval(ntfHiddenTimer); ntfHiddenTimer = null; return; }
+    const t = await loadTasks();
+    if(Array.isArray(t)){ tasks = t; ntfCheck(); }
+  }, 60000);
+}
+function attachNtfHandlers(){
+  // первое касание страницы «будит» звук (иначе браузер его не пропустит)
+  ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(ntfSoundOn()) ntfAudioCtx(); }, {once:true, capture:true}));
+  document.addEventListener('click', e=>{
+    const el = e.target;
+    if(el.closest('#ntfBell')){ ntfToggle(); return; }
+    if(!el.closest('#ntfPanel')) return;
+    if(el.closest('[data-ntfclose]')){ ntfToggle(false); return; }
+    if(el.closest('[data-ntfask]')){ ntfAskPermission(); return; }
+    if(el.closest('[data-ntfsound]')){
+      const on = !ntfSoundOn();
+      try{ localStorage.setItem('dramify-ntf-sound', on ? 'on' : 'off'); }catch(_){}
+      ntfRenderPanel(); if(on){ ntfAudioCtx(); setTimeout(ntfBeep, 50); }
+      return;
+    }
+    const it = el.closest('[data-ntftask]');
+    if(it){ ntfToggle(false); if(tasks.some(t=>t.id===it.dataset.ntftask)) tkOpen(it.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
+  });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && ntfOpen) ntfToggle(false); });
+  document.addEventListener('visibilitychange', ntfHiddenPoll);
+  if('serviceWorker' in navigator && location.protocol !== 'file:' && 'Notification' in window && Notification.permission === 'granted')
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 function tkStartDrag(x, y){
   const t = tasks.find(k=>k.id===tkDrag.id);
@@ -8733,6 +8960,7 @@ let orderTimerHandle = null;
 (async function init(){
   attachDelegatedHandlers();
   attachTaskHandlers();
+  attachNtfHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
