@@ -288,12 +288,26 @@
   .tk-strip span{font-size:12.5px;color:var(--ink3);}
   .tk-strip em{font-style:normal;color:var(--rust-dark);font-weight:600;}
   /* ── Уведомления ── */
-  .ntf-bell{position:relative;width:34px;height:34px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.14);background:transparent;color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s;}
+  .ntf-bell{position:relative;width:34px;height:34px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.14);background:transparent;color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s,transform .12s;}
   .ntf-bell:hover,.ntf-bell.on{background:rgba(255,255,255,.1);color:#fff;}
   .ntf-badge{position:absolute;top:-4px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e5484d;color:#fff;font:700 10.5px/18px var(--font);text-align:center;box-shadow:0 0 0 2px #131317;}
   .ntf-scrim{position:fixed;inset:0;z-index:950;}
-  .ntf-panel{position:fixed;top:66px;right:24px;z-index:951;width:380px;max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 90px));display:flex;flex-direction:column;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;animation:ntfIn .16s ease-out;}
+  .ntf-panel{position:fixed;top:66px;right:24px;z-index:951;width:380px;max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 90px));display:flex;flex-direction:column;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;transform-origin:top right;animation:ntfPop .22s cubic-bezier(.2,.9,.3,1.1);}
   @keyframes ntfIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  @keyframes ntfPop{from{opacity:0;transform:translateY(-6px) scale(.96);}to{opacity:1;transform:none;}}
+  @keyframes ntfItem{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  @keyframes ntfBadge{0%{transform:scale(0);}60%{transform:scale(1.25);}100%{transform:scale(1);}}
+  @keyframes ntfDot{0%{box-shadow:0 0 0 0 rgba(124,82,200,.55);}100%{box-shadow:0 0 0 7px rgba(124,82,200,0);}}
+  .ntf-item{animation:ntfItem .3s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i, 0) * 28ms + 60ms);}
+  .ntf-item.unread::after{animation:ntfDot 1.4s ease-out 2;}
+  .ntf-badge{animation:ntfBadge .38s cubic-bezier(.3,1.4,.5,1);}
+  .ntf-bell svg{transform-origin:50% 15%;}
+  /* наведение мышкой: колокольчик коротко звякает (только где есть мышь) */
+  @keyframes ntfHover{0%{transform:rotate(0);}20%{transform:rotate(14deg);}45%{transform:rotate(-10deg);}70%{transform:rotate(5deg);}100%{transform:rotate(0);}}
+  @media (hover:hover){ .ntf-bell:hover svg{animation:ntfHover .55s ease-out;} }
+  .ntf-bell:active{transform:scale(.92);}
+  .ntf-card:active{transform:scale(.985);}
+  @media (prefers-reduced-motion: reduce){ .ntf-panel,.ntf-item,.ntf-badge,.ntf-item.unread::after,.ntf-bell svg{animation:none !important;} }
   .ntf-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;font-size:15px;}
   .ntf-head-r{display:flex;align-items:center;gap:4px;}
   .ntf-snd{border:1px solid var(--bg3);background:var(--bg1);color:var(--ink2);border-radius:20px;padding:4px 10px;font:12px var(--font);cursor:pointer;}
@@ -313,6 +327,16 @@
   .ntf-text{font-size:13px;color:var(--ink2);line-height:1.35;overflow-wrap:anywhere;}
   .ntf-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.35;overflow-wrap:anywhere;}
   .ntf-time{font-size:11.5px;color:var(--ink3);}
+  #ntfStack{position:fixed;right:20px;bottom:20px;z-index:940;display:flex;flex-direction:column;gap:8px;width:360px;max-width:calc(100vw - 32px);}
+  #ntfStack:empty{display:none;}
+  .ntf-card{display:flex;gap:10px;align-items:flex-start;padding:12px 10px 12px 12px;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-left:3px solid var(--p5);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.18);cursor:pointer;transition:border-color .15s, box-shadow .2s, transform .2s;}
+  .ntf-card:hover{border-color:var(--p3);border-left-color:var(--p5);box-shadow:0 14px 36px rgba(0,0,0,.22);}
+  .ntf-card .ntf-body{flex:1;}
+  .ntf-card .ntf-x{flex:none;margin:-4px -2px 0 0;}
+  .ntf-stack-foot{display:flex;justify-content:space-between;gap:8px;}
+  .ntf-stack-foot button{border:1px solid var(--bg3);background:var(--bg0);color:var(--ink2);border-radius:20px;padding:5px 12px;font:12px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);}
+  .ntf-stack-foot button:hover{border-color:var(--p3);}
+  @media (max-width:899px){ #ntfStack{left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));width:auto;max-width:none;} }
   .ntf-empty{padding:18px 12px 22px;font-size:13px;color:var(--ink3);line-height:1.5;}
   @media (max-width:899px){ .ntf-bell{width:32px;height:32px;} .ntf-panel{top:calc(56px + env(safe-area-inset-top, 0px));right:16px;left:16px;width:auto;max-width:none;} }
   .ov-dept-os{grid-column:1 / -1;}
@@ -2357,7 +2381,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.9';
+const APP_BUILD = '2026-10-03.12';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5323,7 +5347,7 @@ function renderNow(){
 function renderTopUser(){
   const box = document.getElementById('topUser');
   if(!box) return;
-  if(!authSession){ box.innerHTML = ''; return; }
+  if(!authSession){ box.innerHTML = ''; box._html = null; return; }
   const me = employees.find(e=>e.id===myEmployeeId);
   const email = authEmail();
   let name, sub;
@@ -5336,9 +5360,12 @@ function renderTopUser(){
     sub = email;
   }
   const ava = (String(name).trim()[0] || '?').toUpperCase();
-  box.innerHTML = ntfBellHtml() + '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
+  const html = ntfBellHtml() + '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
     '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div>' +
     '<button type="button" class="tu-out" id="topLogoutBtn">Выйти</button>';
+  // не перерисовываем без изменений: колокольчик успевает докачаться, счётчик не «прыгает» зря
+  if(box._html === html) return;
+  box._html = html; box.innerHTML = html;
 }
 
 function _doRender(){
@@ -5355,6 +5382,7 @@ function _doRender(){
     const emp = employees.find(e=>e.id===myEmployeeId);
     salesTabEl.style.display = (emp && emp.department==='op') ? '' : 'none';
   }
+  ntfVisitedTasks();
   renderTopUser();
   const teamTabEl = document.getElementById('teamTab');
   if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
@@ -6366,6 +6394,95 @@ function ntfBeep(){
 }
 function ntfUnread(){ const s = ntfSeenAt(); return ntfEvents().filter(e=>e.at > s); }
 
+// ── Карточки, которые висят, пока их не закроют ──
+// Уходят сами, только когда человек зашёл во вкладку «Задачи» или открыл колокольчик;
+// иначе — крестиком или нажатием (тогда открывается задача).
+function ntfDismissedKey(){ return 'dramify-ntf-closed:' + (tkMe() || ''); }
+function ntfDismissed(){ try{ return JSON.parse(localStorage.getItem(ntfDismissedKey()) || '[]'); }catch(e){ return []; } }
+function ntfDismiss(ids){
+  const keep = new Set(ntfEvents().map(e=>e.id));   // старые id подчищаем, чтобы список не рос
+  const list = ntfDismissed().filter(id=>keep.has(id)).concat(ids);
+  try{ localStorage.setItem(ntfDismissedKey(), JSON.stringify([...new Set(list)])); }catch(e){}
+  ntfRenderStack();
+}
+function ntfSticky(){ const d = new Set(ntfDismissed()); return ntfUnread().filter(e=>!d.has(e.id)); }
+function ntfOnTasks(){ return mode==='tasks' || (mode==='admin' && adminTab==='tasks'); }
+// Зашёл во вкладку «Задачи» — всё увидел
+function ntfVisitedTasks(){ if(ntfOnTasks() && ntfUnread().length){ ntfMarkSeen(); ntfRenderStack(); } }
+// Анимации: карточка выезжает справа, закрытая — уезжает, остальные плавно
+// подтягиваются (FLIP). Те же DOM-узлы переиспользуются, поэтому фоновые
+// перерисовки не «переигрывают» анимацию. Без анимаций, если они выключены в системе.
+function ntfCalm(){ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
+function ntfAnim(el, frames, opts){
+  if(ntfCalm() || !el.animate) return Promise.resolve();
+  try{ return el.animate(frames, Object.assign({fill:'both'}, opts)).finished.catch(()=>{}); }catch(e){ return Promise.resolve(); }
+}
+const NTF_ICO = {new:'＋', done:'✓', cm:'💬', due:'⏰', task:'•'};
+function ntfCardHtml(e){
+  return `<span class="ntf-ico ${e.kind}">${NTF_ICO[e.kind]||'•'}</span>
+      <span class="ntf-body"><span class="ntf-text">${escapeHtml(e.text)}</span><span class="ntf-title">${escapeHtml(e.title)}</span><span class="ntf-time">${ntfAgo(e.at)}</span></span>
+      <button class="ntf-x" data-ntfclosecard="${escapeHtml(e.id)}" aria-label="Закрыть уведомление">✕</button>`;
+}
+let ntfStackBusy = false, ntfStackAgain = false;
+async function ntfRenderStack(){
+  if(ntfStackBusy){ ntfStackAgain = true; return; }
+  ntfStackBusy = true;
+  try{
+    do{ ntfStackAgain = false; await ntfRenderStackOnce(); }while(ntfStackAgain);
+  } finally { ntfStackBusy = false; }
+}
+async function ntfRenderStackOnce(){
+  let host = document.getElementById('ntfStack');
+  if(!host){ host = document.createElement('div'); host.id = 'ntfStack'; host.setAttribute('aria-live', 'polite'); document.body.appendChild(host); }
+  const list = (authSession && tkMe()) ? ntfSticky() : [];
+  const shown = list.slice(0, window.innerWidth < 900 ? 2 : 3), more = list.length - shown.length;   // на телефоне — не больше двух
+  const want = new Set(shown.map(e=>e.id));
+  const old = [...host.querySelectorAll('.ntf-card')];
+  // 1) ушедшие карточки уезжают вправо
+  const gone = old.filter(c=>!want.has(c.dataset.ntfcard) && !c.dataset.leaving);
+  if(gone.length){
+    await Promise.all(gone.map((c, k)=>{ c.dataset.leaving = '1'; c.style.pointerEvents = 'none';
+      return ntfAnim(c, [{transform:'none', opacity:1}, {transform:'translateX(calc(100% + 32px))', opacity:0}], {duration:240, delay:k*40, easing:'cubic-bezier(.4,0,1,1)'}); }));
+  }
+  // 2) запоминаем, где стояли оставшиеся
+  const keep = {}, before = {};
+  old.forEach(c=>{ if(want.has(c.dataset.ntfcard) && !c.dataset.leaving){ keep[c.dataset.ntfcard] = c; before[c.dataset.ntfcard] = c.getBoundingClientRect().top; } });
+  // 3) собираем стопку заново, переиспользуя узлы
+  const frag = document.createDocumentFragment(), fresh = [];
+  shown.forEach(e=>{
+    let c = keep[e.id];
+    if(c){ const t = c.querySelector('.ntf-time'); if(t) t.textContent = ntfAgo(e.at); }
+    else {
+      c = document.createElement('div'); c.className = 'ntf-card';
+      c.dataset.ntfcard = e.id; c.dataset.ntftask = e.task; c.setAttribute('role', 'button'); c.tabIndex = 0;
+      c.innerHTML = ntfCardHtml(e); fresh.push(c);
+    }
+    frag.appendChild(c);
+  });
+  if(list.length > 1){
+    const f = document.createElement('div'); f.className = 'ntf-stack-foot';
+    f.innerHTML = `${more > 0 ? `<button data-ntfall="1">Ещё ${more} — показать все</button>` : '<span></span>'}<button data-ntfcloseall="1">Закрыть все</button>`;
+    frag.appendChild(f);
+  }
+  host.replaceChildren(frag);
+  // 4) оставшиеся плавно съезжают на новое место, новые выезжают справа
+  Object.keys(keep).forEach(id=>{
+    const dy = before[id] - keep[id].getBoundingClientRect().top;
+    if(Math.abs(dy) > 1) ntfAnim(keep[id], [{transform:`translateY(${dy}px)`}, {transform:'none'}], {duration:320, easing:'cubic-bezier(.2,.8,.2,1)', fill:'none'});
+  });
+  fresh.forEach((c, k)=>{
+    ntfAnim(c, [{transform:'translateX(40px) scale(.97)', opacity:0}, {transform:'none', opacity:1}], {duration:460, delay:k*70, easing:'cubic-bezier(.16,1,.3,1)', fill:'backwards'});
+    const ic = c.querySelector('.ntf-ico');
+    if(ic) ntfAnim(ic, [{transform:'scale(.4)', opacity:0}, {transform:'scale(1.12)', opacity:1, offset:.7}, {transform:'scale(1)', opacity:1}], {duration:420, delay:140 + k*70, easing:'ease-out', fill:'backwards'});
+  });
+}
+// Колокольчик качнулся — пришло новое
+function ntfRing(){
+  const b = document.getElementById('ntfBell'); if(!b) return;
+  const svg = b.querySelector('svg');
+  if(svg) ntfAnim(svg, [{transform:'rotate(0)'}, {transform:'rotate(16deg)', offset:.15}, {transform:'rotate(-13deg)', offset:.32}, {transform:'rotate(9deg)', offset:.5}, {transform:'rotate(-5deg)', offset:.68}, {transform:'rotate(2deg)', offset:.84}, {transform:'rotate(0)'}], {duration:900, easing:'ease-out', fill:'none'});
+}
+
 // Вызывается после каждой подгрузки задач: сообщает о новом
 function ntfCheck(){
   if(!authSession || !tkMe()) return;
@@ -6373,7 +6490,7 @@ function ntfCheck(){
   if(ntfKnown === null){   // первая проверка после входа — одно общее сообщение вместо пачки
     ntfKnown = new Set(ev.map(e=>e.id));
     const n = ev.filter(e=>e.at > s).length;
-    if(n && document.visibilityState === 'visible') showToast(`Новых уведомлений: ${n} — нажмите на колокольчик`, 'success');
+    ntfVisitedTasks();
     ntfRenderBell(); return;
   }
   const fresh = ev.filter(e=>!ntfKnown.has(e.id) && e.at > s);
@@ -6381,7 +6498,11 @@ function ntfCheck(){
   if(fresh.length){
     const top = fresh[0];
     const msg = fresh.length > 1 ? `Новых уведомлений: ${fresh.length}. ${top.text} — ${top.title}` : `${top.text} — ${top.title}`;
-    if(document.visibilityState === 'visible'){ showToast(msg, 'success'); ntfBeep(); }
+    if(document.visibilityState === 'visible'){
+      ntfBeep(); setTimeout(ntfRing, 30);
+      // уже во вкладке «Задачи» — хватит короткого сообщения, карточка не нужна
+      if(ntfOnTasks()){ showToast(msg, 'success'); ntfMarkSeen(); }
+    }
     ntfSystem(fresh);
   }
   ntfRenderBell();
@@ -6391,7 +6512,7 @@ async function ntfSystem(list){
   if(document.visibilityState === 'visible' && document.hasFocus()) return;   // сайт перед глазами — хватит всплывашки
   const top = list[0];
   const title = list.length > 1 ? `Dramify · новых: ${list.length}` : 'Dramify · ' + top.text;
-  const opts = {body: list.length > 1 ? list.slice(0,3).map(e=>e.text + ' — ' + e.title).join('\n') : top.title, tag:'dramify-ntf', renotify:true, icon:'favicon.ico', data:{url:location.href.split('#')[0]}};
+  const opts = {body: list.length > 1 ? list.slice(0,3).map(e=>e.text + ' — ' + e.title).join('\n') : top.title, tag:'dramify-ntf', renotify:true, requireInteraction:true, icon:'favicon.ico', data:{url:location.href.split('#')[0]}};
   try{
     const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
     if(reg){ await reg.showNotification(title, opts); return; }
@@ -6418,9 +6539,15 @@ function ntfBellHtml(){
 }
 function ntfRenderBell(){
   const b = document.getElementById('ntfBell'), html = ntfBellHtml();
-  if(b){ if(!html) b.remove(); else b.outerHTML = html; }
-  else renderTopUser();
+  if(!b) renderTopUser();
+  else if(!html) b.remove();
+  else {
+    // меняем кнопку, только если что-то изменилось — иначе анимации обрывались бы
+    const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = tmp.firstElementChild;
+    if(nb.outerHTML !== b.outerHTML){ b.replaceWith(nb); const box = document.getElementById('topUser'); if(box) box._html = null; }
+  }
   if(ntfOpen) ntfRenderPanel();
+  ntfRenderStack();
 }
 function ntfAgo(at){
   const m = Math.round((Date.now() - at) / 60000);
@@ -6431,18 +6558,21 @@ function ntfAgo(at){
 function ntfRenderPanel(){
   let host = document.getElementById('ntfPanel');
   if(!host){ host = document.createElement('div'); host.id = 'ntfPanel'; document.body.appendChild(host); }
-  if(!ntfOpen){ host.innerHTML = ''; return; }
+  if(!ntfOpen){ host.innerHTML = ''; host._html = null; return; }
   const ev = ntfEvents(), seen = Number(host.dataset.seen) || ntfSeenAt();
   const ico = {new:'＋', done:'✓', cm:'💬', due:'⏰', task:'•'};
   const ask = ('Notification' in window) && Notification.permission === 'default';
-  host.innerHTML = `<div class="ntf-scrim" data-ntfclose="1"></div><div class="ntf-panel" role="dialog" aria-label="Уведомления">
+  const html = `<div class="ntf-scrim" data-ntfclose="1"></div><div class="ntf-panel" role="dialog" aria-label="Уведомления">
     <div class="ntf-head"><b>Уведомления</b><span class="ntf-head-r"><button class="ntf-snd" data-ntfsound="1" aria-pressed="${ntfSoundOn()}">${ntfSoundOn() ? '🔊 Звук вкл.' : '🔇 Звук выкл.'}</button><button class="ntf-x" data-ntfclose="1" aria-label="Закрыть">✕</button></span></div>
     ${ask ? '<button class="ntf-ask" data-ntfask="1">🔔 Включить уведомления на этом устройстве — придут, даже когда сайт свёрнут</button>' : ''}
-    <div class="ntf-list">${ev.length ? ev.map(e=>`<button class="ntf-item ${e.at > seen ? 'unread' : ''}" data-ntftask="${escapeHtml(e.task)}">
+    <div class="ntf-list">${ev.length ? ev.map((e, i)=>`<button class="ntf-item ${e.at > seen ? 'unread' : ''}" style="--i:${Math.min(i, 10)}" data-ntftask="${escapeHtml(e.task)}">
         <span class="ntf-ico ${e.kind}">${ico[e.kind]||'•'}</span>
         <span class="ntf-body"><span class="ntf-text">${escapeHtml(e.text)}</span><span class="ntf-title">${escapeHtml(e.title)}</span><span class="ntf-time">${ntfAgo(e.at)}</span></span>
       </button>`).join('') : '<div class="ntf-empty">Пока ничего нового. Здесь появятся новые задачи, комментарии и выполненные задачи.</div>'}</div>
   </div>`;
+  // без изменений не перерисовываем — иначе пункты заново проявлялись бы при каждой синхронизации
+  if(host._html === html) return;
+  host._html = html; host.innerHTML = html;
 }
 function ntfToggle(open){
   ntfOpen = open === undefined ? !ntfOpen : open;
@@ -6469,6 +6599,14 @@ function attachNtfHandlers(){
   document.addEventListener('click', e=>{
     const el = e.target;
     if(el.closest('#ntfBell')){ ntfToggle(); return; }
+    if(el.closest('#ntfStack')){
+      const x = el.closest('[data-ntfclosecard]'); if(x){ ntfDismiss([x.dataset.ntfclosecard]); return; }
+      if(el.closest('[data-ntfcloseall]')){ ntfDismiss(ntfSticky().map(e=>e.id)); return; }
+      if(el.closest('[data-ntfall]')){ ntfToggle(true); return; }
+      const c = el.closest('[data-ntfcard]');
+      if(c){ ntfDismiss([c.dataset.ntfcard]); if(tasks.some(t=>t.id===c.dataset.ntftask)) tkOpen(c.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
+      return;
+    }
     if(!el.closest('#ntfPanel')) return;
     if(el.closest('[data-ntfclose]')){ ntfToggle(false); return; }
     if(el.closest('[data-ntfask]')){ ntfAskPermission(); return; }
@@ -6481,7 +6619,10 @@ function attachNtfHandlers(){
     const it = el.closest('[data-ntftask]');
     if(it){ ntfToggle(false); if(tasks.some(t=>t.id===it.dataset.ntftask)) tkOpen(it.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
   });
-  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && ntfOpen) ntfToggle(false); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && ntfOpen) ntfToggle(false);
+    if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#ntfStack [data-ntfcard]')){ e.preventDefault(); e.target.click(); }
+  });
   document.addEventListener('visibilitychange', ntfHiddenPoll);
   if('serviceWorker' in navigator && location.protocol !== 'file:' && 'Notification' in window && Notification.permission === 'granted')
     navigator.serviceWorker.register('sw.js').catch(()=>{});
