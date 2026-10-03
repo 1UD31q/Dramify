@@ -295,6 +295,9 @@
   .ntf-panel{position:fixed;top:66px;right:24px;z-index:951;width:380px;max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 90px));display:flex;flex-direction:column;background:var(--bg0);color:var(--ink);border:1px solid var(--bg2);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;animation:ntfIn .16s ease-out;}
   @keyframes ntfIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
   .ntf-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;font-size:15px;}
+  .ntf-head-r{display:flex;align-items:center;gap:4px;}
+  .ntf-snd{border:1px solid var(--bg3);background:var(--bg1);color:var(--ink2);border-radius:20px;padding:4px 10px;font:12px var(--font);cursor:pointer;}
+  .ntf-snd:hover{border-color:var(--p3);}
   .ntf-x{border:0;background:none;color:var(--ink3);font-size:15px;cursor:pointer;padding:4px 6px;border-radius:6px;}
   .ntf-x:hover{background:var(--bg1);}
   .ntf-ask{margin:0 12px 8px;border:1px dashed var(--p3);background:var(--bg1);color:var(--ink2);border-radius:10px;padding:9px 12px;font:12.5px/1.4 var(--font);text-align:left;cursor:pointer;}
@@ -2354,7 +2357,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.8';
+const APP_BUILD = '2026-10-03.9';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -6338,6 +6341,29 @@ function ntfEvents(){
   });
   return out.sort((a,b)=>b.at-a.at).slice(0, 50);
 }
+// ── Звук ──
+// Короткий двойной сигнал без файлов (Web Audio). Браузер разрешает звук только
+// после первого нажатия на странице — поэтому «будим» звук при первом клике.
+let ntfAudio = null;
+function ntfSoundOn(){ try{ return localStorage.getItem('dramify-ntf-sound') !== 'off'; }catch(e){ return true; } }
+function ntfAudioCtx(){
+  if(!ntfAudio){ const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null; ntfAudio = new AC(); }
+  if(ntfAudio.state === 'suspended') ntfAudio.resume().catch(()=>{});
+  return ntfAudio;
+}
+function ntfBeep(){
+  if(!ntfSoundOn()) return;
+  const ctx = ntfAudioCtx(); if(!ctx || ctx.state !== 'running') return;
+  const t0 = ctx.currentTime;
+  [[880, 0], [1320, 0.13]].forEach(([f, d])=>{
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t0 + d);
+    g.gain.exponentialRampToValueAtTime(0.18, t0 + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.35);
+    o.connect(g).connect(ctx.destination); o.start(t0 + d); o.stop(t0 + d + 0.4);
+  });
+}
 function ntfUnread(){ const s = ntfSeenAt(); return ntfEvents().filter(e=>e.at > s); }
 
 // Вызывается после каждой подгрузки задач: сообщает о новом
@@ -6355,7 +6381,7 @@ function ntfCheck(){
   if(fresh.length){
     const top = fresh[0];
     const msg = fresh.length > 1 ? `Новых уведомлений: ${fresh.length}. ${top.text} — ${top.title}` : `${top.text} — ${top.title}`;
-    if(document.visibilityState === 'visible') showToast(msg, 'success');
+    if(document.visibilityState === 'visible'){ showToast(msg, 'success'); ntfBeep(); }
     ntfSystem(fresh);
   }
   ntfRenderBell();
@@ -6410,7 +6436,7 @@ function ntfRenderPanel(){
   const ico = {new:'＋', done:'✓', cm:'💬', due:'⏰', task:'•'};
   const ask = ('Notification' in window) && Notification.permission === 'default';
   host.innerHTML = `<div class="ntf-scrim" data-ntfclose="1"></div><div class="ntf-panel" role="dialog" aria-label="Уведомления">
-    <div class="ntf-head"><b>Уведомления</b><button class="ntf-x" data-ntfclose="1" aria-label="Закрыть">✕</button></div>
+    <div class="ntf-head"><b>Уведомления</b><span class="ntf-head-r"><button class="ntf-snd" data-ntfsound="1" aria-pressed="${ntfSoundOn()}">${ntfSoundOn() ? '🔊 Звук вкл.' : '🔇 Звук выкл.'}</button><button class="ntf-x" data-ntfclose="1" aria-label="Закрыть">✕</button></span></div>
     ${ask ? '<button class="ntf-ask" data-ntfask="1">🔔 Включить уведомления на этом устройстве — придут, даже когда сайт свёрнут</button>' : ''}
     <div class="ntf-list">${ev.length ? ev.map(e=>`<button class="ntf-item ${e.at > seen ? 'unread' : ''}" data-ntftask="${escapeHtml(e.task)}">
         <span class="ntf-ico ${e.kind}">${ico[e.kind]||'•'}</span>
@@ -6438,12 +6464,20 @@ function ntfHiddenPoll(){
   }, 60000);
 }
 function attachNtfHandlers(){
+  // первое касание страницы «будит» звук (иначе браузер его не пропустит)
+  ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(ntfSoundOn()) ntfAudioCtx(); }, {once:true, capture:true}));
   document.addEventListener('click', e=>{
     const el = e.target;
     if(el.closest('#ntfBell')){ ntfToggle(); return; }
     if(!el.closest('#ntfPanel')) return;
     if(el.closest('[data-ntfclose]')){ ntfToggle(false); return; }
     if(el.closest('[data-ntfask]')){ ntfAskPermission(); return; }
+    if(el.closest('[data-ntfsound]')){
+      const on = !ntfSoundOn();
+      try{ localStorage.setItem('dramify-ntf-sound', on ? 'on' : 'off'); }catch(_){}
+      ntfRenderPanel(); if(on){ ntfAudioCtx(); setTimeout(ntfBeep, 50); }
+      return;
+    }
     const it = el.closest('[data-ntftask]');
     if(it){ ntfToggle(false); if(tasks.some(t=>t.id===it.dataset.ntftask)) tkOpen(it.dataset.ntftask); else showToast('Задачу удалили', 'error'); }
   });
