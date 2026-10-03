@@ -1800,6 +1800,20 @@
     background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);
     display:flex;align-items:center;justify-content:center;}
   #themeBtn:hover{background:rgba(255,255,255,.08);color:#fff;}
+  /* анимация кнопки темы: новый значок въезжает с поворотом, при наведении — лёгкое движение */
+  #themeBtn{transition:background .15s,color .15s,transform .12s;}
+  #themeBtn:active{transform:scale(.9);}
+  #themeBtn::before{transition:transform .35s cubic-bezier(.3,1.4,.5,1);}
+  @media (hover:hover){
+    html.dark #themeBtn:hover::before{transform:rotate(45deg);}
+    html.light #themeBtn:hover::before, html:not(.dark):not(.light) #themeBtn:hover::before{transform:rotate(-18deg) scale(1.06);}
+  }
+  @keyframes themeIconIn{0%{transform:rotate(-120deg) scale(.2);opacity:0;}60%{transform:rotate(12deg) scale(1.12);opacity:1;}100%{transform:none;opacity:1;}}
+  #themeBtn.swap::before{animation:themeIconIn .55s cubic-bezier(.2,.8,.2,1);}
+  /* смена темы кругом от кнопки (View Transitions); старый и новый вид не смешиваем */
+  ::view-transition-old(root), ::view-transition-new(root){animation:none;mix-blend-mode:normal;}
+  ::view-transition-old(root){z-index:1;} ::view-transition-new(root){z-index:2;}
+  @media (prefers-reduced-motion: reduce){ #themeBtn.swap::before{animation:none;} #themeBtn::before{transition:none;} }
   #themeBtn::before{content:'';width:18px;height:18px;background:currentColor;
     -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;}
   html.dark #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
@@ -2381,7 +2395,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.12';
+const APP_BUILD = '2026-10-03.13';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -9185,7 +9199,21 @@ window.addEventListener('pagehide', ()=>{
     const isDark = html.classList.contains('dark') || (!html.classList.contains('light') && prefersDark());
     saved = isDark ? 'light' : 'dark';
     localStorage.setItem('dramify-theme', saved);
-    apply(saved);
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const swapIcon = () => { btn.classList.remove('swap'); void btn.offsetWidth; btn.classList.add('swap'); };
+    btn.addEventListener('animationend', () => btn.classList.remove('swap'), {once:true});
+    // Новая тема расходится кругом от кнопки. Где браузер так не умеет — меняем сразу.
+    if(!document.startViewTransition || calm){ apply(saved); if(!calm) swapIcon(); return; }
+    const r = btn.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const vt = document.startViewTransition(() => { apply(saved); swapIcon(); });
+    vt.ready.then(() => {
+      document.documentElement.animate(
+        {clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`]},
+        {duration: 620, easing: 'cubic-bezier(.4,0,.2,1)', pseudoElement: '::view-transition-new(root)'}
+      );
+    }).catch(()=>{});
   });
 
   // Реагируем на смену системной темы (если нет ручного выбора)
