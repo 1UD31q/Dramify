@@ -1664,6 +1664,13 @@
   .btn.danger:hover{background:rgba(229,72,77,.12);}
   .btn:disabled,.btn[disabled]{opacity:.5;cursor:default;transform:none;}
   .btn:focus-visible{outline:2px solid var(--p4);outline-offset:2px;}
+
+  /* ── ОС: предупреждения и строка показателей ── */
+  .os-alert{border:1px solid var(--bg3);border-left:4px solid var(--ink4);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;line-height:1.5;}
+  .os-alert.amber{border-left-color:var(--amber);background:rgba(245,158,11,.07);}
+  .os-alert.bad{border-left-color:var(--red);background:rgba(229,72,77,.06);}
+  .os-alert ul{margin:6px 0 0 18px;padding:0;}
+  .os-line{font-size:12px;color:var(--ink3);line-height:1.5;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -2192,7 +2199,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-02.4';
+const APP_BUILD = '2026-10-03.1';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3662,6 +3669,11 @@ let lastTrackerSyncAt = {}; // { monthKey: timestamp }
 // ── Лист «Касса»: отдельная ссылка на месяц, просто суммы колонок ──
 // cashTotals[mk] = {prepaid, pending, rows, prepaidLabel, pendingLabel}
 let cashUrls = {};
+// ОС: ссылки (задаёт админ) и итоги. Итоги считаются в памяти у каждого — в базу не пишутся.
+let upsellUrls = {};      // {мес: ссылка на лист апсейлов}
+let reactUrls = {};       // {мес: ссылка на лист видеореакций}
+let osParts = {};         // {мес: {sales, ups, react, err, link, at}}
+let osSyncing = {}, osAutoTried = {};
 let cashTotals = {};
 let cashSyncing = {};
 let cashStatus = {};
@@ -5032,6 +5044,7 @@ async function silentAutoSync(){
     if(getSheetUrl('to', activeMonth)) await syncFromGoogleSheet('to', activeMonth, true);
     if((trackerUrls[activeMonth]||'').trim()) await syncTracker(activeMonth, true);
     if((cashUrls[activeMonth]||'').trim()) await syncCashSheet(activeMonth, true);
+    if(employees.some(e=>e.department==='os')) await syncOsData(activeMonth, true);
   }catch(e){ console.error('auto-sync failed', e); }
   syncHistoryMonths();
 }
@@ -5187,10 +5200,9 @@ function _doRender(){
   // Запоминаем то, что админ уже набрал в полях ссылок, но ещё не сохранил.
   // Без этого фоновая синхронизация перерисовывала экран и стирала вставку.
   const pendingInputs = [];
-  document.querySelectorAll('.sheet-url-input, .tracker-url-input, .cash-url-input').forEach(inp=>{
+  document.querySelectorAll('.sheet-url-input, .tracker-url-input, .cash-url-input, .ups-url-input, .react-url-input').forEach(inp=>{
     pendingInputs.push({
-      cls: inp.classList.contains('sheet-url-input') ? 'sheet-url-input'
-         : inp.classList.contains('cash-url-input') ? 'cash-url-input' : 'tracker-url-input',
+      cls: ['sheet-url-input','cash-url-input','ups-url-input','react-url-input','tracker-url-input'].find(c=>inp.classList.contains(c)),
       month: inp.dataset.month, dept: inp.dataset.dept || '', value: inp.value,
     });
   });
@@ -5414,7 +5426,7 @@ function renderEmployeeDashboard(forId){
         <div class="card">
           <h2>${dept.workOnly ? 'Показатели' : 'KPI'} · ${monthLabel(viewMonth)}</h2>
           ${monthBar}
-          ${dept.workOnly ? `<div class="empty">Показатели ОС появятся после подключения листов апсейлов и видеореакций.</div>` : `
+          ${dept.workOnly ? `${renderOsCard(emp, viewMonth)}` : `
           <div class="kpi-grid">${kpiBoxes}</div>
           <div class="plan-bar-wrap">
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);"><span>${dept.ratio.label}</span><span>${ratioPct}%</span></div>
@@ -6701,19 +6713,310 @@ function renderAnalyticsPane(){
 
 // Плашка ОС в сводке: люди и смена. Показатели работы добавятся, когда подключим
 // листы апсейлов/реакций. Никаких денег, ставок и плана.
+// ═══════════════════════════════════════════════════════════════════════════
+// ОС: принятые заказы, объём (V), апсейлы, видеореакции — из таблиц.
+// Только показатели работы: ни выплат, ни зарплаты, ни штрафов здесь нет.
+// Источники: колонка «ОС» в листе «Отчёт по продажам», лист апсейлов, лист видеореакций.
+// ═══════════════════════════════════════════════════════════════════════════
+function osEmpMap(){
+  const m = {};
+  employees.filter(e=>e.department==='os').forEach(e=>{ m[normName(e.name)] = e.id; });
+  return m;
+}
+function osHeaderIdx(hl){ return hl.findIndex(h=>{ const t = String(h||'').replace(/\s+/g,' ').trim(); return t==='ос' || t==='os'; }); }
+// «Сдали» — только точное значение: «не сдали» сюда попадать не должно
+function osIsDone(v){ const t = String(v||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); return t==='сдали' || t==='сдан' || t==='сдано' || t==='сдана'; }
+function osNameFromRow(row, col){ return col>=0 ? String(row[col]==null ? '' : row[col]).trim() : ''; }
+
+// Лист с шапкой «где-то в первых строках»: ищем строку, где есть все нужные подписи
+async function osLoadGrid(url, needles){
+  let rows = null;
+  try{
+    rows = await fetchSheetRows(url, true, true);
+    if(rows && rows.length && /^\s*</.test(String((rows[0]||[])[0]||''))) rows = null;   // пришла страница входа, а не таблица
+  }catch(e){ rows = null; }
+  if(!rows || rows.length < 1) rows = await fetchSheetRows(url);
+  rows = (rows||[]).map(r=> (r||[]).map(c=> String(c==null ? '' : c)));
+  let best = -1;
+  for(let i=0; i<Math.min(rows.length, 15); i++){
+    const hl = rows[i].map(h=>h.trim().toLowerCase());
+    if(needles.every(n=> hl.some(h=>h.includes(n)))){ best = i; break; }
+  }
+  if(best < 0) return { rows: rows, header: -1 };
+  return { rows: rows.slice(best), header: best };
+}
+
+function parseOsSales(rows, mk, wholeTab, empMap){
+  const out = { per:{}, unassigned:{count:0, sum:0, list:[]}, unknown:{}, badSums:0, rows:0, warn:'' };
+  if(!rows || rows.length < 2){ out.warn = 'Лист «Отчёт по продажам» пустой или не найден'; return out; }
+  const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+  const find = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
+  const osCol = osHeaderIdx(hl);
+  if(osCol < 0){ out.warn = 'В листе продаж нет колонки «ОС» (заголовок должен быть ровно «ОС»)'; return out; }
+  const nameCol = find(['имя','name']), grossCol = find(['сумма общая','сумма']);
+  const dateCol = find(['дата оформления','дата']), statusCol = find(['статус']);
+  for(let r=1; r<rows.length; r++){
+    const row = rows[r] || [];
+    const nm = nameCol>=0 ? String(row[nameCol]||'').trim() : '';
+    const rawSum = grossCol>=0 ? String(row[grossCol]||'').trim() : '';
+    const gross = parseNum(rawSum);
+    if(!nm && !rawSum) continue;                                      // пустая строка
+    if(!(wholeTab || rowInMonth(row, dateCol, mk))) continue;         // чужой месяц
+    if(statusCol>=0 && isCancelledStatus(row[statusCol])) continue;   // отменённые и возвраты не считаем
+    if(rawSum && !/\d/.test(rawSum)){ out.badSums++; continue; }     // «договорная» — сумму не понять, показываем счётчиком
+    if(grossCol>=0 ? gross <= 0 : !nm) continue;                      // без суммы — черновик, а не заказ
+    const who = osNameFromRow(row, osCol);
+    out.rows++;
+    if(!who){
+      out.unassigned.count++; out.unassigned.sum += gross;
+      if(out.unassigned.list.length < 30) out.unassigned.list.push({ name: nm || '—', date: dateCol>=0 ? String(row[dateCol]||'').trim() : '', sum: gross });
+      continue;
+    }
+    const id = empMap[normName(who)];
+    if(!id){ out.unknown[who] = (out.unknown[who]||0) + 1; continue; }
+    const p = out.per[id] || (out.per[id] = { accepted:0, volume:0 });
+    p.accepted++; p.volume += gross;
+  }
+  return out;
+}
+
+function parseOsUpsell(rows, empMap){
+  const out = { per:{}, unknown:{}, badSums:0, noWho:0, rows:0, warn:'' };
+  if(!rows || rows.length < 2){ out.warn = 'Лист апсейлов пустой или не найден'; return out; }
+  const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+  const whoCol = hl.findIndex(h=>h.includes('чей'));
+  const stCol = hl.findIndex(h=>h.includes('сдали') || h.includes('сдан'));
+  const sumCol = hl.findIndex(h=>h.includes('сумма') && !h.includes('лид'));
+  const miss = [whoCol<0 ? '«Чей»' : '', sumCol<0 ? '«Сумма»' : '', stCol<0 ? '«Сдали/не сдали»' : ''].filter(Boolean);
+  if(miss.length){ out.warn = 'В листе апсейлов не нашёл колонки: ' + miss.join(', '); return out; }
+  for(let r=1; r<rows.length; r++){
+    const row = rows[r] || [];
+    const who = osNameFromRow(row, whoCol), rawSum = String(row[sumCol]||'').trim();
+    if(!who && !rawSum) continue;
+    if(rawSum && !/\d/.test(rawSum)) out.badSums++;                   // «пять тысяч» — сумму не понять
+    const sum = parseNum(rawSum);
+    if(!who){ out.noWho++; continue; }
+    const id = empMap[normName(who)];
+    if(!id){ out.unknown[who] = (out.unknown[who]||0) + 1; continue; }
+    const p = out.per[id] || (out.per[id] = { done:0, pending:0, n:0 });
+    if(osIsDone(row[stCol])) p.done += sum; else p.pending += sum;    // «не сдали» и пусто — «ожидает»
+    p.n++; out.rows++;
+  }
+  return out;
+}
+
+function parseOsReactions(rows, empMap){
+  const out = { per:{}, unknown:{}, rows:0, warn:'' };
+  if(!rows || rows.length < 2){ out.warn = 'Лист видеореакций пустой или не найден'; return out; }
+  const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
+  let whoCol = hl.findIndex(h=>h.includes('чей'));
+  if(whoCol < 0) whoCol = osHeaderIdx(hl);
+  if(whoCol < 0){ out.warn = 'В листе видеореакций нет колонки «Чей»'; return out; }
+  for(let r=1; r<rows.length; r++){
+    const who = osNameFromRow(rows[r] || [], whoCol);
+    if(!who) continue;                                                // каждая строка с именем = одна видеореакция
+    const id = empMap[normName(who)];
+    if(!id){ out.unknown[who] = (out.unknown[who]||0) + 1; continue; }
+    out.per[id] = (out.per[id]||0) + 1; out.rows++;
+  }
+  return out;
+}
+
+async function syncOsData(mk, silent){
+  mk = mk || editingMonth;
+  if(osSyncing[mk]) return;
+  osSyncing[mk] = true;
+  if(!silent) render();
+  const prev = osParts[mk] || {};
+  const P = { sales: prev.sales || null, ups: prev.ups || null, react: prev.react || null,
+              err: { sales:'', ups:'', react:'' }, link: { sales:false, ups:false, react:false }, at: Date.now() };
+  try{
+    // свежие ссылки (их задаёт админ; остальные только читают)
+    try{
+      const [u, rr] = await Promise.all([storeGet('app:upsellUrls', SHARED), storeGet('app:reactUrls', SHARED)]);
+      if(u && typeof u === 'object' && !Array.isArray(u)) upsellUrls = Object.assign({}, upsellUrls, u);
+      if(rr && typeof rr === 'object' && !Array.isArray(rr)) reactUrls = Object.assign({}, reactUrls, rr);
+    }catch(e){}
+    const empMap = osEmpMap();
+    // 1) лист продаж: колонка «ОС»
+    const sdept = getSheetUrl('to', mk) ? 'to' : (getSheetUrl('op', mk) ? 'op' : '');
+    if(sdept){
+      P.link.sales = true;
+      try{
+        const rows = await fetchLedgerRows(getSheetUrl(sdept, mk));
+        P.sales = parseOsSales(rows, mk, isDedicatedTab(sdept, mk), empMap);
+      }catch(e){ P.err.sales = 'Не получилось прочитать лист продаж: ' + e.message; }
+    } else { P.sales = null; }
+    // 2) лист апсейлов
+    const uUrl = (upsellUrls[mk]||'').trim();
+    if(uUrl){
+      P.link.ups = true;
+      try{
+        const g = await osLoadGrid(uUrl, ['чей','сумма']);
+        P.ups = g.header < 0 ? { per:{}, unknown:{}, badSums:0, noWho:0, rows:0, warn:'В листе апсейлов не нашёл строку с заголовками «Сумма», «Сдали/не сдали», «Чей»' } : parseOsUpsell(g.rows, empMap);
+      }catch(e){ P.err.ups = 'Не получилось прочитать лист апсейлов: ' + e.message; }
+    } else { P.ups = null; }
+    // 3) лист видеореакций
+    const rUrl = (reactUrls[mk]||'').trim();
+    if(rUrl){
+      P.link.react = true;
+      try{
+        const g = await osLoadGrid(rUrl, ['чей']);
+        P.react = g.header < 0 ? { per:{}, unknown:{}, rows:0, warn:'В листе видеореакций не нашёл колонку «Чей»' } : parseOsReactions(g.rows, empMap);
+      }catch(e){ P.err.react = 'Не получилось прочитать лист видеореакций: ' + e.message; }
+    } else { P.react = null; }
+  } finally {
+    osParts[mk] = P;
+    osSyncing[mk] = false;
+    render();
+  }
+}
+// Подтянуть данные, если их ещё нет или они старше 5 минут (и не чаще раза в минуту при ошибках)
+function ensureOsData(mk){
+  if(osSyncing[mk]) return;
+  const P = osParts[mk];
+  if(P && Date.now() - P.at < 5*60000) return;
+  if(osAutoTried[mk] && Date.now() - osAutoTried[mk] < 60000) return;
+  osAutoTried[mk] = Date.now();
+  syncOsData(mk, true);
+}
+function osMetrics(empId, mk){
+  const P = osParts[mk];
+  const s = (P && P.sales && P.sales.per[empId]) || { accepted:0, volume:0 };
+  const u = (P && P.ups && P.ups.per[empId]) || { done:0, pending:0 };
+  const r = (P && P.react && P.react.per[empId]) || 0;
+  return { accepted: s.accepted, volume: s.volume, upsDone: u.done, upsPending: u.pending, reactions: r };
+}
+function osUnknownNote(map, where){
+  const names = Object.keys(map||{});
+  if(!names.length) return '';
+  return where + ': имя не найдено среди сотрудников ОС — ' + names.map(n=>'«' + escapeHtml(n) + '» (' + map[n] + ')').join(', ') + '. Проверьте написание (регистр и точка не важны).';
+}
+// Предупреждения и «заказы без ОС» — для карточки ОС и сводки админа
+function renderOsAlerts(mk){
+  const P = osParts[mk];
+  if(!P) return '';
+  const out = [];
+  if(!P.link.sales) out.push(['amber', 'Лист «Отчёт по продажам» на этот месяц не подключён (админка → Данные → Google Таблица).']);
+  else if(P.err.sales) out.push(['amber', escapeHtml(P.err.sales)]);
+  else if(P.sales && P.sales.warn) out.push(['amber', escapeHtml(P.sales.warn)]);
+  if(P.sales && !P.sales.warn){
+    const un = P.sales.unassigned;
+    if(un.count){
+      const items = un.list.map(x=>'<li>' + escapeHtml(x.name) + (x.date ? ' · ' + escapeHtml(x.date) : '') + (x.sum ? ' · ' + fmtMoney(x.sum) : '') + '</li>').join('');
+      out.push(['bad', '<b>Заказы без ОС: ' + un.count + '</b> на ' + fmtMoney(un.sum) + '. Выберите ОС в таблице (колонка «ОС»).' +
+        '<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--ink3);font-size:12px;">Показать заказы</summary><ul>' + items + (un.count > un.list.length ? '<li>… и ещё ' + (un.count - un.list.length) + '</li>' : '') + '</ul></details>']);
+    }
+    if(P.sales.badSums) out.push(['amber', 'Лист продаж: ' + P.sales.badSums + ' ' + anPlural(P.sales.badSums, 'строка', 'строки', 'строк') + ' с непонятной суммой — не учтено.']);
+    const note = osUnknownNote(P.sales.unknown, 'Лист продаж'); if(note) out.push(['amber', note]);
+  }
+  if(!P.link.ups) out.push(['info', 'Лист апсейлов не подключён — апсейл появится, когда админ добавит ссылку.']);
+  else if(P.err.ups) out.push(['amber', escapeHtml(P.err.ups)]);
+  else if(P.ups){
+    if(P.ups.warn) out.push(['amber', escapeHtml(P.ups.warn)]);
+    if(P.ups.badSums) out.push(['amber', 'Лист апсейлов: ' + P.ups.badSums + ' ' + anPlural(P.ups.badSums, 'строка', 'строки', 'строк') + ' с непонятной суммой — не учтено.']);
+    if(P.ups.noWho) out.push(['amber', 'Лист апсейлов: ' + P.ups.noWho + ' ' + anPlural(P.ups.noWho, 'строка', 'строки', 'строк') + ' без «Чей» — не привязано ни к кому.']);
+    const note = osUnknownNote(P.ups.unknown, 'Лист апсейлов'); if(note) out.push(['amber', note]);
+  }
+  if(!P.link.react) out.push(['info', 'Лист видеореакций не подключён — видеореакции считаются как 0.']);
+  else if(P.err.react) out.push(['amber', escapeHtml(P.err.react)]);
+  else if(P.react){
+    if(P.react.warn) out.push(['amber', escapeHtml(P.react.warn)]);
+    const note = osUnknownNote(P.react.unknown, 'Лист видеореакций'); if(note) out.push(['amber', note]);
+  }
+  return out.map(a=>'<div class="os-alert ' + a[0] + '">' + a[1] + '</div>').join('');
+}
+// Карточка самого ОС (и админа, когда он смотрит карточку)
+function renderOsCard(emp, mk){
+  ensureOsData(mk);
+  const P = osParts[mk], m = osMetrics(emp.id, mk), busy = !!osSyncing[mk];
+  const box = (label, value, sub) => '<div class="kpi-box"><div class="label">' + label + '</div><div class="value">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  let grid;
+  if(!P){
+    grid = '<div class="empty">Считаю показатели…</div>';
+  } else {
+    const salesOk = !!(P.sales && !P.sales.warn), upsOk = !!(P.ups && !P.ups.warn), reactOk = !!(P.react && !P.react.warn);
+    grid = '<div class="kpi-grid">' +
+      box('Принято заказов', salesOk ? m.accepted : '—', salesOk ? '' : 'нет данных листа продаж') +
+      box('Объём клиентов (V)', salesOk ? fmtMoney(m.volume) : '—', salesOk ? 'сумма принятых заказов' : '') +
+      box('Апсейл сдан', upsOk ? fmtMoney(m.upsDone) : '—', upsOk ? '' : 'лист не подключён') +
+      box('Апсейл ожидает', upsOk ? fmtMoney(m.upsPending) : '—', upsOk ? 'не сдали или без отметки' : '') +
+      box('Видеореакции', reactOk ? m.reactions : '—', reactOk ? '' : 'лист не подключён') +
+      '</div>';
+  }
+  const refresh = '<div class="kpi-refresh"><span>' + (busy ? 'Обновляю…' : (P ? 'обновлено в ' + fmtTime(P.at) : 'ещё не обновлялось')) + '</span>' +
+    '<button class="att-btn" id="osRefreshBtn" data-month="' + mk + '" ' + (busy ? 'disabled' : '') + '>Обновить сейчас</button></div>';
+  return grid + renderOsAlerts(mk) + refresh;
+}
+
+function renderOsLinkGroup(kind){
+  const isUps = kind === 'ups';
+  const urls = isUps ? upsellUrls : reactUrls;
+  const title = isUps ? 'Лист апсейлов' : 'Лист видеореакций';
+  const hint = isUps ? 'колонки «Сумма», «Сдали/не сдали», «Чей»' : 'каждая строка — одна видеореакция, колонка «Чей»';
+  const cls = isUps ? 'ups-url-input' : 'react-url-input';
+  return `<details class="settings-group">
+      <summary>${title}<span class="group-hint">ОС · ${hint}</span></summary>
+      <div class="group-body">
+      <div class="hint" style="margin-top:0;">Отдельная ссылка на каждый месяц: откройте нужную вкладку и скопируйте адрес целиком (в нём должно быть <b>gid=…</b>). Доступ к таблице — «Все, у кого есть ссылка», роль «Читатель».</div>
+      ${Object.keys(kpiData).sort().reverse().map(mk => {
+        const url = urls[mk] || '';
+        const P = osParts[mk];
+        const busy = !!osSyncing[mk];
+        const part = P ? (isUps ? P.ups : P.react) : null;
+        const err = P ? (isUps ? P.err.ups : P.err.react) : '';
+        let info = '';
+        if(err) info = err;
+        else if(part && part.warn) info = part.warn;
+        else if(part && isUps) info = 'Строк с данными: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
+        else if(part) info = 'Видеореакций: ' + part.rows;
+        return `
+        <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${mk===editingMonth?'open':''}>
+          <summary style="padding:12px 16px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;">
+            <span style="flex:1;">${monthLabel(mk)}</span>
+            ${url ? `<span style="font-size:11px;color:var(--green);font-weight:400;">● настроено</span>` : ''}
+          </summary>
+          <div style="padding:0 16px 16px;">
+            <div class="row" style="margin-top:8px;">
+              <input type="text" class="${cls}" data-month="${mk}" value="${escapeHtml(url)}" placeholder="Ссылка на вкладку месяца">
+              <button class="btn small os-link-btn ${busy?'secondary':''}" data-kind="${kind}" data-month="${mk}" ${busy?'disabled':''}>${busy?'Считаю…':'Обновить'}</button>
+            </div>
+            ${info ? `<div class="hint" style="margin-top:6px;">${escapeHtml(info)}</div>` : ''}
+            ${P && url ? `<div class="hint" style="margin-top:4px;">Обновлено в ${fmtTime(P.at)}</div>` : ''}
+          </div>
+        </details>`;
+      }).join('')}
+      </div>
+    </details>`;
+}
+
 function renderOsPlate(){
   const list = employees.filter(e=>e.department==='os');
   if(!list.length) return '';
+  const mk = editingMonth;
+  ensureOsData(mk);
+  const P = osParts[mk];
   const on = list.filter(e=>isCheckedIn(e.id)).length;
+  const salesOk = !!(P && P.sales && !P.sales.warn), upsOk = !!(P && P.ups && !P.ups.warn), reactOk = !!(P && P.react && !P.react.warn);
   return `<div class="ov-dept ov-dept-os">
     <div class="ov-dept-head"><span class="dname">${escapeHtml(deptLabel('os'))}</span><span class="dshift">${on} из ${list.length} на смене</span></div>
-    ${list.map(e=>`<div class="ov-person">
+    ${list.map(e=>{
+      const m = osMetrics(e.id, mk);
+      const line = !P ? 'считаю…' : [
+        'принято ' + (salesOk ? m.accepted : '—'),
+        'V ' + (salesOk ? fmtMoney(m.volume) : '—'),
+        'апсейл ' + (upsOk ? fmtMoney(m.upsDone) + (m.upsPending ? ' (+' + fmtMoney(m.upsPending) + ' ожидает)' : '') : '—'),
+        'реакций ' + (reactOk ? m.reactions : '—')
+      ].join(' · ');
+      return `<div class="ov-person">
       <div class="ov-person-top">
         <span class="pdot ${isCheckedIn(e.id)?'on':''}"></span>
         <span class="pname">${escapeHtml(e.name)}${empRoleLabel(e)?`<span class="role-tag">${escapeHtml(empRoleLabel(e))}</span>`:''}</span>
         <span class="pval">${fmtDuration(todayHoursFor(e.id))}</span>
       </div>
-    </div>`).join('')}
+      <div class="ov-person-sub os-line">${line}</div>
+    </div>`; }).join('')}
+    ${renderOsAlerts(mk)}
   </div>`;
 }
 
@@ -7176,6 +7479,9 @@ function renderAdminView(){
       </div>
     </details>
 
+    ${renderOsLinkGroup('ups')}
+    ${renderOsLinkGroup('react')}
+
     <details class="settings-group">
       <summary>Трекер тенденции<span class="group-hint">план и динамика</span></summary>
       <div class="group-body">
@@ -7526,6 +7832,17 @@ function attachDelegatedHandlers(){
       await syncFromGoogleSheet(dept, mk);
       return;
     }
+    if(el.closest('.os-link-btn')){
+      const btn = el.closest('.os-link-btn'), mk = btn.dataset.month, kind = btn.dataset.kind;
+      const isUps = kind === 'ups';
+      const input = document.querySelector(`.${isUps?'ups':'react'}-url-input[data-month="${mk}"]`);
+      const store = isUps ? upsellUrls : reactUrls, key = isUps ? 'app:upsellUrls' : 'app:reactUrls';
+      if(input) store[mk] = input.value.trim();
+      { const m = await saveMerged(key, store, [[mk]]); if(m){ if(isUps) upsellUrls = m; else reactUrls = m; } else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }
+      await syncOsData(mk);
+      return;
+    }
+    if(el.closest('#osRefreshBtn')){ await syncOsData(el.closest('#osRefreshBtn').dataset.month); return; }
     if(el.closest('.cash-sync-btn')){
       const btn = el.closest('.cash-sync-btn');
       const mk = btn.dataset.month;
@@ -7676,6 +7993,13 @@ function attachDelegatedHandlers(){
       const mk = ev.target.dataset.month;
       trackerUrls[mk] = ev.target.value.trim();
       try{ const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
+      return;
+    }
+    if(ev.target.classList.contains('ups-url-input') || ev.target.classList.contains('react-url-input')){
+      const isUps = ev.target.classList.contains('ups-url-input'), mk = ev.target.dataset.month;
+      const store = isUps ? upsellUrls : reactUrls, key = isUps ? 'app:upsellUrls' : 'app:reactUrls';
+      store[mk] = ev.target.value.trim();
+      try{ const m = await saveMerged(key, store, [[mk]]); if(m){ if(isUps) upsellUrls = m; else reactUrls = m; } else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }catch(e){ showToast('Ссылка не сохранилась', 'error'); }
       return;
     }
     if(ev.target.classList.contains('cash-url-input')){
