@@ -2199,7 +2199,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.1';
+const APP_BUILD = '2026-10-03.2';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3670,6 +3670,7 @@ let lastTrackerSyncAt = {}; // { monthKey: timestamp }
 // cashTotals[mk] = {prepaid, pending, rows, prepaidLabel, pendingLabel}
 let cashUrls = {};
 // ОС: ссылки (задаёт админ) и итоги. Итоги считаются в памяти у каждого — в базу не пишутся.
+let osSalesUrls = {};     // {мес: ссылка на «Отчёт по продажам» из ТАБЛИЦЫ ОС (там колонка «ОС»)}
 let upsellUrls = {};      // {мес: ссылка на лист апсейлов}
 let reactUrls = {};       // {мес: ссылка на лист видеореакций}
 let osParts = {};         // {мес: {sales, ups, react, err, link, at}}
@@ -5200,9 +5201,9 @@ function _doRender(){
   // Запоминаем то, что админ уже набрал в полях ссылок, но ещё не сохранил.
   // Без этого фоновая синхронизация перерисовывала экран и стирала вставку.
   const pendingInputs = [];
-  document.querySelectorAll('.sheet-url-input, .tracker-url-input, .cash-url-input, .ups-url-input, .react-url-input').forEach(inp=>{
+  document.querySelectorAll('.sheet-url-input, .tracker-url-input, .cash-url-input, .ossales-url-input, .ups-url-input, .react-url-input').forEach(inp=>{
     pendingInputs.push({
-      cls: ['sheet-url-input','cash-url-input','ups-url-input','react-url-input','tracker-url-input'].find(c=>inp.classList.contains(c)),
+      cls: ['sheet-url-input','cash-url-input','ossales-url-input','ups-url-input','react-url-input','tracker-url-input'].find(c=>inp.classList.contains(c)),
       month: inp.dataset.month, dept: inp.dataset.dept || '', value: inp.value,
     });
   });
@@ -6718,6 +6719,19 @@ function renderAnalyticsPane(){
 // Только показатели работы: ни выплат, ни зарплаты, ни штрафов здесь нет.
 // Источники: колонка «ОС» в листе «Отчёт по продажам», лист апсейлов, лист видеореакций.
 // ═══════════════════════════════════════════════════════════════════════════
+// Три ссылки ОС, которые задаёт админ. У ОС своя таблица — не та, откуда берём ТО и ОП.
+function osKinds(){
+  return {
+    sales: { key:'app:osSalesUrls', cls:'ossales-url-input', get:()=>osSalesUrls, set:v=>{ osSalesUrls = v; } },
+    ups:   { key:'app:upsellUrls',  cls:'ups-url-input',     get:()=>upsellUrls, set:v=>{ upsellUrls = v; } },
+    react: { key:'app:reactUrls',   cls:'react-url-input',   get:()=>reactUrls,  set:v=>{ reactUrls = v; } },
+  };
+}
+// Вкладка «Отчёт по продажам» из таблицы ОС: своя у месяца, если на неё не смотрит другой месяц
+function osSalesDedicated(url, mk){
+  const key = sheetTabKey(url);
+  return !Object.keys(osSalesUrls).some(m=> m!==mk && sheetTabKey(osSalesUrls[m])===key);
+}
 function osEmpMap(){
   const m = {};
   employees.filter(e=>e.department==='os').forEach(e=>{ m[normName(e.name)] = e.id; });
@@ -6748,7 +6762,7 @@ async function osLoadGrid(url, needles){
 
 function parseOsSales(rows, mk, wholeTab, empMap){
   const out = { per:{}, unassigned:{count:0, sum:0, list:[]}, unknown:{}, badSums:0, rows:0, warn:'' };
-  if(!rows || rows.length < 2){ out.warn = 'Лист «Отчёт по продажам» пустой или не найден'; return out; }
+  if(!rows || rows.length < 1){ out.warn = 'Лист «Отчёт по продажам» пустой или не найден'; return out; }
   const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
   const find = ps => { for(const p of ps){ const i = hl.findIndex(h=>h.includes(p)); if(i>=0) return i; } return -1; };
   const osCol = osHeaderIdx(hl);
@@ -6782,7 +6796,7 @@ function parseOsSales(rows, mk, wholeTab, empMap){
 
 function parseOsUpsell(rows, empMap){
   const out = { per:{}, unknown:{}, badSums:0, noWho:0, rows:0, warn:'' };
-  if(!rows || rows.length < 2){ out.warn = 'Лист апсейлов пустой или не найден'; return out; }
+  if(!rows || rows.length < 1){ out.warn = 'Лист апсейлов пустой или не найден'; return out; }
   const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
   const whoCol = hl.findIndex(h=>h.includes('чей'));
   const stCol = hl.findIndex(h=>h.includes('сдали') || h.includes('сдан'));
@@ -6807,7 +6821,7 @@ function parseOsUpsell(rows, empMap){
 
 function parseOsReactions(rows, empMap){
   const out = { per:{}, unknown:{}, rows:0, warn:'' };
-  if(!rows || rows.length < 2){ out.warn = 'Лист видеореакций пустой или не найден'; return out; }
+  if(!rows || rows.length < 1){ out.warn = 'Лист видеореакций пустой или не найден'; return out; }
   const hl = rows[0].map(h=>String(h||'').trim().toLowerCase());
   let whoCol = hl.findIndex(h=>h.includes('чей'));
   if(whoCol < 0) whoCol = osHeaderIdx(hl);
@@ -6833,18 +6847,21 @@ async function syncOsData(mk, silent){
   try{
     // свежие ссылки (их задаёт админ; остальные только читают)
     try{
-      const [u, rr] = await Promise.all([storeGet('app:upsellUrls', SHARED), storeGet('app:reactUrls', SHARED)]);
-      if(u && typeof u === 'object' && !Array.isArray(u)) upsellUrls = Object.assign({}, upsellUrls, u);
-      if(rr && typeof rr === 'object' && !Array.isArray(rr)) reactUrls = Object.assign({}, reactUrls, rr);
+      const K = osKinds();
+      const got = await Promise.all([storeGet(K.sales.key, SHARED), storeGet(K.ups.key, SHARED), storeGet(K.react.key, SHARED)]);
+      [K.sales, K.ups, K.react].forEach((k, i)=>{ const v = got[i]; if(v && typeof v === 'object' && !Array.isArray(v)) k.set(Object.assign({}, k.get(), v)); });
     }catch(e){}
     const empMap = osEmpMap();
-    // 1) лист продаж: колонка «ОС»
+    // 1) лист продаж: колонка «ОС». Берём из ТАБЛИЦЫ ОС; если ссылка не задана — из листов ТО/ОП
+    const ownUrl = (osSalesUrls[mk]||'').trim();
     const sdept = getSheetUrl('to', mk) ? 'to' : (getSheetUrl('op', mk) ? 'op' : '');
-    if(sdept){
+    const salesUrl = ownUrl || (sdept ? getSheetUrl(sdept, mk) : '');
+    if(salesUrl){
       P.link.sales = true;
       try{
-        const rows = await fetchLedgerRows(getSheetUrl(sdept, mk));
-        P.sales = parseOsSales(rows, mk, isDedicatedTab(sdept, mk), empMap);
+        const rows = await fetchLedgerRows(salesUrl);
+        const whole = ownUrl ? osSalesDedicated(ownUrl, mk) : isDedicatedTab(sdept, mk);
+        P.sales = parseOsSales(rows, mk, whole, empMap);
       }catch(e){ P.err.sales = 'Не получилось прочитать лист продаж: ' + e.message; }
     } else { P.sales = null; }
     // 2) лист апсейлов
@@ -6897,7 +6914,7 @@ function renderOsAlerts(mk){
   const P = osParts[mk];
   if(!P) return '';
   const out = [];
-  if(!P.link.sales) out.push(['amber', 'Лист «Отчёт по продажам» на этот месяц не подключён (админка → Данные → Google Таблица).']);
+  if(!P.link.sales) out.push(['amber', 'Таблица ОС («Отчёт по продажам») на этот месяц не подключена: админка → Данные → «Таблица ОС».']);
   else if(P.err.sales) out.push(['amber', escapeHtml(P.err.sales)]);
   else if(P.sales && P.sales.warn) out.push(['amber', escapeHtml(P.sales.warn)]);
   if(P.sales && !P.sales.warn){
@@ -6950,25 +6967,28 @@ function renderOsCard(emp, mk){
 }
 
 function renderOsLinkGroup(kind){
-  const isUps = kind === 'ups';
-  const urls = isUps ? upsellUrls : reactUrls;
-  const title = isUps ? 'Лист апсейлов' : 'Лист видеореакций';
-  const hint = isUps ? 'колонки «Сумма», «Сдали/не сдали», «Чей»' : 'каждая строка — одна видеореакция, колонка «Чей»';
-  const cls = isUps ? 'ups-url-input' : 'react-url-input';
+  const K = osKinds()[kind], urls = K.get();
+  const META = {
+    sales: { title:'Таблица ОС · отчёт по продажам', hint:'колонка «ОС»', ph:'Ссылка на вкладку «Отчёт по продажам <Месяц>» из таблицы ОС',
+             note:'Это таблица ОС, не та, откуда берём ТО и ОП. Нужна вкладка «Отчёт по продажам» нужного месяца (в ней колонка «ОС»). Если ссылку не задать, колонку «ОС» поищем в листах «ТО» и «ОП» из раздела Google Таблица.' },
+    ups:   { title:'Лист апсейлов', hint:'колонки «Сумма», «Сдали/не сдали», «Чей»', ph:'Ссылка на вкладку месяца', note:'' },
+    react: { title:'Лист видеореакций', hint:'каждая строка — одна видеореакция, колонка «Чей»', ph:'Ссылка на вкладку месяца', note:'' },
+  }[kind];
   return `<details class="settings-group">
-      <summary>${title}<span class="group-hint">ОС · ${hint}</span></summary>
+      <summary>${META.title}<span class="group-hint">ОС · ${META.hint}</span></summary>
       <div class="group-body">
-      <div class="hint" style="margin-top:0;">Отдельная ссылка на каждый месяц: откройте нужную вкладку и скопируйте адрес целиком (в нём должно быть <b>gid=…</b>). Доступ к таблице — «Все, у кого есть ссылка», роль «Читатель».</div>
+      <div class="hint" style="margin-top:0;">${META.note ? META.note + '<br>' : ''}Отдельная ссылка на каждый месяц: откройте нужную вкладку и скопируйте адрес целиком (в нём должно быть <b>gid=…</b>). Доступ к таблице — «Все, у кого есть ссылка», роль «Читатель».</div>
       ${Object.keys(kpiData).sort().reverse().map(mk => {
         const url = urls[mk] || '';
         const P = osParts[mk];
         const busy = !!osSyncing[mk];
-        const part = P ? (isUps ? P.ups : P.react) : null;
-        const err = P ? (isUps ? P.err.ups : P.err.react) : '';
+        const part = P ? P[kind] : null;
+        const err = P ? P.err[kind] : '';
         let info = '';
         if(err) info = err;
         else if(part && part.warn) info = part.warn;
-        else if(part && isUps) info = 'Строк с данными: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
+        else if(part && kind==='sales') info = 'Заказов в листе: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
+        else if(part && kind==='ups') info = 'Строк с данными: ' + part.rows + (part.badSums ? ' · непонятных сумм: ' + part.badSums : '');
         else if(part) info = 'Видеореакций: ' + part.rows;
         return `
         <details style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;" ${mk===editingMonth?'open':''}>
@@ -6978,7 +6998,7 @@ function renderOsLinkGroup(kind){
           </summary>
           <div style="padding:0 16px 16px;">
             <div class="row" style="margin-top:8px;">
-              <input type="text" class="${cls}" data-month="${mk}" value="${escapeHtml(url)}" placeholder="Ссылка на вкладку месяца">
+              <input type="text" class="${K.cls}" data-month="${mk}" value="${escapeHtml(url)}" placeholder="${escapeHtml(META.ph)}">
               <button class="btn small os-link-btn ${busy?'secondary':''}" data-kind="${kind}" data-month="${mk}" ${busy?'disabled':''}>${busy?'Считаю…':'Обновить'}</button>
             </div>
             ${info ? `<div class="hint" style="margin-top:6px;">${escapeHtml(info)}</div>` : ''}
@@ -7479,6 +7499,7 @@ function renderAdminView(){
       </div>
     </details>
 
+    ${renderOsLinkGroup('sales')}
     ${renderOsLinkGroup('ups')}
     ${renderOsLinkGroup('react')}
 
@@ -7833,12 +7854,11 @@ function attachDelegatedHandlers(){
       return;
     }
     if(el.closest('.os-link-btn')){
-      const btn = el.closest('.os-link-btn'), mk = btn.dataset.month, kind = btn.dataset.kind;
-      const isUps = kind === 'ups';
-      const input = document.querySelector(`.${isUps?'ups':'react'}-url-input[data-month="${mk}"]`);
-      const store = isUps ? upsellUrls : reactUrls, key = isUps ? 'app:upsellUrls' : 'app:reactUrls';
+      const btn = el.closest('.os-link-btn'), mk = btn.dataset.month, K = osKinds()[btn.dataset.kind];
+      const input = document.querySelector(`.${K.cls}[data-month="${mk}"]`);
+      const store = K.get();
       if(input) store[mk] = input.value.trim();
-      { const m = await saveMerged(key, store, [[mk]]); if(m){ if(isUps) upsellUrls = m; else reactUrls = m; } else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }
+      { const m = await saveMerged(K.key, store, [[mk]]); if(m) K.set(m); else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }
       await syncOsData(mk);
       return;
     }
@@ -7995,13 +8015,13 @@ function attachDelegatedHandlers(){
       try{ const m = await saveMerged('app:trackerUrls', trackerUrls, [[mk]]); if(m) trackerUrls = m; else showToast('Ссылка не сохранилась — проверьте связь', 'error'); }catch(e){ console.error(e); }
       return;
     }
-    if(ev.target.classList.contains('ups-url-input') || ev.target.classList.contains('react-url-input')){
-      const isUps = ev.target.classList.contains('ups-url-input'), mk = ev.target.dataset.month;
-      const store = isUps ? upsellUrls : reactUrls, key = isUps ? 'app:upsellUrls' : 'app:reactUrls';
-      store[mk] = ev.target.value.trim();
-      try{ const m = await saveMerged(key, store, [[mk]]); if(m){ if(isUps) upsellUrls = m; else reactUrls = m; } else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }catch(e){ showToast('Ссылка не сохранилась', 'error'); }
-      return;
-    }
+    { const K = Object.values(osKinds()).find(k=> ev.target.classList.contains(k.cls));
+      if(K){
+        const mk = ev.target.dataset.month, store = K.get();
+        store[mk] = ev.target.value.trim();
+        try{ const m = await saveMerged(K.key, store, [[mk]]); if(m) K.set(m); else showToast('Ссылка не сохранилась — проверьте связь и права', 'error'); }catch(e){ showToast('Ссылка не сохранилась', 'error'); }
+        return;
+      } }
     if(ev.target.classList.contains('cash-url-input')){
       const mk = ev.target.dataset.month;
       cashUrls[mk] = ev.target.value.trim();
