@@ -1667,19 +1667,6 @@
             color:rgba(255,255,255,.75);font-family:var(--font);font-size:13px;cursor:pointer;transition:background .15s,color .15s;}
     .tu-out:hover{background:rgba(255,255,255,.08);color:#fff;}
 
-    /* кнопка темы: значок вместо эмодзи */
-    #themeBtn{position:static !important;top:auto !important;right:auto !important;margin:0;align-self:center;flex:none;
-      width:34px;height:34px;padding:0;font-size:0 !important;border-radius:8px;
-      background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);
-      display:flex;align-items:center;justify-content:center;}
-    #themeBtn:hover{background:rgba(255,255,255,.08);color:#fff;}
-    #themeBtn::before{content:'';width:18px;height:18px;background:currentColor;
-      -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;}
-    html.dark #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
-    @media (prefers-color-scheme: dark){
-      :root:not(.light) #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
-    }
-
     /* содержимое: по центру, ограниченной ширины, под панелью */
     main#main{margin:60px auto 0;width:100%;max-width:1360px;padding:28px 32px 48px;min-height:calc(100vh - 60px);overflow-y:visible;}
     main#main.emp-split-view, main#main.admin-split-view{height:calc(100vh - 60px);padding-top:24px;padding-bottom:0;overflow-y:hidden;}
@@ -1751,6 +1738,67 @@
   .os-alert.bad{border-left-color:var(--red);background:rgba(229,72,77,.06);}
   .os-alert ul{margin:6px 0 0 18px;padding:0;}
   .os-line{font-size:12px;color:var(--ink3);line-height:1.5;margin-top:4px;}
+
+  /* ═══ Телефон: такая же верхняя панель, как на компьютере ═══
+     Тёмная полоса: логотип, справа аватар, «Выйти» и тема; вкладки (если есть)
+     второй строкой с подчёркиванием активной. Без большого фиолетового блока. */
+  /* кнопка темы: значок вместо эмодзи */
+  #themeBtn{position:static !important;top:auto !important;right:auto !important;margin:0;align-self:center;flex:none;
+    width:34px;height:34px;padding:0;font-size:0 !important;border-radius:8px;
+    background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);
+    display:flex;align-items:center;justify-content:center;}
+  #themeBtn:hover{background:rgba(255,255,255,.08);color:#fff;}
+  #themeBtn::before{content:'';width:18px;height:18px;background:currentColor;
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E") center/18px no-repeat;}
+  html.dark #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
+  @media (prefers-color-scheme: dark){
+    :root:not(.light) #themeBtn::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E");}
+  }
+
+
+  @media (max-width: 899px){
+    header.cover{
+      margin:0;border-radius:0;padding:calc(8px + env(safe-area-inset-top, 0px)) 14px 0;
+      display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 10px;
+      background:#131317;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:none;overflow:visible;
+      position:sticky;top:0;z-index:60;
+    }
+    header.cover::before, header.cover::after{display:none;}
+    .brand{margin:0;flex:none;order:1;height:44px;justify-content:center;}
+    .brand-banner{height:26px;}
+    .top-user{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;order:2;}
+    .top-user:empty{display:none;}
+    .tu-ava{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+            background:rgba(255,255,255,.12);color:#fff;font-size:13px;font-weight:600;}
+    .tu-meta{display:none;}
+    .tu-out{height:32px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:transparent;
+            color:rgba(255,255,255,.75);font-family:var(--font);font-size:13px;cursor:pointer;}
+    #themeBtn{order:3;width:32px;height:32px;}
+    .top-user:empty + #themeBtn{margin-left:auto;}
+    .tabs{order:4;flex-basis:100%;display:flex;flex-direction:row;gap:2px;margin-top:2px;background:none;border:0;border-radius:0;
+          padding:0;backdrop-filter:none;overflow-x:auto;scrollbar-width:none;}
+    .tabs::-webkit-scrollbar{display:none;}
+    .tab{flex:none;position:relative;height:40px;min-height:0;padding:0 12px;border-radius:0;font-size:14px;font-weight:500;
+         letter-spacing:0;color:rgba(255,255,255,.6);background:transparent;box-shadow:none;display:flex;align-items:center;}
+    .tab::before{display:none;}
+    .tab.active{color:#fff;background:transparent;box-shadow:none;}
+    .tab.active::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2px;border-radius:2px 2px 0 0;background:var(--p4);}
+  }
+  .table-wrap{overflow-x:auto;max-width:100%;}
+  /* метки «Тимлид ТО», «лучший» переносятся, а не обрезаются (и на компьютере тоже) */
+  .ov-person .pname{white-space:normal;flex-wrap:wrap;row-gap:4px;}
+  /* Телефон: ничего не уходит за край экрана */
+  @media (max-width: 600px){
+    .admin-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible;}
+    .admin-tab{min-width:0;padding:9px 4px;font-size:13px;}
+    .ov-head{flex-wrap:wrap;gap:6px 14px;}
+    .ov-head > span:first-child{flex-basis:100%;flex-wrap:wrap;}
+    .st-table th:nth-child(4), .st-table td:nth-child(4){display:none;}
+    .st-table th, .st-table td{padding-left:6px;padding-right:6px;}
+    .st-table .btn{padding:7px 10px;font-size:12.5px;min-height:0;}
+    .month-row select{flex:1;min-width:0;}
+    .month-row .btn{flex:none;}
+  }
 </style>
 </head>
 <body>
@@ -2281,7 +2329,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.6';
+const APP_BUILD = '2026-10-03.7';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5282,8 +5330,14 @@ function _doRender(){
   renderTopUser();
   const teamTabEl = document.getElementById('teamTab');
   if(teamTabEl){ const me = employees.find(e=>e.id===myEmployeeId); teamTabEl.style.display = (me && me.role==='teamlead') ? '' : 'none'; }
+  // У админа вкладок сверху нет: «Задачи» и остальное — во вкладках админки,
+  // «Сотрудник» админу без своей карточки не нужен
   const tasksTabEl = document.getElementById('tasksTab');
-  if(tasksTabEl) tasksTabEl.style.display = (myEmployeeId || authIsAdmin()) ? '' : 'none';
+  if(tasksTabEl) tasksTabEl.style.display = (myEmployeeId && !authIsAdmin()) ? '' : 'none';
+  const empTabEl = document.querySelector('.tab[data-mode="employee"]');
+  if(empTabEl) empTabEl.style.display = (myEmployeeId || !authIsAdmin()) ? '' : 'none';
+  const tabsBox = document.querySelector('header .tabs');
+  if(tabsBox) tabsBox.style.display = [...tabsBox.querySelectorAll('.tab')].some(t=>t.style.display!=='none') ? '' : 'none';
   const viewKey = currentViewKey();
   const scrollY = window.scrollY; // запоминаем позицию до перезаписи DOM
 
@@ -7844,7 +7898,7 @@ function renderAdminView(){
     <div class="admin-col-left">
 
     <div class="card">
-      <h2 style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 class="ov-head" style="display:flex;justify-content:space-between;align-items:center;">
         <span style="display:flex;align-items:center;gap:10px;">Обзор · ${monthLabel(editingMonth)} <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
         <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Выйти из админки</span> <span class="switch-user" id="authLogoutBtn" style="margin:0 0 0 14px;text-transform:none;letter-spacing:0;">Выйти из аккаунта</span>
       </h2>
@@ -7984,7 +8038,7 @@ function renderAdminView(){
 
     <div class="card">
       <h2>Статус команды сейчас</h2>
-      <table><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="table-wrap"><table class="st-table"><thead><tr><th>Сотрудник</th><th>Статус</th><th>Сегодня</th><th>Последняя отметка</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
 
     ${renderDayAttendance(employees, 'Отметки за день')}
