@@ -401,6 +401,11 @@
   .adm-row{display:flex;flex-wrap:wrap;gap:10px;}
   .adm-row input{flex:1 1 200px;min-width:0;}
   .adm-prompt{border:1.5px solid var(--p3);}
+  .adm-line{display:flex;align-items:center;gap:12px;padding:12px 4px;border-top:1px solid var(--bg2);}
+  .adm-ava{background:var(--p6) !important;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;}
+  .adm-who{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .adm-who b{font-size:14px;color:var(--ink);}
+  .adm-who span{font-size:12px;color:var(--ink3);overflow-wrap:anywhere;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2461,7 +2466,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.17';
+const APP_BUILD = '2026-10-03.18';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3932,7 +3937,7 @@ let planOverrides = {};
 // Подписи админов: { почта: {name, title, at} }. Права админа выдаются в Supabase,
 // здесь только имя и должность — их видно в шапке, задачах и уведомлениях.
 let admins = {};
-const ADMIN_TITLES = ['Основатель', 'Сооснователь', 'Генеральный директор', 'Управляющий партнёр', 'Финансовый директор', 'Директор по продажам', 'Директор по производству', 'Маркетолог'];
+const ADMIN_TITLES = ['CEO', 'COO', 'CTO', 'CFO', 'CMO', 'CPO', 'Основатель', 'Сооснователь', 'Управляющий партнёр', 'Директор по продажам', 'Директор по производству'];
 function adminInfo(email){ return admins[String(email||'').toLowerCase()] || null; }
 function adminName(email){ const a = adminInfo(email); return a && a.name ? a.name : ''; }
 // Админ вошёл — заносим его почту в список (имя он впишет сам или его впишут в «Настройках»)
@@ -3944,6 +3949,7 @@ async function ensureAdminEntry(){
 }
 async function saveAdminInfo(email, name, title){
   const em = String(email||'').toLowerCase(); if(!em) return false;
+  if(em !== String(authEmail()||'').toLowerCase()) return false;   // каждый подписывает только себя
   admins = Object.assign({}, admins, {[em]: Object.assign({}, admins[em]||{}, {name:String(name||'').trim().slice(0,60), title:String(title||'').trim().slice(0,60), at:Date.now()})});
   const m = await saveMerged('app:admins', admins, [[em]]);
   if(m){ admins = m; return true; }
@@ -3956,7 +3962,7 @@ function renderAdminProfilePrompt(){
     <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Админ».</div>
     <div class="adm-row">
       <input type="text" id="admNameMe" placeholder="Имя, например: Ансар" maxlength="60" autocomplete="off">
-      <input type="text" id="admTitleMe" placeholder="Должность, например: Основатель" list="admTitles" maxlength="60" autocomplete="off">
+      <input type="text" id="admTitleMe" placeholder="Должность, например: CEO" list="admTitles" maxlength="60" autocomplete="off">
       <button class="btn" data-admsave="${escapeHtml(String(authEmail()||'').toLowerCase())}" data-admme="1">Сохранить</button>
     </div>
     ${adminTitlesDatalist()}
@@ -3964,18 +3970,21 @@ function renderAdminProfilePrompt(){
 }
 function adminTitlesDatalist(){ return `<datalist id="admTitles">${ADMIN_TITLES.map(t=>`<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`; }
 function renderAdminsCard(){
-  const list = Object.keys(admins).sort((a,b)=> (admins[a].name||a).localeCompare(admins[b].name||b, 'ru'));
   const me = String(authEmail()||'').toLowerCase();
+  const list = Object.keys(admins).sort((a,b)=> a===me ? -1 : b===me ? 1 : (admins[a].name||a).localeCompare(admins[b].name||b, 'ru'));
   return `<div class="card">
     <h2>Админы</h2>
-    <div class="hint" style="margin:-4px 0 12px;">Здесь только подпись: имя и должность. Права админа выдаются в Supabase. В списке появляется каждый админ, который хотя бы раз вошёл на сайт.</div>
-    ${list.length ? list.map(em=>{ const a = admins[em]||{}; const k = escapeHtml(em); return `
-      <div class="emp-access-card">
-        <div class="emp-access-top"><div class="emp-access-badges"><span class="emp-access-dept" style="text-transform:none;letter-spacing:0;">${k}</span>${em===me?'<span class="emp-access-role">это вы</span>':''}</div>
-          <button class="btn small danger" data-admdel="${k}" title="Убрать подпись из списка (права админа не снимаются)">Убрать</button></div>
+    <div class="hint" style="margin:-4px 0 12px;">У каждого своя подпись: имя и должность меняет только сам человек. Права админа выдаются в Supabase. В списке появляется каждый админ, который хотя бы раз вошёл на сайт.</div>
+    ${list.length ? list.map(em=>{ const a = admins[em]||{}, k = escapeHtml(em);
+      if(em !== me) return `<div class="adm-line">
+          <span class="tu-ava adm-ava">${escapeHtml((String(a.name||em).trim()[0]||'?').toUpperCase())}</span>
+          <span class="adm-who"><b>${escapeHtml(a.name || 'Имя пока не указано')}</b><span>${escapeHtml(a.title || '—')} · ${k}</span></span>
+        </div>`;
+      return `<div class="emp-access-card">
+        <div class="emp-access-top"><div class="emp-access-badges"><span class="emp-access-dept" style="text-transform:none;letter-spacing:0;">${k}</span><span class="emp-access-role">это вы</span></div></div>
         <div class="emp-access-grid">
           <div class="fld full"><label class="field-label">Имя</label><input type="text" data-admname="${k}" value="${escapeHtml(a.name||'')}" placeholder="Имя" maxlength="60" autocomplete="off"></div>
-          <div class="fld full"><label class="field-label">Должность</label><input type="text" data-admtitle="${k}" value="${escapeHtml(a.title||'')}" placeholder="Например: Основатель" list="admTitles" maxlength="60" autocomplete="off"></div>
+          <div class="fld full"><label class="field-label">Должность</label><input type="text" data-admtitle="${k}" value="${escapeHtml(a.title||'')}" placeholder="Например: CEO" list="admTitles" maxlength="60" autocomplete="off"></div>
         </div>
         <div class="emp-save-row"><button class="btn small" data-admsave="${k}">Сохранить</button></div>
       </div>`; }).join('') : '<div class="empty">Пока никто из админов не входил</div>'}
@@ -3996,16 +4005,6 @@ function attachAdminHandlers(){
       if(n === document.activeElement || t === document.activeElement) document.activeElement.blur();
       showToast(ok ? 'Сохранено: ' + n.value.trim() : 'Не сохранилось — проверьте связь', ok ? 'success' : 'error');
       if(ok){ const box = document.getElementById('topUser'); if(box) box._html = null; renderNow(); }
-      return;
-    }
-    const del = e.target.closest && e.target.closest('[data-admdel]');
-    if(del){
-      if(!del.dataset.sure){ del.dataset.sure = '1'; del.textContent = 'Точно убрать?'; return; }
-      const em = del.dataset.admdel;
-      admins = Object.assign({}, admins); delete admins[em];
-      const m = await saveMerged('app:admins', admins, [[em]]);
-      if(m) admins = m;
-      showToast(m ? 'Убрано из списка' : 'Не сохранилось', m ? 'success' : 'error'); renderNow();
     }
   });
   document.addEventListener('keydown', e=>{
