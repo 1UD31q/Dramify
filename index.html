@@ -428,6 +428,150 @@
   .prf-mail{font-size:12px;color:var(--ink3);text-align:center;}
   .prf-body .tk-f{margin-bottom:0;}
   .prf-body input[type=text]{width:100%;}
+  /* ── База знаний ── */
+  :root{ --kb-red:#be123c; --kb-green:#15803d; --kb-tint:var(--p1); --kb-accent:var(--p6); }
+  @media (prefers-color-scheme: dark){ :root:not(.light){ --kb-red:#fb7185; --kb-green:#4ade80; --kb-tint:rgba(124,82,200,.24); --kb-accent:#c4b0f5; } }
+  html.dark{ --kb-red:#fb7185; --kb-green:#4ade80; --kb-tint:rgba(124,82,200,.24); --kb-accent:#c4b0f5; }
+  .kb-wrap{max-width:1180px;}
+  .kb-layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;align-items:start;}
+  .kb-side{background:var(--bg0);border:1px solid var(--bg2);border-radius:14px;padding:12px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;}
+  .kb-search input{width:100%;border:1.5px solid var(--bg3);background:var(--bg1);border-radius:10px;padding:9px 12px;font:14px var(--font);color:var(--ink);}
+  .kb-search input:focus{outline:none;border-color:var(--p5);background:var(--bg0);}
+  .kb-nav-tg{display:none;width:100%;justify-content:space-between;gap:8px;border:0;background:var(--bg1);border-radius:10px;padding:10px 12px;margin-top:8px;font:600 13px var(--font);color:var(--ink);cursor:pointer;text-align:left;}
+  .kb-fold{margin-top:10px;}
+  .kb-fold-h{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);}
+  .kb-fold-h span{margin-left:auto;font-weight:600;letter-spacing:0;}
+  .kb-pg{display:flex;align-items:flex-start;gap:8px;width:100%;border:0;background:none;text-align:left;padding:7px 8px;border-radius:8px;cursor:pointer;font:13px/1.35 var(--font);color:var(--ink2);}
+  .kb-pg:hover{background:var(--bg1);}
+  .kb-pg.on{background:var(--kb-tint);color:var(--kb-accent);font-weight:600;}
+  .kb-dot{width:7px;height:7px;border-radius:50%;flex:none;margin-top:5px;display:inline-block;}
+  .kb-dot.new{background:var(--p5);} .kb-dot.upd{background:var(--amber);}
+  .kb-empty-f{padding:4px 8px 6px;font-size:12px;color:var(--ink3);}
+  .kb-add{display:block;width:100%;border:1px dashed var(--bg3);background:none;border-radius:8px;padding:6px 8px;margin-top:4px;font:12px var(--font);color:var(--ink3);cursor:pointer;text-align:left;}
+  .kb-add:hover{border-color:var(--p3);color:var(--kb-accent);}
+  .kb-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink3);padding:10px 8px 0;border-top:1px solid var(--bg2);margin-top:12px;}
+  .kb-legend span{display:inline-flex;align-items:center;gap:5px;} .kb-legend .kb-dot{margin:0;}
+  .kb-main{padding:26px 32px 28px;min-height:50vh;min-width:0;}
+  .kb-crumbs{font-size:12px;color:var(--ink3);margin-bottom:6px;}
+  .kb-ph{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;}
+  .kb-title{font-size:25px;font-weight:700;color:var(--ink);letter-spacing:-.02em;line-height:1.2;margin:0;text-wrap:balance;}
+  .kb-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 20px;font-size:12px;color:var(--ink3);}
+  .kb-chip{display:inline-flex;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .kb-chip.must{background:var(--rust-tint);color:var(--kb-red);}
+  .kb-chip.upd{background:var(--tk-amber-tint);color:var(--tk-amber);}
+  .kb-toc{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 20px;}
+  .kb-toc a{font-size:12px;color:var(--ink2);background:var(--bg1);border:1px solid var(--bg2);padding:4px 10px;border-radius:20px;text-decoration:none;}
+  .kb-toc a:hover{border-color:var(--p3);color:var(--kb-accent);}
+  .kb-doc{max-width:760px;font-size:15px;line-height:1.65;color:var(--ink2);overflow-wrap:anywhere;}
+  .kb-doc p{margin:0 0 12px;}
+  .kb-doc b{color:var(--ink);}
+  .kb-doc a{color:var(--kb-accent);}
+  .kb-doc h3{font-size:19px;color:var(--ink);margin:26px 0 10px;letter-spacing:-.01em;scroll-margin-top:16px;}
+  .kb-doc h4{font-size:16px;color:var(--ink);margin:22px 0 8px;scroll-margin-top:16px;}
+  .kb-doc > :first-child{margin-top:0;}
+  .kb-doc ul{margin:0 0 14px;padding-left:20px;}
+  .kb-doc li{margin:0 0 6px;}
+  .kb-call{display:flex;gap:10px;border-radius:12px;padding:12px 14px;margin:14px 0;font-weight:600;line-height:1.55;}
+  .kb-call.warn{background:var(--rust-tint);color:var(--kb-red);}
+  .kb-call.tip{background:var(--teal-tint);color:var(--kb-green);}
+  .kb-call.warn b,.kb-call.tip b{color:inherit;}
+  .kb-quote{border-left:3px solid var(--p5);padding:4px 0 4px 14px;margin:14px 0;font-style:italic;color:var(--ink);}
+  .kb-key{font-weight:700;color:var(--ink);background:var(--kb-tint);border-radius:10px;padding:10px 14px;margin:12px 0;}
+  .kb-note{font-size:13px;font-style:italic;color:var(--ink3);}
+  .kb-chat{display:flex;flex-direction:column;gap:8px;margin:14px 0 16px;}
+  .kb-say{position:relative;max-width:88%;padding:10px 14px;border-radius:14px;font-size:14.5px;line-height:1.55;color:var(--ink);}
+  .kb-say.m{align-self:flex-end;background:var(--kb-tint);border-bottom-right-radius:4px;}
+  .kb-say.c{align-self:flex-start;background:var(--bg1);border-bottom-left-radius:4px;}
+  .kb-who{display:block;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-bottom:2px;color:var(--ink3);}
+  .kb-say.m .kb-who{color:var(--kb-accent);}
+  .kb-copy{position:absolute;top:6px;right:8px;border:0;background:var(--bg0);border-radius:6px;font:11px var(--font);padding:2px 7px;color:var(--ink3);cursor:pointer;opacity:0;transition:opacity .15s;}
+  .kb-say:hover .kb-copy,.kb-copy:focus{opacity:1;}
+  @media (hover:none){ .kb-copy{opacity:1;} }
+  .kb-tbl{overflow-x:auto;margin:12px 0 16px;border:1px solid var(--bg2);border-radius:12px;}
+  .kb-tbl table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.45;}
+  .kb-tbl th{background:var(--bg1);text-align:left;font-weight:600;color:var(--ink3);font-size:12px;padding:9px 12px;}
+  .kb-tbl td{padding:9px 12px;border-top:1px solid var(--bg2);vertical-align:top;font-variant-numeric:tabular-nums;}
+  .kb-tbl td:first-child{font-weight:600;color:var(--ink);}
+  .kb-check{list-style:none;padding:0 !important;}
+  .kb-check li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;cursor:pointer;margin:0 0 4px;}
+  .kb-check li:hover{background:var(--bg1);}
+  .kb-box{width:20px;height:20px;border-radius:6px;border:2px solid var(--bg3);flex:none;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;margin-top:2px;}
+  .kb-check li.ok .kb-box{background:var(--green);border-color:var(--green);}
+  .kb-check li.ok span:last-child{text-decoration:line-through;color:var(--ink3);}
+  .kb-doc mark{background:#fde68a;color:#111;border-radius:3px;padding:0 1px;}
+  .kb-foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--bg2);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;}
+  .kb-foot + .kb-foot{margin-top:0;border-top:0;padding-top:4px;}
+  .kb-readers{font-size:12.5px;color:var(--ink3);display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+  .kb-readers b{color:var(--ink);}
+  .kb-avs{display:inline-flex;flex-wrap:wrap;gap:3px;}
+  .kb-av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;background:var(--p6);color:#fff;}
+  .kb-av.no{background:var(--bg2);color:var(--ink3);}
+  .btn.kb-done{background:var(--teal-tint);color:var(--kb-green);opacity:1;}
+  .kb-pn{display:flex;justify-content:space-between;gap:8px;margin-top:18px;flex-wrap:wrap;}
+  .kb-pn .btn{max-width:100%;white-space:normal;text-align:left;}
+  .kb-res{display:block;width:100%;text-align:left;border:1px solid var(--bg2);background:var(--bg0);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font:inherit;color:var(--ink);}
+  .kb-res:hover{border-color:var(--p3);}
+  .kb-res b{display:block;font-size:14px;margin-bottom:3px;}
+  .kb-res span{font-size:13px;color:var(--ink3);line-height:1.5;}
+  .kb-res mark{background:#fde68a;color:#111;border-radius:3px;}
+  .kb-blank{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:30px 4px;color:var(--ink3);}
+  .kb-blank b{color:var(--ink);font-size:16px;}
+  .kb-ed{padding:16px;}
+  .kb-ed-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;}
+  .kb-title-in{flex:1 1 260px;font-size:17px !important;font-weight:600;}
+  .kb-must{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2);cursor:pointer;white-space:nowrap;}
+  .kb-must input{width:16px;height:16px;accent-color:var(--p6);}
+  .kb-order{display:inline-flex;gap:4px;}
+  .kb-tools{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .kb-tools button{border:1px solid var(--bg3);background:var(--bg1);border-radius:8px;padding:6px 10px;font:12.5px var(--font);color:var(--ink2);cursor:pointer;}
+  .kb-tools button:hover{border-color:var(--p3);color:var(--kb-accent);}
+  .kb-ed-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;}
+  .kb-ed-grid textarea{width:100%;min-height:60vh;resize:vertical;font:14px/1.6 var(--font-mono);color:var(--ink);background:var(--bg1);border:1.5px solid var(--bg3);border-radius:12px;padding:12px 14px;}
+  .kb-ed-grid textarea:focus{outline:none;border-color:var(--p5);}
+  .kb-preview{border:1px solid var(--bg2);border-radius:12px;padding:16px 18px;max-height:70vh;overflow:auto;}
+  .kb-hint{font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.5;}
+  .kb-imp-list{max-height:45vh;overflow:auto;border:1px solid var(--bg2);border-radius:12px;margin-bottom:8px;}
+  .kb-imp-row{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-top:1px solid var(--bg2);font-size:13.5px;}
+  .kb-imp-row:first-child{border-top:0;}
+  .kb-imp-row small{color:var(--ink3);white-space:nowrap;}
+  @media (max-width:899px){
+    .kb-layout{grid-template-columns:1fr;}
+    .kb-side{position:static;max-height:none;}
+    .kb-nav-tg{display:flex;}
+    .kb-side:not(.open) .kb-tree{display:none;}
+    .kb-main{padding:18px 16px 20px;}
+    .kb-title{font-size:21px;}
+    .kb-doc{font-size:14.5px;}
+    .kb-say{max-width:94%;}
+    .kb-ed-grid{grid-template-columns:1fr;}
+    .kb-ed-grid textarea{min-height:45vh;}
+    .kb-preview{max-height:none;}
+  }
+  /* ── Итоги недели ── */
+  .wk-card{padding:0;overflow:hidden;}
+  .wk-sum{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:18px 22px;}
+  .wk-sum::-webkit-details-marker{display:none;}
+  .wk-sum::before{content:'▸';color:var(--ink3);font-size:12px;transition:transform .2s;margin-right:-6px;}
+  .wk-card[open] .wk-sum::before{transform:rotate(90deg);}
+  .wk-title{font-weight:700;font-size:15px;color:var(--ink);flex:1;min-width:160px;}
+  .wk-range{font-weight:500;color:var(--ink3);font-size:13px;margin-left:6px;}
+  .wk-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .wk-chip{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--bg1);color:var(--ink2);white-space:nowrap;}
+  .wk-chip.warn{background:var(--tk-amber-tint);color:var(--tk-amber);}
+  .wk-chip.bad{background:var(--rust-tint);color:var(--rust-dark);}
+  .wk-nav{display:flex;gap:8px;padding:0 22px 12px;}
+  .wk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 22px;}
+  @media (max-width:600px){ .wk-grid{grid-template-columns:1fr;} .wk-sum{padding:16px;} .wk-nav,.wk-grid,.wk-foot{padding-left:16px;padding-right:16px;} }
+  .wk-box{background:var(--bg1);border-radius:12px;padding:12px 14px;min-width:0;}
+  .wk-h{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px;}
+  .wk-big{font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .wk-big small{font-size:12px;font-weight:500;color:var(--ink3);letter-spacing:0;}
+  .wk-sub{font-size:12.5px;color:var(--ink3);margin-top:3px;line-height:1.4;}
+  .wk-sub.bad{color:var(--rust-dark);}
+  .wk-row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink2);padding:4px 0;border-top:1px solid var(--bg2);margin-top:4px;}
+  .wk-row span:last-child{color:var(--ink3);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .up{color:var(--green);} .down{color:var(--red);}
+  .wk-foot{font-size:11.5px;color:var(--ink3);padding:10px 22px 16px;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -1945,7 +2089,7 @@
   .ov-person .pname{white-space:normal;flex-wrap:wrap;row-gap:4px;}
   /* Телефон: ничего не уходит за край экрана */
   @media (max-width: 600px){
-    .admin-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible;}
+    .admin-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible;}
     .admin-tab{min-width:0;padding:9px 4px;font-size:13px;}
     .ov-head{flex-wrap:wrap;gap:6px 14px;}
     .ov-head > span:first-child{flex-basis:100%;flex-wrap:wrap;}
@@ -1968,6 +2112,7 @@
       <div class="tab" id="salesTab" data-mode="sales" style="display:none;">Продажа</div>
       <div class="tab" id="teamTab" data-mode="team" style="display:none;">Команда</div>
       <div class="tab" id="tasksTab" data-mode="tasks" style="display:none;">Задачи</div>
+      <div class="tab" id="kbTab" data-mode="kb" style="display:none;">Знания</div>
       <!-- Admin tab hidden; access via secret gesture -->
     </div>
     <div class="top-user" id="topUser"></div>
@@ -2393,6 +2538,7 @@ function canWriteKey(key){
   if(String(key).indexOf('att:') === 0) return true; // свои отметки; чужие база не пропустит
   if(String(key).indexOf('task:') === 0) return true; // задачи: кто что может — проверяет база (security.sql)
   if(String(key).indexOf('avatar:') === 0) return myAvatarIds().some(id=> key === 'avatar:' + id); // только своё фото
+  if(String(key).indexOf('kb:page:') === 0 || String(key).indexOf('kbread:') === 0) return true; // база знаний — тоже база
   const me = employees.find(e=>e.id===myEmployeeId);
   return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
 }
@@ -2489,7 +2635,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.23';
+const APP_BUILD = '2026-10-03.24';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2769,7 +2915,7 @@ async function pollSharedData(){
   isPolling = true;
   try{
     storeReadFailed = false;
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins] = await Promise.all([
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins, freshKb] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       loadAttendance(),
@@ -2787,6 +2933,7 @@ async function pollSharedData(){
       storeGet('app:planOverrides', SHARED),
       loadTasks(),
       storeGet('app:admins', SHARED),
+      loadKb(),
     ]);
     // Если чтение упало — данные могли прийти из локального кэша.
     // Применять их поверх текущих не нужно: в памяти уже актуальнее.
@@ -2812,7 +2959,7 @@ async function pollSharedData(){
       showToast('Связь с базой восстановлена', 'success');
     }
 
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins});
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins, freshKb});
     if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
@@ -2854,6 +3001,7 @@ async function pollSharedData(){
     if(freshPlanOv && typeof freshPlanOv === 'object') planOverrides = freshPlanOv;
     if(freshAdmins && typeof freshAdmins === 'object') admins = freshAdmins;
     if(Array.isArray(freshTasks)){ tasks = freshTasks; ntfCheck(); }
+    kbApply(freshKb);
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
     if(editingMonth === activeMonth || !kpiData[editingMonth]) editingMonth = activeMonth;
@@ -4065,7 +4213,7 @@ function avaHtml(id, name, cls){
 // Подпись человека: должность админа или роль тимлида
 function personTitle(id){
   if(!id) return '';
-  if(String(id).startsWith('@')){ const a = adminInfo(String(id).slice(1)); return (a && a.title) || 'руководитель'; }
+  if(String(id).startsWith('@')){ const a = adminInfo(String(id).slice(1)); return (a && a.title) || (a && a.name ? 'руководитель' : ''); }   // без имени уже написано «Руководитель»
   const e = employees.find(x=>x.id===id);
   return e ? empRoleLabel(e) : '';
 }
@@ -4301,6 +4449,7 @@ async function loadAll(){
 
   try { logs = await loadAttendance(); } catch(e) { console.error(e); }
   try { const t = await loadTasks(); if(Array.isArray(t)) tasks = t; } catch(e) { console.error(e); }
+  try { kbApply(await loadKb()); } catch(e) { console.error(e); }
   if(!Array.isArray(logs)) logs = [];
 
   myEmployeeId = null;   // определяется по почте после входа (linkAuthIdentity)
@@ -5668,6 +5817,7 @@ function currentViewKey(){
   if(viewEmpId && (mode==='admin' || mode==='team')) return 'view-emp:'+viewEmpId;
   if(mode==='team') return 'team-view';
   if(mode==='tasks') return 'tasks-view';
+  if(mode==='kb') return 'kb-view';
   if(mode==='employee'){
     if(myEmployeeId) return 'emp-dashboard:'+myEmployeeId;
     if(selectingEmpId) return 'emp-pingate';
@@ -5725,6 +5875,7 @@ function renderTopUser(){
 function _doRender(){
   _renderScheduled = false;
   if(!authSession) return;   // пока не вошли — экран входа не трогаем
+  if(kbEditorLocked()) return; // открыт редактор базы знаний — не сбиваем курсор
   const main = mainEl || (mainEl = document.getElementById('main'));
   if(!main) return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
@@ -5744,6 +5895,8 @@ function _doRender(){
   // «Сотрудник» админу без своей карточки не нужен
   const tasksTabEl = document.getElementById('tasksTab');
   if(tasksTabEl) tasksTabEl.style.display = (myEmployeeId && !authIsAdmin()) ? '' : 'none';
+  const kbTabEl = document.getElementById('kbTab');
+  if(kbTabEl) kbTabEl.style.display = (myEmployeeId && !authIsAdmin()) ? '' : 'none';
   const empTabEl = document.querySelector('.tab[data-mode="employee"]');
   if(empTabEl) empTabEl.style.display = (myEmployeeId || !authIsAdmin()) ? '' : 'none';
   const tabsBox = document.querySelector('header .tabs');
@@ -5767,6 +5920,7 @@ function _doRender(){
   else if(mode==='sales')     html = renderSalesView();
   else if(mode==='team')      html = renderTeamView();
   else if(mode==='tasks')     html = renderTasksView();
+  else if(mode==='kb')        html = renderKbView();
   else                         html = renderAdminView();
   // Ничего не изменилось — DOM не трогаем: не сбрасываются прокрутка, фокус и раскрытые блоки
   if(html === _lastHtml && viewKey === lastViewKey){ uxTabInk(); return; }
@@ -5960,7 +6114,7 @@ function renderEmployeeDashboard(forId){
   return `${forId ? '<div class="ro-bar"><button class="btn small secondary" id="viewBackBtn">← Назад</button><span>Карточка сотрудника · только просмотр</span></div>' : ''}
     <div class="emp-dashboard-grid${forId ? ' ro-view' : ''}">
       <div class="emp-col-left">
-        ${forId ? '' : renderMyTasksStrip()}
+        ${forId ? '' : renderMyTasksStrip() + renderKbStrip()}
         <div class="card">
           <div class="punch-wrap">
             <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)}${empRoleLabel(emp)?' · '+escapeHtml(empRoleLabel(emp)):''} · ${checkedIn?'на смене':'не на смене'}</div>
@@ -5978,7 +6132,6 @@ function renderEmployeeDashboard(forId){
               const st = shiftStartFor(emp.id, mk, d), unusual = st !== shiftDefault(emp.id);
               return `<div class="shift-today${unusual?' unusual':''}">Смена сегодня с <b>${st}</b>${unusual ? ' — не как обычно' : ''}</div>`;
             })()}
-            <div class="switch-user" id="switchUser">Выйти</div>
           </div>
         </div>
 
@@ -6559,6 +6712,7 @@ function tkRenderModal(){
       <label class="tk-f"><span>Время (необязательно)</span><input type="time" id="tkTime" value="${t.time||''}" ${dis}></label>
       <label class="tk-f"><span>Повтор</span><select id="tkRep" ${dis}>${Object.entries(TK_REPEAT).map(([k,v])=>`<option value="${k}" ${t.rep===k?'selected':''}>${v}</option>`).join('')}</select></label>
     </div>
+    ${t.kb && !t._new ? `<div class="tk-f"><button class="btn secondary" data-kbopen="${escapeHtml(t.kb)}">Открыть страницу в базе знаний</button></div>` : ''}
     <label class="tk-f"><span>Описание</span><textarea id="tkDesc" placeholder="Подробности, ссылки на таблицы" ${dis}>${escapeHtml(t.desc||'')}</textarea></label>
     <div class="tk-f"><span>Чек-лист</span><div class="tk-cl">${(t.cl||[]).map((c,i)=>`<div class="tk-cl-row"><input type="checkbox" data-tkcl="${i}" ${c.d?'checked':''} aria-label="Готово"><input type="text" data-tkclt="${i}" value="${escapeHtml(c.t)}" ${dis}>${ed?`<button class="tk-x" data-tkcldel="${i}" aria-label="Убрать пункт">×</button>`:''}</div>`).join('')}
       ${ed ? '<div class="tk-cl-row"><input type="text" id="tkClNew" placeholder="Добавить пункт и нажать Enter"></div>' : ''}</div></div>
@@ -7004,6 +7158,622 @@ function attachNtfHandlers(){
   if('serviceWorker' in navigator && location.protocol !== 'file:' && 'Notification' in window && Notification.permission === 'granted')
     navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
+
+// =========================================================================
+// БАЗА ЗНАНИЙ
+// Страницы лежат в базе построчно: kb:page:<id> = {id, folder, title, body,
+// must, order, ver, by, createdAt}. folder — 'gen' (Общее) или отдел.
+// Отметка «прочитал»: kbread:<id сотрудника>:<id страницы> = {emp, page, ver, at};
+// если страницу потом изменили (ver стал больше) — она снова «обновлена».
+// Права — в базе (security.sql): раздел отдела видит только этот отдел,
+// правят админы и тимлид своего отдела. Сам текст в коде сайта не хранится:
+// регламент загружается в базу кнопкой «Загрузить из Word».
+// Разметка текста простая, по строкам: ## заголовок, - пункт, [ ] галочка,
+// ! важно, + правило, > цитата, >> главное, ~ мелкая заметка,
+// «Менеджер: …» / «Клиент: …» — реплики, | а | б | — таблица, **жирный**.
+// =========================================================================
+let kbPages = [];
+let kbReads = [];
+let kbCur = null;            // открытая страница
+let kbQ = '';                // строка поиска
+let kbHl = '';               // что подсветить после перехода из поиска
+let kbEdit = null;           // черновик редактора
+let kbImport = null;         // разобранный Word перед загрузкой
+let kbBusy = false;
+let kbNavOpen = false;       // список разделов на телефоне
+let kbEditorForce = false;   // разовая перерисовка редактора несмотря на блокировку
+const KB_FOLDERS = [
+  {id:'gen', name:'Общее'},
+  {id:'op',  name:'ОП · Продажи'},
+  {id:'to',  name:'ТО · Производство'},
+  {id:'os',  name:'ОС · Сопровождение'},
+];
+
+async function loadKb(){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.kb*&select=key,value&limit=10000`, { headers: await sbHeaders() });
+    if(res.status === 401) authOnUnauthorized();
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const pages = [], reads = [];
+    (await res.json()).forEach(r=>{
+      let v; try{ v = JSON.parse(r.value); if(typeof v === 'string') v = JSON.parse(v); }catch(e){ return; }
+      if(!v) return;
+      if(r.key.indexOf('kb:page:') === 0 && v.id) pages.push(v);
+      else if(r.key.indexOf('kbread:') === 0 && v.emp) reads.push(v);
+    });
+    return {pages, reads};
+  }catch(e){
+    console.error('loadKb failed', e);
+    storeReadFailed = true;
+    return null;
+  }
+}
+function kbApply(r){ if(r && Array.isArray(r.pages)){ kbPages = r.pages; kbReads = r.reads; } }
+
+// ── Кто что может (зеркало правил базы) ──
+function kbMyDept(){ const m = tkMeEmp(); return m ? normDept(m.department) : ''; }
+function kbFolders(){ return authIsAdmin() ? KB_FOLDERS : KB_FOLDERS.filter(f=> f.id==='gen' || f.id===kbMyDept()); }
+function kbCanSee(p){ return authIsAdmin() || p.folder==='gen' || p.folder===kbMyDept(); }
+function kbCanEditFolder(f){ return authIsAdmin() || (tkIsTeamlead() && f===kbMyDept()); }
+function kbCanEditAny(){ return kbFolders().some(f=>kbCanEditFolder(f.id)); }
+function kbSorted(folder){ return kbPages.filter(p=>p.folder===folder && kbCanSee(p)).sort((a,b)=>(a.order||0)-(b.order||0) || String(a.title).localeCompare(b.title,'ru')); }
+function kbVisible(){ return kbFolders().flatMap(f=>kbSorted(f.id)); }
+function kbAudience(p){ return employees.filter(e=> p.folder==='gen' || normDept(e.department)===p.folder); }
+function kbReadOf(emp, p){ return kbReads.find(r=>r.emp===emp && r.page===p.id); }
+// 'read' | 'upd' (прочитал, но страницу изменили) | 'new'
+function kbState(emp, p){ const r = kbReadOf(emp, p); return !r ? 'new' : (Number(r.ver)||0) < (Number(p.ver)||0) ? 'upd' : 'read'; }
+// Сколько обязательных страниц ждут сотрудника (для плашки в карточке)
+function kbMyPending(){
+  if(!myEmployeeId) return [];
+  return kbVisible().filter(p=> p.must && kbState(myEmployeeId, p)!=='read');
+}
+
+// ── Разметка → HTML ──
+function kbInline(s){
+  let h = escapeHtml(s);
+  h = h.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m,t,u)=>`<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+  h = h.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m,pre,u)=>`${pre}<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  return h;
+}
+function kbBlocks(body){
+  const out = [];
+  String(body||'').split('\n').forEach(raw=>{
+    const line = raw.replace(/\s+$/,'');
+    const t = line.trim();
+    let m;
+    if(!t){ out.push({t:'gap'}); return; }
+    if(t.startsWith('|')){
+      const cells = t.replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      if(cells.every(c=>/^:?-{2,}:?$/.test(c))) return;
+      const last = out[out.length-1];
+      if(last && last.t==='table') last.rows.push(cells); else out.push({t:'table', rows:[cells]});
+      return;
+    }
+    if((m = t.match(/^###\s+(.*)/))) return out.push({t:'h4', x:m[1]});
+    if((m = t.match(/^##?\s+(.*)/)))  return out.push({t:'h3', x:m[1]});
+    if((m = t.match(/^\[( |x|х)\]\s*(.*)/i))) return out.push({t:'chk', x:m[2]});
+    if((m = t.match(/^[-•]\s+(.*)/))) return out.push({t:'li', x:m[1]});
+    if((m = t.match(/^!\s*(.*)/)))  return out.push({t:'warn', x:m[1]});
+    if((m = t.match(/^\+\s*(.*)/))) return out.push({t:'tip', x:m[1]});
+    if((m = t.match(/^>>\s*(.*)/))) return out.push({t:'key', x:m[1]});
+    if((m = t.match(/^>\s*(.*)/)))  return out.push({t:'quote', x:m[1]});
+    if((m = t.match(/^~\s*(.*)/)))  return out.push({t:'note', x:m[1]});
+    if((m = t.match(/^(Менеджер|Клиент|М|К):\s*(.*)/))) return out.push({t:'say', who:/^М/.test(m[1])?'Менеджер':'Клиент', x:m[2]});
+    out.push({t:'p', x:t});
+  });
+  return out;
+}
+function kbRender(body, pageId){
+  const B = kbBlocks(body), hl = s => kbHighlight(s);
+  let h = '', i = 0, hn = 0, ci = 0;
+  const day = tkToday();
+  while(i < B.length){
+    const b = B[i];
+    if(b.t==='li' || b.t==='chk' || b.t==='say'){
+      const run = []; while(i < B.length && B[i].t===b.t){ run.push(B[i]); i++; }
+      if(b.t==='li') h += `<ul>${run.map(r=>`<li>${hl(kbInline(r.x))}</li>`).join('')}</ul>`;
+      else if(b.t==='chk') h += `<ul class="kb-check">${run.map(r=>{ const k = ci++; const on = kbChkGet(pageId, day, k);
+        return `<li class="${on?'ok':''}" data-kbchk="${k}"><span class="kb-box">${on?'✓':''}</span><span>${hl(kbInline(r.x))}</span></li>`; }).join('')}</ul>`;
+      else h += `<div class="kb-chat">${run.map(r=>`<div class="kb-say ${r.who==='Менеджер'?'m':'c'}"><span class="kb-who">${r.who}</span>${hl(kbInline(r.x))}${r.who==='Менеджер'?'<button class="kb-copy" data-kbcopy="1">Копировать</button>':''}</div>`).join('')}</div>`;
+      continue;
+    }
+    switch(b.t){
+      case 'h3': h += `<h3 id="kbh${hn++}">${hl(kbInline(b.x))}</h3>`; break;
+      case 'h4': h += `<h4 id="kbh${hn++}">${hl(kbInline(b.x))}</h4>`; break;
+      case 'p': h += `<p>${hl(kbInline(b.x))}</p>`; break;
+      case 'warn': h += `<div class="kb-call warn"><span>⛔</span><div>${hl(kbInline(b.x))}</div></div>`; break;
+      case 'tip': h += `<div class="kb-call tip"><span>✅</span><div>${hl(kbInline(b.x))}</div></div>`; break;
+      case 'key': h += `<div class="kb-key">${hl(kbInline(b.x))}</div>`; break;
+      case 'quote': h += `<div class="kb-quote">${hl(kbInline(b.x))}</div>`; break;
+      case 'note': h += `<p class="kb-note">${hl(kbInline(b.x))}</p>`; break;
+      case 'table': {
+        const [head, ...rows] = b.rows;
+        h += `<div class="kb-tbl"><table><thead><tr>${head.map(c=>`<th>${hl(kbInline(c))}</th>`).join('')}</tr></thead><tbody>${
+          rows.map(r=>`<tr>${r.map(c=>`<td>${hl(kbInline(c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      }
+    }
+    i++;
+  }
+  return h;
+}
+function kbHighlight(html){
+  const term = kbQ || kbHl;
+  if(!term) return html;
+  const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return html.split(/(<[^>]+>)/).map(part=> part.startsWith('<') ? part : part.replace(re, '<mark>$1</mark>')).join('');
+}
+function kbPlain(p){
+  return String(p.body||'').replace(/\*\*/g,'').replace(/^\s*(##?#?|[-•]|\[[ xх]\]|!|\+|>>|>|~|\|)\s*/gim,'').replace(/\|/g,' ').replace(/\s+/g,' ');
+}
+// Галочки чек-листа — личные и на один день (в этом браузере)
+function kbChkGet(page, day, k){ try{ return (JSON.parse(localStorage.getItem('dramify-kbchk:'+page+':'+day)||'[]')).indexOf(k) >= 0; }catch(e){ return false; } }
+function kbChkToggle(page, k){
+  const key = 'dramify-kbchk:'+page+':'+tkToday();
+  try{ const a = JSON.parse(localStorage.getItem(key)||'[]'); const i = a.indexOf(k); if(i>=0) a.splice(i,1); else a.push(k); localStorage.setItem(key, JSON.stringify(a)); }catch(e){}
+}
+
+// ── Экран ──
+function renderKbView(){
+  if(kbEdit) return renderKbEditor();
+  const folders = kbFolders(), list = kbVisible();
+  if(!kbCur || !list.find(p=>p.id===kbCur)){
+    const firstNew = myEmployeeId ? list.find(p=>p.must && kbState(myEmployeeId,p)!=='read') : null;
+    kbCur = (firstNew || list[0] || {}).id || null;
+  }
+  const meId = myEmployeeId;
+  const dot = p => !meId ? '' : ({new:'new', upd:'upd', read:''})[kbState(meId, p)];
+  const tree = folders.map(f=>{
+    const pages = kbSorted(f.id);
+    return `<div class="kb-fold">
+      <div class="kb-fold-h">${f.name}${pages.length?`<span>${pages.length}</span>`:''}</div>
+      ${pages.length ? pages.map(p=>`<button class="kb-pg ${p.id===kbCur && !kbQ ? 'on':''}" data-kbpage="${escapeHtml(p.id)}"><i class="kb-dot ${dot(p)}"></i><span>${escapeHtml(p.title)}</span></button>`).join('') : '<div class="kb-empty-f">Пока пусто</div>'}
+      ${kbCanEditFolder(f.id) ? `<button class="kb-add" data-kbnew="${f.id}">+ Страница</button>` : ''}
+    </div>`;
+  }).join('');
+  const cur = list.find(p=>p.id===kbCur);
+  const body = kbQ ? renderKbSearch(list) : cur ? renderKbPage(cur, list) : renderKbEmpty();
+  return `<div class="kb-wrap">
+    <div class="tk-top">
+      <div><h2 class="tk-h1">База знаний</h2><div class="tk-sub">Скрипты, регламенты и инструкции команды</div></div>
+      ${authIsAdmin() ? `<div class="tk-top-r"><button class="btn secondary" data-kbimport="1">Загрузить из Word</button></div>` : ''}
+    </div>
+    <div class="kb-layout">
+      <aside class="kb-side ${kbNavOpen?'open':''}">
+        <div class="kb-search"><input type="search" id="kbSearch" placeholder="Поиск: «дорого», «НДЗ», «скидка»…" value="${escapeHtml(kbQ)}" autocomplete="off"></div>
+        <button class="kb-nav-tg" data-kbnav="1"><span>${cur && !kbQ ? escapeHtml(cur.title) : 'Все страницы'}</span><span>${kbNavOpen?'▴':'▾'}</span></button>
+        <div class="kb-tree">${tree}
+          ${meId ? '<div class="kb-legend"><span><i class="kb-dot new"></i>не прочитано</span><span><i class="kb-dot upd"></i>обновлено</span></div>' : ''}
+        </div>
+      </aside>
+      <section class="card kb-main">${body}</section>
+    </div>
+  </div>`;
+}
+function renderKbEmpty(){
+  return `<div class="kb-blank"><b>Здесь пока пусто</b><span>${authIsAdmin() ? 'Загрузите регламент из Word кнопкой сверху или создайте страницу через «+ Страница».' : 'Руководитель ещё не добавил страницы для вашего отдела.'}</span></div>`;
+}
+function renderKbSearch(list){
+  const q = kbQ.toLowerCase();
+  const hits = list.map(p=>{
+    const txt = kbPlain(p), at = txt.toLowerCase().indexOf(q);
+    if(at < 0 && String(p.title).toLowerCase().indexOf(q) < 0) return null;
+    return {p, snip: at < 0 ? '' : txt.slice(Math.max(0, at-60), at+120)};
+  }).filter(Boolean);
+  return `<div class="kb-crumbs">Поиск</div><div class="kb-title" role="heading" aria-level="2">«${escapeHtml(kbQ)}»</div>
+    <div class="kb-meta">${hits.length ? 'Нашлось на страницах: ' + hits.length : 'Ничего не нашлось'}</div>
+    ${hits.map(h=>`<button class="kb-res" data-kbres="${escapeHtml(h.p.id)}"><b>${kbHighlight(escapeHtml(h.p.title))}</b>${h.snip?`<span>…${kbHighlight(escapeHtml(h.snip))}…</span>`:''}</button>`).join('')}`;
+}
+function renderKbPage(p, list){
+  const folder = KB_FOLDERS.find(f=>f.id===p.folder) || {name:p.folder};
+  const inFolder = kbSorted(p.folder), idx = inFolder.indexOf(p);
+  const heads = kbBlocks(p.body).filter(b=>b.t==='h3' || b.t==='h4');
+  const st = myEmployeeId ? kbState(myEmployeeId, p) : null;
+  const when = p.ver ? new Date(p.ver).toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) : '';
+  // Кто прочитал — админу и тимлиду своего отдела
+  const showReaders = authIsAdmin() || (tkIsTeamlead() && (p.folder===kbMyDept() || p.folder==='gen'));
+  let readers = '';
+  if(showReaders){
+    const aud = kbAudience(p).filter(e=> authIsAdmin() || p.folder!=='gen' || normDept(e.department)===kbMyDept());
+    const done = aud.filter(e=>kbState(e.id,p)==='read');
+    readers = `<div class="kb-readers">Прочитали <b>${done.length} из ${aud.length}</b>
+      <span class="kb-avs">${aud.map(e=>{ const s = kbState(e.id,p); return `<span class="kb-av ${s==='read'?'':'no'}" title="${escapeHtml(e.name)} — ${s==='read'?'прочитал(а)':s==='upd'?'читал(а) старую версию':'не прочитал(а)'}">${escapeHtml(tkInitials(e.name))}</span>`; }).join('')}</span></div>
+      ${aud.length > done.length && tkCanCreate() ? `<button class="btn secondary" data-kbremind="${escapeHtml(p.id)}" ${kbBusy?'disabled':''}>Напомнить непрочитавшим</button>` : ''}`;
+  }
+  const mine = myEmployeeId ? `<div class="kb-readers">${st==='read' ? 'Вы отметили, что прочитали эту страницу' : st==='upd' ? 'Страницу обновили после вашего прочтения' : 'Дочитали? Отметьте — руководитель увидит'}</div>
+      <button class="btn ${st==='read'?'kb-done':''}" data-kbread="${escapeHtml(p.id)}" ${st==='read'||kbBusy?'disabled':''}>${st==='read'?'✓ Прочитано':'Прочитал(а)'}</button>` : '';
+  return `<div class="kb-crumbs">${escapeHtml(folder.name)} · ${idx+1} из ${inFolder.length}</div>
+    <div class="kb-ph"><div class="kb-title" role="heading" aria-level="2">${escapeHtml(p.title)}</div>
+      ${kbCanEditFolder(p.folder) ? `<button class="btn secondary small" data-kbedit="${escapeHtml(p.id)}">Редактировать</button>` : ''}</div>
+    <div class="kb-meta">
+      ${p.must ? '<span class="kb-chip must">Обязательно к прочтению</span>' : ''}
+      ${st==='upd' ? `<span class="kb-chip upd">Обновлено${when?' '+when:''}</span>` : ''}
+      ${when ? `<span>Изменено ${when}${p.by ? ' · ' + escapeHtml(tkName(p.by)) : ''}</span>` : ''}
+    </div>
+    ${heads.length > 2 ? `<nav class="kb-toc">${heads.map((h,i)=>`<a href="#kbh${i}" data-kbto="kbh${i}">${escapeHtml(h.x.replace(/\*\*/g,''))}</a>`).join('')}</nav>` : ''}
+    <article class="kb-doc">${kbRender(p.body, p.id)}</article>
+    ${(mine || readers) ? `<div class="kb-foot">${readers || mine}</div>${readers && mine ? `<div class="kb-foot">${mine}</div>` : ''}` : ''}
+    <div class="kb-pn">
+      ${idx > 0 ? `<button class="btn secondary" data-kbpage="${escapeHtml(inFolder[idx-1].id)}">← ${escapeHtml(inFolder[idx-1].title)}</button>` : '<span></span>'}
+      ${idx < inFolder.length-1 ? `<button class="btn secondary" data-kbpage="${escapeHtml(inFolder[idx+1].id)}">${escapeHtml(inFolder[idx+1].title)} →</button>` : ''}
+    </div>`;
+}
+
+// Пока открыт редактор, фоновая синхронизация не перерисовывает экран:
+// иначе курсор и фокус в тексте сбрасывались бы каждые несколько секунд.
+function kbEditorLocked(){
+  if(kbEditorForce){ kbEditorForce = false; return false; }
+  return !!(kbEdit && document.getElementById('kbBody') && (mode==='kb' || (mode==='admin' && adminTab==='kb')));
+}
+
+// ── Редактор ──
+const KB_HELP = [
+  ['## ', 'Заголовок'], ['- ', 'Пункт списка'], ['[ ] ', 'Галочка'], ['! ', 'Важно (красным)'],
+  ['+ ', 'Правило (зелёным)'], ['>> ', 'Главное (выделить)'], ['> ', 'Цитата'], ['Менеджер: ', 'Реплика менеджера'], ['Клиент: ', 'Реплика клиента'],
+];
+function renderKbEditor(){
+  const d = kbEdit, folders = kbFolders().filter(f=>kbCanEditFolder(f.id));
+  return `<div class="kb-wrap">
+    <div class="tk-top">
+      <div><h2 class="tk-h1">${d._new ? 'Новая страница' : 'Редактирование'}</h2><div class="tk-sub">Слева текст, справа — как его увидят сотрудники</div></div>
+      <div class="tk-top-r">
+        ${!d._new && authIsAdmin() ? '<button class="btn danger" id="kbDelBtn">Удалить</button>' : ''}
+        <button class="btn secondary" data-kbcancel="1">Отмена</button>
+        <button class="btn" id="kbSaveBtn" ${kbBusy?'disabled':''}>Сохранить</button>
+      </div>
+    </div>
+    <div class="card kb-ed">
+      <div class="kb-ed-row">
+        <input type="text" id="kbTitle" class="kb-title-in" value="${escapeHtml(d.title)}" placeholder="Название страницы">
+        <select id="kbFolder">${folders.map(f=>`<option value="${f.id}" ${d.folder===f.id?'selected':''}>${f.name}</option>`).join('')}</select>
+        <label class="kb-must"><input type="checkbox" id="kbMust" ${d.must?'checked':''}> Обязательно к прочтению</label>
+        ${d._new ? '' : `<span class="kb-order"><button class="btn secondary small" data-kbmove="-1" title="Выше в списке">↑</button><button class="btn secondary small" data-kbmove="1" title="Ниже в списке">↓</button></span>`}
+      </div>
+      <div class="kb-tools">
+        <button data-kbwrap="**" title="Выделите слово и нажмите"><b>Жирный</b></button>
+        ${KB_HELP.map(([pre,label])=>`<button data-kbpre="${escapeHtml(pre)}">${label}</button>`).join('')}
+        <button data-kbtable="1">Таблица</button>
+      </div>
+      <div class="kb-ed-grid">
+        <textarea id="kbBody" spellcheck="true" placeholder="Пишите текст. Кнопки сверху добавляют оформление в начало строки.">${escapeHtml(d.body)}</textarea>
+        <div class="kb-preview"><div class="kb-doc" id="kbPreview">${kbRender(d.body, 'preview')}</div></div>
+      </div>
+      <div class="kb-hint">Каждая строка — отдельный абзац. Ссылки вставляйте как есть, они станут кликабельными. Сохранили — у сотрудников страница пометится «Обновлено».</div>
+    </div>
+  </div>`;
+}
+function kbCollect(){
+  const g = id => document.getElementById(id);
+  if(!kbEdit || !g('kbBody')) return;
+  kbEdit.title = g('kbTitle').value.trim(); kbEdit.folder = g('kbFolder').value; kbEdit.must = g('kbMust').checked; kbEdit.body = g('kbBody').value;
+}
+function kbOpenEditor(id, folder){
+  if(id){ const p = kbPages.find(x=>x.id===id); if(!p) return; kbEdit = JSON.parse(JSON.stringify(p)); kbEdit._new = false; }
+  else kbEdit = {id:'', folder: folder || kbFolders().find(f=>kbCanEditFolder(f.id)).id, title:'', body:'', must:false, _new:true};
+  renderNow();
+  setTimeout(()=>{ const el = document.getElementById(kbEdit && kbEdit._new ? 'kbTitle' : 'kbBody'); if(el) el.focus(); }, 30);
+}
+function kbNewId(){ return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function kbNextOrder(folder){ return kbPages.filter(p=>p.folder===folder).reduce((m,p)=>Math.max(m, Number(p.order)||0), 0) + 1; }
+// Новая страница — вставкой, существующая — обновлением строки
+async function kbWrite(p, isNew){
+  if(isNew) return await storeSet('kb:page:' + p.id, p, SHARED) ? {ok:true} : {error:'не сохранилось — проверьте связь или права'};
+  return storePatch('kb:page:' + p.id, p);
+}
+async function kbSave(){
+  kbCollect();
+  const d = kbEdit;
+  if(!d.title){ showToast('Напишите название страницы', 'error'); document.getElementById('kbTitle').focus(); return; }
+  kbBusy = true;
+  const sb = document.getElementById('kbSaveBtn'); if(sb){ sb.disabled = true; sb.textContent = 'Сохраняю…'; }
+  try{
+    const p = {id: d._new ? kbNewId() : d.id, folder:d.folder, title:d.title, body:d.body, must:!!d.must,
+      order: d._new || d.folder !== (kbPages.find(x=>x.id===d.id)||{}).folder ? kbNextOrder(d.folder) : d.order,
+      ver: Math.max(Date.now(), (Number(d.ver)||0) + 1), by: tkMe(), createdAt: d.createdAt || Date.now()};
+    const r = await kbWrite(p, d._new);
+    if(r.error){ showToast('Не сохранилось: ' + r.error, 'error'); if(sb){ sb.disabled = false; sb.textContent = 'Сохранить'; } return; }
+    kbPages = kbPages.filter(x=>x.id!==p.id).concat([p]);
+    // автор только что сам её написал — для него она прочитана
+    if(myEmployeeId) kbMarkRead(p, true);
+    kbEdit = null; kbCur = p.id; showToast('Страница сохранена', 'success');
+  } finally { kbBusy = false; renderNow(); }
+}
+async function kbMove(dir){
+  kbCollect();
+  const list = kbSorted(kbEdit.folder), i = list.findIndex(p=>p.id===kbEdit.id), j = i + dir;
+  if(i < 0 || j < 0 || j >= list.length) return;
+  // переписываем порядок всем страницам раздела по очереди (без дублей номеров)
+  const order = list.map(p=>p.id); [order[i], order[j]] = [order[j], order[i]];
+  kbBusy = true;
+  try{
+    for(let k=0; k<order.length; k++){
+      const p = kbPages.find(x=>x.id===order[k]);
+      if(p && p.order !== k+1){ const np = Object.assign({}, p, {order:k+1}); const r = await storePatch('kb:page:' + p.id, np); if(r.error){ showToast('Не сохранилось: ' + r.error, 'error'); return; } Object.assign(p, {order:k+1}); }
+    }
+    kbEdit.order = order.indexOf(kbEdit.id) + 1;
+    kbEditorForce = true;
+    showToast(dir < 0 ? 'Страница выше' : 'Страница ниже', 'success');
+  } finally { kbBusy = false; renderNow(); }
+}
+async function kbMarkRead(p, quiet){
+  if(!myEmployeeId) return;
+  const v = {emp:myEmployeeId, page:p.id, ver:p.ver||0, at:Date.now()};
+  const ok = await storeSet('kbread:' + myEmployeeId + ':' + p.id, v, SHARED);
+  if(!ok){ if(!quiet) showToast('Не сохранилось — проверьте связь', 'error'); return; }
+  kbReads = kbReads.filter(r=>!(r.emp===v.emp && r.page===v.page)).concat([v]);
+  if(quiet) return;
+  // задача «Прочитать: …» закрывается сама
+  const t = tasks.find(x=>x.kb===p.id && x.who===myEmployeeId && x.status!=='done');
+  if(t) await tkSetStatus(t.id, 'done');
+  showToast('Отмечено: прочитано', 'success');
+}
+async function kbRemind(p){
+  const aud = kbAudience(p).filter(e=> kbState(e.id,p)!=='read' && tkAssignable().some(a=>a.id===e.id));
+  const fresh = aud.filter(e=> !tasks.some(t=>t.kb===p.id && t.who===e.id && t.status!=='done'));
+  if(!fresh.length){ showToast(aud.length ? 'Задачи прочитать уже стоят у всех' : 'Некому напоминать', 'success'); return; }
+  kbBusy = true; renderNow();
+  let n = 0;
+  try{
+    for(const e of fresh){
+      const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      const t = {id, title:'Прочитать: ' + p.title, desc:'Страница в базе знаний. Откройте её и нажмите «Прочитал(а)» — задача закроется сама.', kb:p.id,
+        who:e.id, by:tkMe(), due:tkToday(), time:'', pri:p.must?'important':'normal', status:'new', rep:'none',
+        cl:[], cm:[], hist:[{who:tkMe(), at:Date.now(), text:'поставил(а) задачу'}], doneLog:[], createdAt:Date.now()};
+      if(await storeSet('task:' + id, t, SHARED)){ tasks.push(t); n++; }
+    }
+    showToast(n ? `Поставлены задачи: ${n}` : 'Не получилось поставить задачи', n ? 'success' : 'error');
+  } finally { kbBusy = false; renderNow(); }
+}
+
+// ── Загрузка из Word (.docx) прямо в браузере ──
+// docx — это zip; достаём word/document.xml и раскладываем по заголовкам 1-го уровня.
+async function kbUnzip(buf, name){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let eocd = -1;
+  for(let i = u8.length - 22; i >= Math.max(0, u8.length - 66000); i--){ if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; } }
+  if(eocd < 0) throw new Error('это не файл Word (.docx)');
+  let p = dv.getUint32(eocd + 16, true);
+  const n = dv.getUint16(eocd + 10, true);
+  for(let k = 0; k < n; k++){
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    const fname = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+    if(fname === name){
+      const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+      const data = u8.subarray(start, start + csize);
+      if(method === 0) return new TextDecoder().decode(data);
+      if(typeof DecompressionStream === 'undefined') throw new Error('браузер не умеет распаковывать — откройте в Chrome');
+      const out = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      return new TextDecoder().decode(out);
+    }
+    p += 46 + nlen + xlen + clen;
+  }
+  throw new Error('в файле нет текста документа');
+}
+function kbDocxToPages(xml){
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const kids = (el, tag) => Array.from(el.childNodes).filter(n=>n.namespaceURI===W && n.localName===tag);
+  const one = (el, tag) => el ? el.getElementsByTagNameNS(W, tag)[0] : null;
+  const attr = (el, a) => el ? el.getAttributeNS(W, a) || el.getAttribute('w:' + a) : null;
+  const body = one(doc, 'body');
+  if(!body) throw new Error('не удалось прочитать документ');
+  const runs = (p, keepBold) => {
+    let s = '';
+    Array.from(p.getElementsByTagNameNS(W, 'r')).forEach(r=>{
+      const t = Array.from(r.getElementsByTagNameNS(W, 't')).map(x=>x.textContent).join('') +
+        (r.getElementsByTagNameNS(W, 'tab').length ? ' ' : '');
+      if(!t) return;
+      const b = one(one(r, 'rPr'), 'b'), bold = b && attr(b, 'val') !== '0' && attr(b, 'val') !== 'false';
+      s += (keepBold && bold && t.trim()) ? '**' + t + '**' : t;
+    });
+    return s.replace(/\*\*\*\*/g, '').replace(/\*\*(\s+)\*\*/g, '$1');
+  };
+  const plain = p => runs(p, false).replace(/\s+/g, ' ').trim();
+  const pages = []; let cur = null;
+  const push = line => { if(cur) cur.lines.push(line); };
+  Array.from(body.childNodes).forEach(n=>{
+    if(n.namespaceURI !== W) return;
+    if(n.localName === 'tbl'){
+      kids(n, 'tr').forEach((tr, i)=>{
+        const cells = kids(tr, 'tc').map(tc=> Array.from(tc.getElementsByTagNameNS(W, 'p')).map(plain).filter(Boolean).join(' ').replace(/\|/g, '/'));
+        push('| ' + cells.join(' | ') + ' |');
+      });
+      return;
+    }
+    if(n.localName !== 'p') return;
+    const txt = plain(n);
+    if(!txt) return;
+    const ppr = one(n, 'pPr');
+    const style = attr(one(ppr, 'pStyle'), 'val') || '';
+    const shd = attr(one(ppr, 'shd'), 'fill') || '';
+    const bdr = !!one(ppr, 'pBdr');
+    const isList = !!one(ppr, 'numPr') || /List/i.test(style);
+    const rPrs = Array.from(n.getElementsByTagNameNS(W, 'rPr'));
+    const italic = rPrs.length && rPrs.every(r=>one(r, 'i'));
+    const allBold = rPrs.length && rPrs.every(r=>{ const b = one(r, 'b'); return b && attr(b, 'val') !== '0'; });
+    if(/^(Heading1|1)$/i.test(style)){
+      if(/^содержание$/i.test(txt)) { cur = null; return; }
+      cur = {title: txt.replace(/^\d+[.)]\s*/, ''), lines: []}; pages.push(cur); return;
+    }
+    if(/^Heading2$|^2$/i.test(style)){ push('## ' + txt); return; }
+    if(/^Heading[3-9]$|^[3-9]$/i.test(style)){ push('### ' + txt); return; }
+    const say = txt.match(/^(Менеджер|Клиент):\s*(.*)/);
+    if(say){ push(say[1] + ': ' + say[2]); return; }
+    const fill = shd.toUpperCase();
+    if(fill && fill !== 'AUTO' && fill !== 'FFFFFF'){
+      const rgb = /^[0-9A-F]{6}$/.test(fill) ? [0,2,4].map(i=>parseInt(fill.slice(i,i+2),16)) : [0,0,0];
+      const red = rgb[0] > rgb[1] + 12 && rgb[0] > rgb[2] + 12;   // розовая заливка — «важно», зелёная/другая — «правило»
+      push((red ? '! ' : '+ ') + txt); return;
+    }
+    if(bdr){ push('> ' + txt); return; }
+    if(isList){ push('- ' + runs(n, true).trim()); return; }
+    if(italic){ push('~ ' + txt); return; }
+    if(allBold){ push('>> ' + txt); return; }
+    push(runs(n, true).trim());
+  });
+  return pages.filter(p=>p.lines.length).map(p=>{
+    let body = p.lines.join('\n');
+    if(/чек-?лист/i.test(p.title)) body = body.replace(/^- /gm, '[ ] ');
+    return {title:p.title, body};
+  });
+}
+async function kbPickDocx(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  inp.style.display = 'none'; document.body.appendChild(inp);   // Safari не открывает выбор файла у поля вне страницы
+  inp.onchange = async ()=>{
+    const f = inp.files && inp.files[0]; inp.remove(); if(!f) return;
+    try{
+      const xml = await kbUnzip(await f.arrayBuffer(), 'word/document.xml');
+      const pages = kbDocxToPages(xml);
+      if(!pages.length){ showToast('Не нашёл разделов: в Word у заголовков должен стоять стиль «Заголовок 1»', 'error'); return; }
+      kbImport = {file:f.name, folder: (kbCur && (kbPages.find(p=>p.id===kbCur)||{}).folder) || 'op', must:false, pages};
+      kbRenderImport();
+    }catch(e){ showToast('Не получилось прочитать файл: ' + e.message, 'error'); }
+  };
+  inp.click();
+}
+function kbRenderImport(){
+  let host = document.getElementById('kbModal');
+  if(!host){ host = document.createElement('div'); host.id = 'kbModal'; document.body.appendChild(host); }
+  if(!kbImport){ host.innerHTML = ''; return; }
+  const d = kbImport;
+  const exists = t => kbPages.find(p=>p.folder===d.folder && p.title.trim().toLowerCase()===t.trim().toLowerCase());
+  host.innerHTML = `<div class="tk-scrim" data-kbimpclose="1"><div class="tk-sheet" role="dialog" aria-modal="true" aria-label="Загрузка из Word">
+    <h2>Загрузка из Word</h2>
+    <div class="tk-ro" style="font-size:13px">${escapeHtml(d.file)} — найдено страниц: <b>${d.pages.length}</b>. Каждый «Заголовок 1» становится отдельной страницей.</div>
+    <div class="tk-fgrid">
+      <label class="tk-f"><span>В раздел</span><select id="kbImpFolder">${KB_FOLDERS.map(f=>`<option value="${f.id}" ${d.folder===f.id?'selected':''}>${f.name}</option>`).join('')}</select></label>
+      <label class="tk-f" style="justify-content:flex-end"><span>&nbsp;</span><label class="kb-must"><input type="checkbox" id="kbImpMust" ${d.must?'checked':''}> Обязательно к прочтению</label></label>
+    </div>
+    <div class="kb-imp-list">${d.pages.map((p,i)=>`<div class="kb-imp-row"><span>${i+1}. ${escapeHtml(p.title)}</span><small>${exists(p.title) ? 'заменит текущую' : 'новая'} · ${p.body.split('\n').length} строк</small></div>`).join('')}</div>
+    <div class="tk-actions"><div></div><div class="tk-actions-r">
+      <button class="btn secondary" data-kbimpclose="1">Отмена</button>
+      <button class="btn" id="kbImpGo" ${kbBusy?'disabled':''}>${kbBusy?'Загружаю…':'Загрузить ' + d.pages.length}</button>
+    </div></div>
+  </div></div>`;
+}
+async function kbDoImport(){
+  const d = kbImport; if(!d) return;
+  kbBusy = true; kbRenderImport();
+  let n = 0, fail = 0, order = kbNextOrder(d.folder);
+  try{
+    for(const src of d.pages){
+      const old = kbPages.find(p=>p.folder===d.folder && p.title.trim().toLowerCase()===src.title.trim().toLowerCase());
+      const p = old ? Object.assign({}, old, {body:src.body, must:d.must || old.must, ver:Math.max(Date.now(), (Number(old.ver)||0) + 1), by:tkMe()})
+                    : {id:kbNewId(), folder:d.folder, title:src.title, body:src.body, must:d.must, order:order++, ver:Date.now(), by:tkMe(), createdAt:Date.now()};
+      const r = await kbWrite(p, !old);
+      if(r.error){ fail++; continue; }
+      kbPages = kbPages.filter(x=>x.id!==p.id).concat([p]); n++;
+      if(!kbCur || n===1) kbCur = p.id;
+    }
+  } finally { kbBusy = false; }
+  kbImport = null; kbRenderImport();
+  showToast(fail ? `Загружено ${n}, не получилось ${fail}` : `Загружено страниц: ${n}`, fail ? 'error' : 'success');
+  renderNow();
+}
+
+// Плашка в карточке сотрудника
+function renderKbStrip(){
+  const pend = kbMyPending();
+  if(!pend.length) return '';
+  const upd = pend.filter(p=>kbState(myEmployeeId,p)==='upd').length;
+  return `<div class="card tk-strip" data-kbgo="${escapeHtml(pend[0].id)}">
+    <div><b>База знаний</b><span>${upd ? 'обновлено страниц: ' + upd + (pend.length>upd ? ' · новых: ' + (pend.length-upd) : '') : 'нужно прочитать: ' + pend.length}</span></div>
+    <button class="btn small secondary">Открыть</button>
+  </div>`;
+}
+function kbGo(id){
+  kbCur = id || kbCur; kbQ = ''; kbHl = ''; kbEdit = null;
+  if(authIsAdmin()){ mode = 'admin'; adminTab = 'kb'; } else mode = 'kb';
+  viewEmpId = null; renderNow(); window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ── Клики и ввод (подключается один раз) ──
+function attachKbHandlers(){
+  document.addEventListener('click', async e=>{
+    const el = e.target;
+    if(el.closest('#kbModal')){
+      if(el.dataset.kbimpclose){ if(!kbBusy){ kbImport = null; kbRenderImport(); } return; }
+      if(el.id==='kbImpGo'){ kbImport.folder = document.getElementById('kbImpFolder').value; kbImport.must = document.getElementById('kbImpMust').checked; await kbDoImport(); }
+      return;
+    }
+    const go = el.closest('[data-kbgo]'); if(go){ kbGo(go.dataset.kbgo); return; }
+    if(!el.closest('.kb-wrap') && !el.closest('[data-kbopen]')) return;
+    const op = el.closest('[data-kbopen]'); if(op){ tkClose(); kbGo(op.dataset.kbopen); return; }
+    const pg = el.closest('[data-kbpage]');
+    if(pg){ kbCur = pg.dataset.kbpage; kbQ = ''; kbHl = ''; kbNavOpen = false; renderNow(); window.scrollTo({top:0, behavior:'smooth'}); return; }
+    const res = el.closest('[data-kbres]');
+    if(res){ kbHl = kbQ; kbQ = ''; kbCur = res.dataset.kbres; renderNow();
+      const m = document.querySelector('.kb-doc mark'); if(m) m.scrollIntoView({block:'center', behavior:'smooth'}); return; }
+    const to = el.closest('[data-kbto]');
+    if(to){ e.preventDefault(); const h = document.getElementById(to.dataset.kbto); if(h) h.scrollIntoView({block:'start', behavior:'smooth'}); return; }
+    if(el.closest('[data-kbnav]')){ kbNavOpen = !kbNavOpen; renderNow(); return; }
+    const chk = el.closest('[data-kbchk]');
+    if(chk){ kbChkToggle(kbCur, +chk.dataset.kbchk); const on = !chk.classList.contains('ok'); chk.classList.toggle('ok', on); chk.querySelector('.kb-box').textContent = on ? '✓' : ''; _lastHtml = null; return; }
+    if(el.closest('[data-kbcopy]')){
+      const say = el.closest('.kb-say').cloneNode(true); say.querySelectorAll('.kb-who,.kb-copy').forEach(x=>x.remove());
+      try{ await navigator.clipboard.writeText(say.textContent.trim()); showToast('Реплика скопирована', 'success'); }catch(_){ showToast('Не удалось скопировать — выделите текст вручную', 'error'); }
+      return;
+    }
+    const rd = el.closest('[data-kbread]');
+    if(rd && !kbBusy){ const p = kbPages.find(x=>x.id===rd.dataset.kbread); if(p){ kbBusy = true; try{ await kbMarkRead(p); } finally { kbBusy = false; renderNow(); } } return; }
+    const rm = el.closest('[data-kbremind]');
+    if(rm && !kbBusy){ const p = kbPages.find(x=>x.id===rm.dataset.kbremind); if(p) await kbRemind(p); return; }
+    if(el.closest('[data-kbimport]')){ kbPickDocx(); return; }
+    const nw = el.closest('[data-kbnew]'); if(nw){ kbOpenEditor(null, nw.dataset.kbnew); return; }
+    const ed = el.closest('[data-kbedit]'); if(ed){ kbOpenEditor(ed.dataset.kbedit); return; }
+    if(el.closest('[data-kbcancel]')){ kbEdit = null; renderNow(); return; }
+    if(el.id==='kbSaveBtn' && !kbBusy){ await kbSave(); return; }
+    const mv = el.closest('[data-kbmove]'); if(mv && !kbBusy){ await kbMove(+mv.dataset.kbmove); return; }
+    if(el.id==='kbDelBtn' && kbEdit){
+      if(!el.dataset.sure){ el.dataset.sure = '1'; el.textContent = 'Точно удалить?'; return; }
+      if(await storeDelete('kb:page:' + kbEdit.id)){ kbPages = kbPages.filter(p=>p.id!==kbEdit.id); kbEdit = null; kbCur = null; showToast('Страница удалена', 'success'); renderNow(); }
+      else showToast('Не удалось удалить', 'error');
+      return;
+    }
+    const ta = document.getElementById('kbBody');
+    const pre = el.closest('[data-kbpre]');
+    if(pre && ta){
+      const s = ta.selectionStart, ls = ta.value.lastIndexOf('\n', s - 1) + 1;
+      const p = pre.dataset.kbpre, line = ta.value.slice(ls).split('\n')[0];
+      const stripped = line.replace(/^(##?#?\s|[-•]\s|\[[ xх]\]\s*|!\s*|\+\s*|>>\s*|>\s*|~\s*|Менеджер:\s*|Клиент:\s*)/, '');
+      ta.setRangeText(p + stripped, ls, ls + line.length, 'end');
+      ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
+    }
+    const wr = el.closest('[data-kbwrap]');
+    if(wr && ta){
+      const s = ta.selectionStart, en = ta.selectionEnd, w = wr.dataset.kbwrap;
+      ta.setRangeText(w + (ta.value.slice(s, en) || 'текст') + w, s, en, 'select');
+      ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
+    }
+    if(el.closest('[data-kbtable]') && ta){
+      const s = ta.selectionStart, nl = s > 0 && ta.value[s-1] !== '\n' ? '\n' : '';
+      ta.setRangeText(nl + '| Колонка 1 | Колонка 2 |\n| текст | текст |\n', s, s, 'end');
+      ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
+    }
+  });
+  document.addEventListener('input', e=>{
+    if(e.target.id === 'kbSearch'){
+      kbQ = e.target.value.trim(); kbHl = '';
+      const pos = e.target.selectionStart; renderNow();
+      const inp = document.getElementById('kbSearch'); if(inp){ inp.focus(); try{ inp.setSelectionRange(pos, pos); }catch(_){} }
+      return;
+    }
+    if(kbEdit && e.target.closest && e.target.closest('.kb-ed') && e.target.id !== 'kbBody'){ kbCollect(); return; }
+    if(e.target.id === 'kbBody' && kbEdit){
+      kbEdit.body = e.target.value;
+      const pv = document.getElementById('kbPreview'); if(pv) pv.innerHTML = kbRender(kbEdit.body, 'preview');
+    }
+  });
+  document.addEventListener('change', e=>{ if(kbEdit && e.target.closest && e.target.closest('.kb-ed')) kbCollect(); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && kbImport && !kbBusy){ kbImport = null; kbRenderImport(); }
+    if((e.ctrlKey || e.metaKey) && e.key === 's' && kbEdit && document.getElementById('kbBody')){ e.preventDefault(); if(!kbBusy) kbSave(); }
+  });
+}
 function tkStartDrag(x, y){
   const t = tasks.find(k=>k.id===tkDrag.id);
   if(!t || !tkAccess(t)){ showToast('Эту задачу двигает тот, кому она назначена', 'error'); tkDrag = null; return; }
@@ -7192,6 +7962,7 @@ function renderTeamView(){
   const logCard = renderDayAttendance(mates, 'Отметки за день · ' + escapeHtml(deptLabel(dept)));
   return `<div class="admin-dashboard-grid"><div class="admin-col-left">
     ${renderMyTasksStrip()}
+    ${renderKbStrip()}
     ${plateCard}
     ${dept==='to' ? renderLoadCard(dept, mk) + renderDeadlinesCard(dept, mk) : ''}
     <div class="card"><h2>Моя команда · ${deptLabel(dept)} · ${monthLabel(mk)}</h2>${rows || '<div class="empty">В отделе пока нет сотрудников</div>'}</div>
@@ -8643,6 +9414,7 @@ function renderAdminView(){
     ['analytics','Аналитика'],
     ['team',     'Команда'],
     ['tasks',    'Задачи'],
+    ['kb',       'Знания'],
     ['data',     'Данные'],
     ['settings', 'Настройки'],
   ];
@@ -8660,11 +9432,12 @@ function renderAdminView(){
     <div class="admin-dashboard-grid">
     <div class="admin-col-left">
     ${renderAdminProfilePrompt()}
+    ${renderWeekCard()}
 
     <div class="card">
       <h2 class="ov-head" style="display:flex;justify-content:space-between;align-items:center;">
         <span style="display:flex;align-items:center;gap:10px;">Обзор · ${monthLabel(editingMonth)} <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
-        <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Выйти из админки</span> <span class="switch-user" id="authLogoutBtn" style="margin:0 0 0 14px;text-transform:none;letter-spacing:0;">Выйти из аккаунта</span>
+        <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Выйти из админки</span>
       </h2>
 
       <div class="ov-strip">
@@ -8848,6 +9621,11 @@ function renderAdminView(){
     <div class="admin-pane${adminTab==='tasks'?' active':''}" data-pane="tasks">
     ${adminTab==='tasks' ? renderTasksView() : ''}
     </div><!-- /pane tasks -->
+
+    <!-- ══════════ БАЗА ЗНАНИЙ ══════════ -->
+    <div class="admin-pane${adminTab==='kb'?' active':''}" data-pane="kb">
+    ${adminTab==='kb' ? renderKbView() : ''}
+    </div><!-- /pane kb -->
 
     <!-- ══════════ ДАННЫЕ ══════════ -->
     <div class="admin-pane${adminTab==='data'?' active':''}" data-pane="data">
@@ -9695,6 +10473,111 @@ function attachUxHandlers(){
   window.addEventListener('resize', ()=>{ uxInkReady = false; uxTabInk(); uxAdminPrev = null; uxAdminPill(); });
 }
 
+
+// =========================================================================
+// ИТОГИ НЕДЕЛИ (сводка руководителям)
+// Карточка в «Сводке»: продажи ОП по вкладке «Продажа», приходы и опоздания,
+// задачи, план месяца. По умолчанию — прошлая неделя (пн–вс); стрелками можно
+// листать. В понедельник и вторник карточка раскрыта, в другие дни свёрнута.
+// =========================================================================
+let wkOffset = -1;   // 0 — эта неделя (по сегодня), -1 — прошлая и т.д.
+function wkRange(off){
+  const now = new Date(), dow = (now.getDay() + 6) % 7;   // пн = 0
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + off * 7);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
+  return {start, end};
+}
+function wkPl(n, one, few, many){ const a = Math.abs(n) % 100, b = a % 10; return n + ' ' + (a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many); }
+function wkLabel(r){
+  const last = new Date(r.end.getTime() - 864e5);
+  const f = d => d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}).replace('.', '');
+  return f(r.start) + ' – ' + f(last);
+}
+function wkMonths(r){ const a = localDayStr(r.start).slice(0,7), b = localDayStr(new Date(r.end.getTime() - 864e5)).slice(0,7); return a===b ? [a] : [a, b]; }
+function wkSales(r){
+  const by = {}; let n = 0, sum = 0;
+  wkMonths(r).forEach(mk=>{ ensureSaleTimes(mk); (saleTimes[mk]||[]).forEach(x=>{
+    if(x.ts < r.start.getTime() || x.ts >= r.end.getTime()) return;
+    const id = x.empId || ('?' + (x.empName||'')); const nm = x.empId ? tkName(x.empId) : (x.empName || 'без имени');
+    by[id] = by[id] || {name:nm, n:0, sum:0}; by[id].n++; by[id].sum += Number(x.total)||0; n++; sum += Number(x.total)||0; }); });
+  return {n, sum, top: Object.values(by).sort((a,b)=>b.sum-a.sum)};
+}
+function wkAttendance(r){
+  const today = localDayStr(new Date());
+  wkMonths(r).forEach(mk=>ensureAttMonth(mk));
+  return employees.map(e=>{
+    let days = 0, late = 0, lateMin = 0, missed = 0;
+    for(let d = new Date(r.start); d < r.end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
+      const ds = localDayStr(d); if(ds > today) break;
+      if(isOffDay(e.id, ds.slice(0,7), d.getDate())) continue;
+      const st = attDayStats(e.id, ds);
+      if(st.firstIn){ days++; if(st.late){ late++; lateMin += st.late; } }
+      else if(ds < today) missed++;
+    }
+    return {e, days, late, lateMin, missed};
+  });
+}
+function wkTasks(r){
+  const a = r.start.getTime(), b = r.end.getTime();
+  const made = tasks.filter(t=> t.createdAt >= a && t.createdAt < b).length;
+  let done = 0;
+  tasks.forEach(t=> (t.hist||[]).forEach(h=>{ if(h && h.at >= a && h.at < b && (h.text==='→ Готово' || String(h.text).indexOf('выполнено')===0)) done++; }));
+  const over = tasks.filter(tkOverdue);
+  const who = {}; over.forEach(t=>{ who[t.who] = (who[t.who]||0) + 1; });
+  return {made, done, over: over.length, overWho: Object.entries(who).sort((x,y)=>y[1]-x[1]).map(([id,c])=>tkName(id) + (c>1 ? ' ×' + c : ''))};
+}
+function renderWeekCard(){
+  if(!authIsAdmin()) return '';
+  const r = wkRange(wkOffset), prev = wkRange(wkOffset - 1);
+  const sales = wkSales(r), salesPrev = wkSales(prev), att = wkAttendance(r), tk = wkTasks(r);
+  const delta = salesPrev.sum > 0 ? Math.round((sales.sum - salesPrev.sum) / salesPrev.sum * 100) : null;
+  const lateList = att.filter(x=>x.late > 0).sort((a,b)=>b.late-a.late || b.lateMin-a.lateMin);
+  const missList = att.filter(x=>x.missed > 0).sort((a,b)=>b.missed-a.missed);
+  const lateTotal = att.reduce((s,x)=>s + x.late, 0);
+  const mk = currentMonthKey(), fin = companyFinance(mk);
+  const dow = new Date().getDay(), open = (dow === 1 || dow === 2) && wkOffset === -1;
+  const chip = (txt, cls) => `<span class="wk-chip ${cls||''}">${txt}</span>`;
+  return `<details class="card wk-card" ${open ? 'open' : ''}>
+    <summary class="wk-sum"><span class="wk-title">Итоги недели <span class="wk-range">${wkLabel(r)}${wkOffset===0 ? ' · по сегодня' : ''}</span></span>
+      <span class="wk-chips">${chip('продажи ' + fmtMoney(sales.sum))}${chip(wkPl(lateTotal, 'опоздание', 'опоздания', 'опозданий'), lateTotal ? 'warn' : '')}${chip('просрочено: ' + tk.over, tk.over ? 'bad' : '')}</span></summary>
+    <div class="wk-nav"><button class="btn small secondary" data-wkgo="-1">‹ Раньше</button>${wkOffset < 0 ? `<button class="btn small secondary" data-wkgo="1">Позже ›</button>` : ''}</div>
+    <div class="wk-grid">
+      <div class="wk-box">
+        <div class="wk-h">Продажи ОП</div>
+        <div class="wk-big">${fmtMoney(sales.sum)}</div>
+        <div class="wk-sub">${wkPl(sales.n, 'продажа', 'продажи', 'продаж')}${delta!=null ? ` · <b class="${delta>=0?'up':'down'}">${delta>=0?'+':''}${delta}%</b> к неделе раньше` : ''}</div>
+        ${sales.top.slice(0,3).map((x,i)=>`<div class="wk-row"><span>${i+1}. ${escapeHtml(x.name)}</span><span>${fmtMoney(x.sum)} · ${x.n}</span></div>`).join('') || '<div class="wk-sub">Продаж через вкладку «Продажа» не было</div>'}
+      </div>
+      <div class="wk-box">
+        <div class="wk-h">Дисциплина</div>
+        <div class="wk-big">${lateTotal} <small>${wkPl(lateTotal, 'опоздание', 'опоздания', 'опозданий').split(' ')[1]}</small></div>
+        ${lateList.slice(0,5).map(x=>`<div class="wk-row"><span>${escapeHtml(x.e.name)}</span><span>${x.late}× · ${fmtLate(x.lateMin)}</span></div>`).join('') || '<div class="wk-sub">Все приходили вовремя 👍</div>'}
+        ${missList.length ? `<div class="wk-sub" style="margin-top:6px">Не отмечались в рабочий день: ${missList.slice(0,5).map(x=>escapeHtml(x.e.name) + (x.missed>1 ? ' ×' + x.missed : '')).join(', ')}</div>` : ''}
+      </div>
+      <div class="wk-box">
+        <div class="wk-h">Задачи</div>
+        <div class="wk-big">${tk.done} <small>закрыто</small></div>
+        <div class="wk-sub">поставлено за неделю: ${tk.made}</div>
+        <div class="wk-sub ${tk.over ? 'bad' : ''}">просрочено сейчас: ${tk.over}${tk.overWho.length ? ' — ' + escapeHtml(tk.overWho.slice(0,4).join(', ')) : ''}</div>
+      </div>
+      <div class="wk-box">
+        <div class="wk-h">План ${escapeHtml(monthLabel(mk))}</div>
+        <div class="wk-big">${fin.planPct}% <small>кассы</small></div>
+        <div class="wk-sub">тенденция: <b class="${fin.trendPct>=100?'up':fin.trendPct<70?'down':''}">${isFinite(fin.trendPct) ? fin.trendPct + '%' : '—'}</b> · осталось ${fmtMoney(fin.pendingCash)}</div>
+      </div>
+    </div>
+    <div class="wk-foot">Продажи — по отметкам во вкладке «Продажа»; опоздания — больше ${LATE_GRACE_MIN} мин после начала смены.</div>
+  </details>`;
+}
+function attachWeekHandlers(){
+  document.addEventListener('click', e=>{
+    const b = e.target.closest && e.target.closest('[data-wkgo]');
+    if(!b) return;
+    wkOffset = Math.min(0, wkOffset + Number(b.dataset.wkgo));
+    renderNow();
+  });
+}
+
 let sheetSyncTimer = null;
 
 let orderTimerHandle = null;
@@ -9704,8 +10587,10 @@ let orderTimerHandle = null;
   attachTaskHandlers();
   attachNtfHandlers();
   attachUxHandlers();
+  attachWeekHandlers();
   attachAdminHandlers();
   attachProfileHandlers();
+  attachKbHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
