@@ -398,6 +398,9 @@
     .tab-ink,.tk-col,.punch-progress .pp-val{transition:none;}
     .tk-flash,.tk-flash-done,.tk-ghost,.kpi-box.rate-up,.skel-card i,.tk-scrim.entering,.tk-scrim.entering .tk-sheet{animation:none !important;}
   }
+  .adm-row{display:flex;flex-wrap:wrap;gap:10px;}
+  .adm-row input{flex:1 1 200px;min-width:0;}
+  .adm-prompt{border:1.5px solid var(--p3);}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2458,7 +2461,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.16';
+const APP_BUILD = '2026-10-03.17';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -2738,7 +2741,7 @@ async function pollSharedData(){
   isPolling = true;
   try{
     storeReadFailed = false;
-    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks] = await Promise.all([
+    const [freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins] = await Promise.all([
       storeGet('app:employees', SHARED),
       storeGet('app:kpiData', SHARED),
       loadAttendance(),
@@ -2755,6 +2758,7 @@ async function pollSharedData(){
       storeGet('app:cashTotals', SHARED),
       storeGet('app:planOverrides', SHARED),
       loadTasks(),
+      storeGet('app:admins', SHARED),
     ]);
     // Если чтение упало — данные могли прийти из локального кэша.
     // Применять их поверх текущих не нужно: в памяти уже актуальнее.
@@ -2780,7 +2784,7 @@ async function pollSharedData(){
       showToast('Связь с базой восстановлена', 'success');
     }
 
-    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks});
+    const snapshot = JSON.stringify({freshEmployees, freshKpi, freshLogs, freshActiveMonth, freshAdminPin, freshSheetUrls, freshSchedules, freshLedger, freshTrackerUrl, freshTrackerData, freshOrdersCsv, freshOrdersOv, freshCashUrls, freshCashTotals, freshPlanOv, freshTasks, freshAdmins});
     if(snapshot === lastSyncSnapshot) return;
     lastSyncSnapshot = snapshot;
 
@@ -2820,6 +2824,7 @@ async function pollSharedData(){
     if(freshTrackerUrl) trackerUrls = Object.assign({}, trackerUrls, freshTrackerUrl);
     if(freshCashUrls) cashUrls = Object.assign({}, cashUrls, freshCashUrls);
     if(freshPlanOv && typeof freshPlanOv === 'object') planOverrides = freshPlanOv;
+    if(freshAdmins && typeof freshAdmins === 'object') admins = freshAdmins;
     if(Array.isArray(freshTasks)){ tasks = freshTasks; ntfCheck(); }
     if(freshOrdersCsv && Object.keys(freshOrdersCsv).length > 0) ordersData = freshOrdersCsv;
     if(freshOrdersOv && Object.keys(freshOrdersOv).length > 0) ordersOverlay = freshOrdersOv;
@@ -3924,6 +3929,91 @@ let trackerData = {};   // { monthKey: {monthGoal, dayToday, ...} }
 // Ручной план отдельных сотрудников: { monthKey: { empId: сумма } }.
 // Отдельный ключ, а не kpiData — синхронизация с таблицей его не затирает.
 let planOverrides = {};
+// Подписи админов: { почта: {name, title, at} }. Права админа выдаются в Supabase,
+// здесь только имя и должность — их видно в шапке, задачах и уведомлениях.
+let admins = {};
+const ADMIN_TITLES = ['Основатель', 'Сооснователь', 'Генеральный директор', 'Управляющий партнёр', 'Финансовый директор', 'Директор по продажам', 'Директор по производству', 'Маркетолог'];
+function adminInfo(email){ return admins[String(email||'').toLowerCase()] || null; }
+function adminName(email){ const a = adminInfo(email); return a && a.name ? a.name : ''; }
+// Админ вошёл — заносим его почту в список (имя он впишет сам или его впишут в «Настройках»)
+async function ensureAdminEntry(){
+  if(!authIsAdmin() || !stateLoaded) return;
+  const em = String(authEmail()||'').toLowerCase(); if(!em || admins[em]) return;
+  admins = Object.assign({}, admins, {[em]: {name:'', title:'', at:Date.now()}});
+  const m = await saveMerged('app:admins', admins, [[em]]); if(m) admins = m;
+}
+async function saveAdminInfo(email, name, title){
+  const em = String(email||'').toLowerCase(); if(!em) return false;
+  admins = Object.assign({}, admins, {[em]: Object.assign({}, admins[em]||{}, {name:String(name||'').trim().slice(0,60), title:String(title||'').trim().slice(0,60), at:Date.now()})});
+  const m = await saveMerged('app:admins', admins, [[em]]);
+  if(m){ admins = m; return true; }
+  return false;
+}
+function renderAdminProfilePrompt(){
+  if(!authIsAdmin() || adminName(authEmail())) return '';
+  return `<div class="card adm-prompt">
+    <h2>Как вас подписывать?</h2>
+    <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Админ».</div>
+    <div class="adm-row">
+      <input type="text" id="admNameMe" placeholder="Имя, например: Ансар" maxlength="60" autocomplete="off">
+      <input type="text" id="admTitleMe" placeholder="Должность, например: Основатель" list="admTitles" maxlength="60" autocomplete="off">
+      <button class="btn" data-admsave="${escapeHtml(String(authEmail()||'').toLowerCase())}" data-admme="1">Сохранить</button>
+    </div>
+    ${adminTitlesDatalist()}
+  </div>`;
+}
+function adminTitlesDatalist(){ return `<datalist id="admTitles">${ADMIN_TITLES.map(t=>`<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`; }
+function renderAdminsCard(){
+  const list = Object.keys(admins).sort((a,b)=> (admins[a].name||a).localeCompare(admins[b].name||b, 'ru'));
+  const me = String(authEmail()||'').toLowerCase();
+  return `<div class="card">
+    <h2>Админы</h2>
+    <div class="hint" style="margin:-4px 0 12px;">Здесь только подпись: имя и должность. Права админа выдаются в Supabase. В списке появляется каждый админ, который хотя бы раз вошёл на сайт.</div>
+    ${list.length ? list.map(em=>{ const a = admins[em]||{}; const k = escapeHtml(em); return `
+      <div class="emp-access-card">
+        <div class="emp-access-top"><div class="emp-access-badges"><span class="emp-access-dept" style="text-transform:none;letter-spacing:0;">${k}</span>${em===me?'<span class="emp-access-role">это вы</span>':''}</div>
+          <button class="btn small danger" data-admdel="${k}" title="Убрать подпись из списка (права админа не снимаются)">Убрать</button></div>
+        <div class="emp-access-grid">
+          <div class="fld full"><label class="field-label">Имя</label><input type="text" data-admname="${k}" value="${escapeHtml(a.name||'')}" placeholder="Имя" maxlength="60" autocomplete="off"></div>
+          <div class="fld full"><label class="field-label">Должность</label><input type="text" data-admtitle="${k}" value="${escapeHtml(a.title||'')}" placeholder="Например: Основатель" list="admTitles" maxlength="60" autocomplete="off"></div>
+        </div>
+        <div class="emp-save-row"><button class="btn small" data-admsave="${k}">Сохранить</button></div>
+      </div>`; }).join('') : '<div class="empty">Пока никто из админов не входил</div>'}
+    ${adminTitlesDatalist()}
+  </div>`;
+}
+function attachAdminHandlers(){
+  document.addEventListener('click', async e=>{
+    const sv = e.target.closest && e.target.closest('[data-admsave]');
+    if(sv){
+      const em = sv.dataset.admsave;
+      const n = sv.dataset.admme ? document.getElementById('admNameMe') : document.querySelector(`[data-admname="${CSS.escape(em)}"]`);
+      const t = sv.dataset.admme ? document.getElementById('admTitleMe') : document.querySelector(`[data-admtitle="${CSS.escape(em)}"]`);
+      if(!n || !n.value.trim()){ showToast('Впишите имя', 'error'); if(n) n.focus(); return; }
+      sv.disabled = true;
+      const ok = await saveAdminInfo(em, n.value, t ? t.value : '');
+      sv.disabled = false;
+      if(n === document.activeElement || t === document.activeElement) document.activeElement.blur();
+      showToast(ok ? 'Сохранено: ' + n.value.trim() : 'Не сохранилось — проверьте связь', ok ? 'success' : 'error');
+      if(ok){ const box = document.getElementById('topUser'); if(box) box._html = null; renderNow(); }
+      return;
+    }
+    const del = e.target.closest && e.target.closest('[data-admdel]');
+    if(del){
+      if(!del.dataset.sure){ del.dataset.sure = '1'; del.textContent = 'Точно убрать?'; return; }
+      const em = del.dataset.admdel;
+      admins = Object.assign({}, admins); delete admins[em];
+      const m = await saveMerged('app:admins', admins, [[em]]);
+      if(m) admins = m;
+      showToast(m ? 'Убрано из списка' : 'Не сохранилось', m ? 'success' : 'error'); renderNow();
+    }
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Enter' || !e.target.matches) return;
+    if(e.target.matches('#admNameMe, #admTitleMe')){ const b = document.querySelector('[data-admme]'); if(b) b.click(); }
+    else if(e.target.matches('[data-admname], [data-admtitle]')){ const em = e.target.dataset.admname || e.target.dataset.admtitle; const b = document.querySelector(`[data-admsave="${CSS.escape(em)}"]`); if(b) b.click(); }
+  });
+}
 let trackerSyncing = {};  // { monthKey: bool }
 let trackerStatus = {};   // { monthKey: string }
 let lastTrackerSyncAt = {}; // { monthKey: timestamp }
@@ -3984,6 +4074,7 @@ const SEED_MONTH_DATA = {
 
 async function loadAll(){
   const needsHeal = []; // ключи, которые надо вернуть в базу после загрузки
+  try { const a = await storeGet('app:admins', SHARED); if(a && typeof a === 'object') admins = a; } catch(e) { console.error(e); }
   try {
     const loadedEmp = await storeGet('app:employees', SHARED);
     if(loadedEmp){ employees = normalizeEmployees(loadedEmp); }
@@ -5436,8 +5527,9 @@ function renderTopUser(){
     sub = empRoleLabel(me) || deptLabel(me.department);
     if(authIsAdmin()) sub += ' · админ';
   } else {
-    name = authIsAdmin() ? 'Администратор' : (email.split('@')[0] || 'Профиль');
-    sub = email;
+    const ai = authIsAdmin() ? adminInfo(email) : null;
+    name = authIsAdmin() ? ((ai && ai.name) || 'Администратор') : (email.split('@')[0] || 'Профиль');
+    sub = (ai && ai.title) || email;
   }
   const ava = (String(name).trim()[0] || '?').toUpperCase();
   const html = ntfBellHtml() + '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
@@ -6076,7 +6168,7 @@ function tkAssignable(){
 }
 function tkName(id){
   if(!id) return '—';
-  if(String(id).startsWith('@')) return 'Админ';
+  if(String(id).startsWith('@')) return adminName(String(id).slice(1)) || 'Админ';
   const e = employees.find(x=>x.id===id);
   return e ? e.name : 'бывший сотрудник';
 }
@@ -8382,6 +8474,7 @@ function renderAdminView(){
     <div class="admin-pane${adminTab==='summary'?' active':''}" data-pane="summary">
     <div class="admin-dashboard-grid">
     <div class="admin-col-left">
+    ${renderAdminProfilePrompt()}
 
     <div class="card">
       <h2 class="ov-head" style="display:flex;justify-content:space-between;align-items:center;">
@@ -8706,6 +8799,7 @@ function renderAdminView(){
     <div class="admin-pane${adminTab==='settings'?' active':''}" data-pane="settings">
     <div class="admin-dashboard-grid">
     <div class="admin-col-left">
+    ${renderAdminsCard()}
 
     <div class="card">
       <h2>Сотрудники и доступ</h2>
@@ -9425,6 +9519,7 @@ let orderTimerHandle = null;
   attachTaskHandlers();
   attachNtfHandlers();
   attachUxHandlers();
+  attachAdminHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
@@ -9442,6 +9537,7 @@ let orderTimerHandle = null;
     showToast('Нет связи с базой — данные не сохраняются. Пробую переподключиться…', 'error');
   } else {
     await flushHeal(); // если что-то восстановили из локальной копии — вернём в базу
+    ensureAdminEntry();
   }
 
   renderNow();
