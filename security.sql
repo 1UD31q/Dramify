@@ -15,6 +15,8 @@
 --     ставят — админ (кому угодно) и тимлид (себе и своему отделу); не-автор
 --     может двигать статус, отмечать чек-лист и дописывать комментарии, но не
 --     менять название, срок и исполнителя; удаляет только админ;
+--   • подписи админов (app:admins — имя и должность): каждый админ меняет только
+--     свою строку, чужие не трогает;
 --   • админы (app_metadata.role = 'admin') — всё.
 -- =====================================================================
 
@@ -297,6 +299,38 @@ as $$
     else public.dramify_can_insert(k, v)
   end;
 $$;
+
+-- ── Подписи админов (ключ app:admins = { почта: {name, title, at} }) ─────────
+-- Каждый админ меняет только свою подпись. Из SQL Editor (без входа) — можно всё.
+create or replace function public.dramify_admins_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  o jsonb;
+  n jsonb := coalesce(public.dramify_json(new.value::text), '{}'::jsonb);
+begin
+  if auth.jwt() is null then return new; end if;
+  -- «вставить или заменить» сначала проверяется как вставка: сравниваем с тем, что уже лежит в базе
+  if tg_op = 'UPDATE' then o := public.dramify_json(old.value::text);
+  else select public.dramify_json(value::text) into o from public.kv_store where key = new.key; end if;
+  o := coalesce(o, '{}'::jsonb);
+  if (o - me) is distinct from (n - me) then
+    raise exception 'подпись админа меняет только он сам';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists dramify_admins_guard on public.kv_store;
+create trigger dramify_admins_guard
+  before insert or update on public.kv_store
+  for each row
+  when (new.key = 'app:admins')
+  execute function public.dramify_admins_guard();
 
 -- старое общее правило больше не используется
 drop function if exists public.dramify_can_write(text) cascade;
