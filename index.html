@@ -2489,7 +2489,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.21';
+const APP_BUILD = '2026-10-03.23';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3984,7 +3984,7 @@ function renderAdminProfilePrompt(){
   return `<div class="card adm-prompt">
     <button class="ntf-x adm-hide" data-admhide="1" aria-label="Скрыть" title="Скрыть — можно заполнить потом, нажав на аватарку вверху">✕</button>
     <h2>Как вас подписывать?</h2>
-    <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Админ». Потом их и фото можно поменять, нажав на аватарку вверху.</div>
+    <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Руководитель». Потом их и фото можно поменять, нажав на аватарку вверху.</div>
     <div class="adm-row">
       <input type="text" id="admNameMe" placeholder="Имя, например: Ансар" maxlength="60" autocomplete="off">
       <input type="text" id="admTitleMe" placeholder="Должность, например: CEO" list="admTitles" maxlength="60" autocomplete="off">
@@ -3998,13 +3998,13 @@ function renderAdminsCard(){
   const me = String(authEmail()||'').toLowerCase();
   const list = Object.keys(admins).sort((a,b)=> a===me ? -1 : b===me ? 1 : (admins[a].name||a).localeCompare(admins[b].name||b, 'ru'));
   return `<div class="card">
-    <h2>Админы</h2>
+    <h2>Руководители</h2>
     <div class="hint" style="margin:-4px 0 6px;">Своё имя, должность и фото каждый меняет в профиле — нажмите на аватарку вверху.</div>
     ${list.length ? list.map(em=>{ const a = admins[em]||{};
       return `<div class="adm-line">
           ${avaHtml('@' + em, a.name || em, 'adm-ava')}
           <span class="adm-who"><b>${escapeHtml(a.name || 'Имя пока не указано')}${em===me ? ' <span class="emp-access-role">это вы</span>' : ''}</b><span>${escapeHtml(a.title || '—')} · ${escapeHtml(em)}</span></span>
-        </div>`; }).join('') : '<div class="empty">Пока никто из админов не входил</div>'}
+        </div>`; }).join('') : '<div class="empty">Пока никто из руководителей не входил</div>'}
   </div>`;
 }
 function attachAdminHandlers(){
@@ -4065,7 +4065,7 @@ function avaHtml(id, name, cls){
 // Подпись человека: должность админа или роль тимлида
 function personTitle(id){
   if(!id) return '';
-  if(String(id).startsWith('@')){ const a = adminInfo(String(id).slice(1)); return (a && a.title) || 'админ'; }
+  if(String(id).startsWith('@')){ const a = adminInfo(String(id).slice(1)); return (a && a.title) || 'руководитель'; }
   const e = employees.find(x=>x.id===id);
   return e ? empRoleLabel(e) : '';
 }
@@ -4144,10 +4144,7 @@ function prfRender(){
         <label class="tk-f"><span>Должность</span><input type="text" id="prfTitle" value="${escapeHtml(ai.title||'')}" placeholder="Например: CEO" list="admTitles" maxlength="60" autocomplete="off"></label>
         ${adminTitlesDatalist()}
         <button class="btn" data-prfsave="1" style="width:100%">Сохранить</button>
-      ` : `
-        <div class="prf-info"><b>${escapeHtml(name)}</b><span>${escapeHtml(me ? (empRoleLabel(me) || deptLabel(me.department)) : email)}</span></div>
-        <div class="hint">Имя и отдел меняет администратор. Фото вы ставите сами — его увидят в задачах и в шапке.</div>
-      `}
+      ` : ''}
       <div class="prf-mail">${escapeHtml(email)}</div>
       <button class="btn secondary" id="prfLogout" style="width:100%">Выйти из аккаунта</button>
     </div>
@@ -5710,10 +5707,10 @@ function renderTopUser(){
   if(me){
     name = me.name;
     sub = empRoleLabel(me) || deptLabel(me.department);
-    if(authIsAdmin()) sub += ' · админ';
+    if(authIsAdmin()) sub += ' · руководитель';
   } else {
     const ai = authIsAdmin() ? adminInfo(email) : null;
-    name = authIsAdmin() ? ((ai && ai.name) || 'Администратор') : (email.split('@')[0] || 'Профиль');
+    name = authIsAdmin() ? ((ai && ai.name) || 'Руководитель') : (email.split('@')[0] || 'Профиль');
     sub = (ai && ai.title) || email;
   }
   // аватарка и имя — кнопка профиля
@@ -6353,7 +6350,7 @@ function tkAssignable(){
 }
 function tkName(id){
   if(!id) return '—';
-  if(String(id).startsWith('@')) return adminName(String(id).slice(1)) || 'Админ';
+  if(String(id).startsWith('@')) return adminName(String(id).slice(1)) || 'Руководитель';
   const e = employees.find(x=>x.id===id);
   return e ? e.name : 'бывший сотрудник';
 }
@@ -7173,7 +7170,7 @@ function renderTeamView(){
     return `<div class="tm-acc-row">
       <div class="tm-acc-name">${escapeHtml(e.name)}${tag}</div>
       ${e.id===me.id
-        ? `<div class="tm-acc-mail">${escapeHtml(e.email||'—')} <span class="hint">(свою почту меняет админ)</span></div>`
+        ? `<div class="tm-acc-mail">${escapeHtml(e.email||'—')} <span class="hint">(свою почту меняет руководитель)</span></div>`
         : `<input type="email" data-tmemail="${e.id}" value="${escapeHtml(e.email||'')}" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email">`}
     </div>`;
   }).join('');
@@ -7189,7 +7186,7 @@ function renderTeamView(){
             <input type="email" id="tmNewEmail" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email"></div>
         </div>
         <div class="emp-save-row"><button class="btn small" id="tmAddBtn">Добавить</button></div>
-        <div class="hint" style="margin-top:10px;">Имя должно совпадать с колонкой «Кто делает» в таблице заказов: по нему заказы привязываются к сотруднику. Чтобы сотрудник смог войти, администратор должен открыть ему доступ по этой почте.</div>
+        <div class="hint" style="margin-top:10px;">Имя должно совпадать с колонкой «Кто делает» в таблице заказов: по нему заказы привязываются к сотруднику. Чтобы сотрудник смог войти, руководитель должен открыть ему доступ по этой почте.</div>
       </div>
     </div>`;
   const logCard = renderDayAttendance(mates, 'Отметки за день · ' + escapeHtml(deptLabel(dept)));
@@ -7213,7 +7210,7 @@ function renderTeamView(){
 }
 
 function renderPinGate(){
-  return '<div class="auth-wrap"><div class="card auth-card"><h2>Нет доступа</h2><p class="hint">Этот раздел только для администраторов.</p></div></div>';
+  return '<div class="auth-wrap"><div class="card auth-card"><h2>Нет доступа</h2><p class="hint">Этот раздел только для руководителей.</p></div></div>';
 }
 
 // ─────────────────────────────────────────────────────────────────────────
