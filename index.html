@@ -2635,7 +2635,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.24';
+const APP_BUILD = '2026-10-03.25';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -9437,7 +9437,7 @@ function renderAdminView(){
     <div class="card">
       <h2 class="ov-head" style="display:flex;justify-content:space-between;align-items:center;">
         <span style="display:flex;align-items:center;gap:10px;">Обзор · ${monthLabel(editingMonth)} <span class="sync-indicator live"><span class="sdot"></span>синхронизировано</span></span>
-        <span class="switch-user" id="lockAdminBtn" style="margin:0;text-transform:none;letter-spacing:0;">Выйти из админки</span>
+
       </h2>
 
       <div class="ov-strip">
