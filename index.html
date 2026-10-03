@@ -2489,7 +2489,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.22';
+const APP_BUILD = '2026-10-03.23';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -4144,10 +4144,7 @@ function prfRender(){
         <label class="tk-f"><span>Должность</span><input type="text" id="prfTitle" value="${escapeHtml(ai.title||'')}" placeholder="Например: CEO" list="admTitles" maxlength="60" autocomplete="off"></label>
         ${adminTitlesDatalist()}
         <button class="btn" data-prfsave="1" style="width:100%">Сохранить</button>
-      ` : `
-        <div class="prf-info"><b>${escapeHtml(name)}</b><span>${escapeHtml(me ? (empRoleLabel(me) || deptLabel(me.department)) : email)}</span></div>
-        <div class="hint">Имя и отдел меняет руководитель. Фото вы ставите сами — его увидят в задачах и в шапке.</div>
-      `}
+      ` : ''}
       <div class="prf-mail">${escapeHtml(email)}</div>
       <button class="btn secondary" id="prfLogout" style="width:100%">Выйти из аккаунта</button>
     </div>
