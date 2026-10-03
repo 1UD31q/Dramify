@@ -17,6 +17,7 @@
 --     менять название, срок и исполнителя; удаляет только админ;
 --   • подписи админов (app:admins — имя и должность): каждый админ меняет только
 --     свою строку, чужие не трогает;
+--   • фото профиля (avatar:<id сотрудника>) — каждый ставит и меняет только своё;
 --   • админы (app_metadata.role = 'admin') — всё.
 -- =====================================================================
 
@@ -284,6 +285,22 @@ create trigger dramify_task_guard
   when (new.key like 'task:%')
   execute function public.dramify_task_guard();
 
+-- ── Фото профиля (ключ avatar:<id сотрудника> или avatar:@<почта админа>) ──
+-- Значение — {img: 'data:image/jpeg;base64,…' | null, at}. Сотрудник пишет только своё,
+-- размер ограничен (фото сжимается на сайте до ~10–20 КБ).
+create or replace function public.dramify_avatar_ok(k text, v text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select k like 'avatar:%' and length(coalesce(v, '')) < 200000 and (
+    public.dramify_is_admin()
+    or (public.dramify_is_staff() and k = 'avatar:' || public.dramify_my_emp_id())
+  );
+$$;
+
 -- Добавление ключа с учётом задач (поверх общего правила)
 create or replace function public.dramify_can_insert_any(k text, v text)
 returns boolean
@@ -296,6 +313,7 @@ as $$
     when k like 'task:%' then
       public.dramify_task_assign_ok(public.dramify_json(v))
       and k = 'task:' || (public.dramify_json(v) ->> 'id')
+    when k like 'avatar:%' then public.dramify_avatar_ok(k, v)
     else public.dramify_can_insert(k, v)
   end;
 $$;
@@ -360,8 +378,10 @@ create policy dramify_insert on public.kv_store
 create policy dramify_update on public.kv_store
   for update to authenticated
   using (case when key like 'task:%' then public.dramify_task_access(public.dramify_json(value::text))
+              when key like 'avatar:%' then public.dramify_avatar_ok(key, value::text)
               else public.dramify_can_update(key) end)
   with check (case when key like 'task:%' then public.dramify_task_access(public.dramify_json(value::text))
+                   when key like 'avatar:%' then public.dramify_avatar_ok(key, value::text)
                    else public.dramify_can_update(key) end);
 
 create policy dramify_delete on public.kv_store

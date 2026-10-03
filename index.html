@@ -406,6 +406,28 @@
   .adm-who{display:flex;flex-direction:column;gap:2px;min-width:0;}
   .adm-who b{font-size:14px;color:var(--ink);}
   .adm-who span{font-size:12px;color:var(--ink3);overflow-wrap:anywhere;}
+  /* ── Профиль и аватарки ── */
+  .tu-me{display:flex;align-items:center;gap:12px;min-width:0;cursor:pointer;border-radius:10px;padding:3px 8px 3px 3px;margin:-3px -8px -3px -3px;transition:background .15s;}
+  .tu-me:hover{background:rgba(255,255,255,.07);}
+  .tu-me:focus-visible{outline:2px solid var(--p4);outline-offset:2px;}
+  .tu-ava.has-img,.tk-ava.has-img,.adm-ava.has-img,.prf-ava.has-img{padding:0;overflow:hidden;background:var(--bg2) !important;}
+  .tu-ava img,.tk-ava img,.adm-ava img,.prf-ava img{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;}
+  .tk-ava.sm{width:16px;height:16px;font-size:8px;}
+  .tk-by{display:inline-flex;align-items:center;gap:4px;color:var(--ink3);white-space:nowrap;}
+  .tk-byline{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--ink3);margin:-6px 0 12px;}
+  .tk-byline b{color:var(--ink2);font-weight:600;}
+  .adm-prompt{position:relative;}
+  .adm-hide{position:absolute;top:12px;right:12px;}
+  .prf-panel{width:340px;}
+  .prf-body{padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  .prf-top{display:flex;align-items:center;gap:14px;margin-bottom:4px;}
+  .prf-ava{width:72px;height:72px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--p6);color:#fff;font-size:24px;font-weight:700;}
+  .prf-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+  .prf-info{display:flex;flex-direction:column;gap:2px;}
+  .prf-info b{font-size:15px;color:var(--ink);} .prf-info span{font-size:12.5px;color:var(--ink3);}
+  .prf-mail{font-size:12px;color:var(--ink3);text-align:center;}
+  .prf-body .tk-f{margin-bottom:0;}
+  .prf-body input[type=text]{width:100%;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2370,6 +2392,7 @@ function canWriteKey(key){
   if(STAFF_WRITE_KEYS.indexOf(key) >= 0 || String(key).indexOf('saletime:') === 0) return true;
   if(String(key).indexOf('att:') === 0) return true; // свои отметки; чужие база не пропустит
   if(String(key).indexOf('task:') === 0) return true; // задачи: кто что может — проверяет база (security.sql)
+  if(String(key).indexOf('avatar:') === 0) return myAvatarIds().some(id=> key === 'avatar:' + id); // только своё фото
   const me = employees.find(e=>e.id===myEmployeeId);
   return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
 }
@@ -2466,7 +2489,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.18';
+const APP_BUILD = '2026-10-03.19';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -3957,9 +3980,11 @@ async function saveAdminInfo(email, name, title){
 }
 function renderAdminProfilePrompt(){
   if(!authIsAdmin() || adminName(authEmail())) return '';
+  try{ if(localStorage.getItem('dramify-admprompt-hide:' + String(authEmail()||'').toLowerCase())) return ''; }catch(e){}
   return `<div class="card adm-prompt">
+    <button class="ntf-x adm-hide" data-admhide="1" aria-label="Скрыть" title="Скрыть — можно заполнить потом, нажав на аватарку вверху">✕</button>
     <h2>Как вас подписывать?</h2>
-    <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Админ».</div>
+    <div class="hint" style="margin:-4px 0 12px;">Имя и должность увидят в шапке, в задачах и уведомлениях — вместо безликого «Админ». Потом их и фото можно поменять, нажав на аватарку вверху.</div>
     <div class="adm-row">
       <input type="text" id="admNameMe" placeholder="Имя, например: Ансар" maxlength="60" autocomplete="off">
       <input type="text" id="admTitleMe" placeholder="Должность, например: CEO" list="admTitles" maxlength="60" autocomplete="off">
@@ -3977,7 +4002,7 @@ function renderAdminsCard(){
     <div class="hint" style="margin:-4px 0 12px;">У каждого своя подпись: имя и должность меняет только сам человек. Права админа выдаются в Supabase. В списке появляется каждый админ, который хотя бы раз вошёл на сайт.</div>
     ${list.length ? list.map(em=>{ const a = admins[em]||{}, k = escapeHtml(em);
       if(em !== me) return `<div class="adm-line">
-          <span class="tu-ava adm-ava">${escapeHtml((String(a.name||em).trim()[0]||'?').toUpperCase())}</span>
+          ${avaHtml('@' + em, a.name || em, 'adm-ava')}
           <span class="adm-who"><b>${escapeHtml(a.name || 'Имя пока не указано')}</b><span>${escapeHtml(a.title || '—')} · ${k}</span></span>
         </div>`;
       return `<div class="emp-access-card">
@@ -4012,6 +4037,176 @@ function attachAdminHandlers(){
     if(e.target.matches('#admNameMe, #admTitleMe')){ const b = document.querySelector('[data-admme]'); if(b) b.click(); }
     else if(e.target.matches('[data-admname], [data-admtitle]')){ const em = e.target.dataset.admname || e.target.dataset.admtitle; const b = document.querySelector(`[data-admsave="${CSS.escape(em)}"]`); if(b) b.click(); }
   });
+}
+
+// =========================================================================
+// ПРОФИЛЬ И АВАТАРКИ
+// Нажатие на аватарку в шапке открывает профиль: фото ставит каждый себе сам,
+// админы там же меняют имя и должность. Фото — квадрат 160×160 JPEG (~10 КБ),
+// хранится построчно: avatar:<id сотрудника> или avatar:@<почта админа>.
+// Писать в свою строку может только сам человек (security.sql), читают все.
+// Чтобы не гонять картинки каждые 8 секунд, сначала смотрим только время
+// изменения строк и докачиваем фото, лишь когда что-то поменялось.
+// =========================================================================
+let avatars = {};          // id -> dataURL
+let avatarStamps = '';     // подпись «какие строки и когда менялись»
+let prfOpen = false;
+let prfBusy = false;
+const AVA_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function myAvatarIds(){
+  const ids = [];
+  if(authIsAdmin() && authEmail()) ids.push('@' + String(authEmail()).toLowerCase());
+  if(myEmployeeId) ids.push(myEmployeeId);
+  return ids;
+}
+function avatarOf(id){
+  if(!id) return '';
+  const v = avatars[String(id).startsWith('@') ? '@' + String(id).slice(1).toLowerCase() : id];
+  return v && AVA_RE.test(v) ? v : '';
+}
+// Кружок с фото или инициалами (cls — класс кружка: tk-ava, tu-ava, adm-ava…)
+function avaHtml(id, name, cls){
+  const img = avatarOf(id);
+  if(img) return `<span class="${cls} has-img"><img src="${img}" alt=""></span>`;
+  return `<span class="${cls}">${escapeHtml(tkInitials(name || '?'))}</span>`;
+}
+// Подпись человека: должность админа или роль тимлида
+function personTitle(id){
+  if(!id) return '';
+  if(String(id).startsWith('@')){ const a = adminInfo(String(id).slice(1)); return (a && a.title) || 'админ'; }
+  const e = employees.find(x=>x.id===id);
+  return e ? empRoleLabel(e) : '';
+}
+function nameWithTitle(id){ const t = personTitle(id); return tkName(id) + (t ? ' (' + t + ')' : ''); }
+
+async function syncAvatars(force){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('avatar:')}*&select=key,updated_at&limit=1000`, { headers: await sbHeaders() });
+    if(!res.ok) return;
+    const meta = await res.json();
+    const stamp = meta.map(r=>r.key + '@' + r.updated_at).sort().join('|');
+    if(!force && stamp === avatarStamps) return;
+    const res2 = await fetch(`${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent('avatar:')}*&select=key,value&limit=1000`, { headers: await sbHeaders() });
+    if(!res2.ok) return;
+    const next = {};
+    (await res2.json()).forEach(r=>{ let v; try{ v = JSON.parse(r.value); if(typeof v === 'string') v = JSON.parse(v); }catch(e){ return; }
+      if(v && v.img && AVA_RE.test(v.img)) next[r.key.slice(7)] = v.img; });
+    avatarStamps = stamp; avatars = next;
+    const box = document.getElementById('topUser'); if(box) box._html = null;
+    _lastHtml = null; renderNow(); if(prfOpen) prfRender();
+  }catch(e){ console.error('syncAvatars', e); }
+}
+
+// Картинка → квадрат 160×160, середина кадра
+function prfImageToData(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = ()=>{
+      const S = 160, side = Math.min(img.naturalWidth, img.naturalHeight);
+      if(!side){ URL.revokeObjectURL(url); reject(new Error('пустая картинка')); return; }
+      const c = document.createElement('canvas'); c.width = S; c.height = S;
+      const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+      URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.86));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('этот формат фото не поддерживается — попробуйте JPG или PNG')); };
+    img.src = url;
+  });
+}
+async function prfSaveAvatar(dataUrl){
+  const ids = myAvatarIds(); if(!ids.length) return false;
+  let ok = true;
+  for(const id of ids){
+    const r = await storeSet('avatar:' + id, {img: dataUrl || null, at: Date.now()}, SHARED);
+    if(r){ if(dataUrl) avatars[id] = dataUrl; else delete avatars[id]; } else ok = false;
+  }
+  const box = document.getElementById('topUser'); if(box) box._html = null;
+  _lastHtml = null; renderNow(); prfRender();
+  return ok;
+}
+
+// ── Окно профиля ──
+function prfRender(){
+  let host = document.getElementById('prfPanel');
+  if(!host){ host = document.createElement('div'); host.id = 'prfPanel'; document.body.appendChild(host); }
+  if(!prfOpen || !authSession){ host.innerHTML = ''; return; }
+  const email = String(authEmail()||'').toLowerCase(), adm = authIsAdmin();
+  const me = employees.find(e=>e.id===myEmployeeId), ai = adm ? (adminInfo(email) || {}) : null;
+  const id = myAvatarIds()[0] || '';
+  const name = adm ? (ai.name || (me && me.name) || '') : (me ? me.name : email.split('@')[0]);
+  const hasImg = !!avatarOf(id);
+  // окно перерисовывается (например, после загрузки фото) — несохранённое имя и должность не теряем
+  const keep = {}; ['prfName', 'prfTitle'].forEach(k=>{ const el = document.getElementById(k); if(el) keep[k] = el.value; });
+  host.innerHTML = `<div class="ntf-scrim" data-prfclose="1"></div><div class="ntf-panel prf-panel" role="dialog" aria-label="Профиль">
+    <div class="ntf-head"><b>Профиль</b><button class="ntf-x" data-prfclose="1" aria-label="Закрыть">✕</button></div>
+    <div class="prf-body">
+      <div class="prf-top">
+        ${avaHtml(id, name || email, 'prf-ava')}
+        <div class="prf-actions">
+          <button class="btn small" data-prfphoto="1" ${prfBusy?'disabled':''}>${prfBusy ? 'Сохраняю…' : hasImg ? 'Сменить фото' : 'Загрузить фото'}</button>
+          ${hasImg ? `<button class="btn small secondary" data-prfnophoto="1" ${prfBusy?'disabled':''}>Убрать фото</button>` : ''}
+        </div>
+      </div>
+      ${adm ? `
+        <label class="tk-f"><span>Имя</span><input type="text" id="prfName" value="${escapeHtml(ai.name||'')}" placeholder="Имя" maxlength="60" autocomplete="off"></label>
+        <label class="tk-f"><span>Должность</span><input type="text" id="prfTitle" value="${escapeHtml(ai.title||'')}" placeholder="Например: CEO" list="admTitles" maxlength="60" autocomplete="off"></label>
+        ${adminTitlesDatalist()}
+        <button class="btn" data-prfsave="1" style="width:100%">Сохранить</button>
+      ` : `
+        <div class="prf-info"><b>${escapeHtml(name)}</b><span>${escapeHtml(me ? (empRoleLabel(me) || deptLabel(me.department)) : email)}</span></div>
+        <div class="hint">Имя и отдел меняет администратор. Фото вы ставите сами — его увидят в задачах и в шапке.</div>
+      `}
+      <div class="prf-mail">${escapeHtml(email)}</div>
+      <button class="btn secondary" id="prfLogout" style="width:100%">Выйти из аккаунта</button>
+    </div>
+  </div>`;
+  Object.keys(keep).forEach(k=>{ const el = document.getElementById(k); if(el) el.value = keep[k]; });
+}
+function prfToggle(open){ prfOpen = open === undefined ? !prfOpen : open; prfRender(); }
+function prfPickPhoto(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none'; document.body.appendChild(inp);
+  inp.onchange = async ()=>{
+    const f = inp.files && inp.files[0]; inp.remove(); if(!f) return;
+    prfBusy = true; prfRender();
+    try{
+      const data = await prfImageToData(f);
+      const ok = await prfSaveAvatar(data);
+      showToast(ok ? 'Фото обновлено' : 'Не сохранилось — проверьте связь', ok ? 'success' : 'error');
+    }catch(e){ showToast('Не получилось: ' + e.message, 'error'); }
+    finally{ prfBusy = false; prfRender(); }
+  };
+  inp.click();
+}
+function attachProfileHandlers(){
+  document.addEventListener('click', async e=>{
+    const el = e.target;
+    if(el.closest && el.closest('[data-prfopen]')){ prfToggle(); return; }
+    if(el.closest && el.closest('[data-admhide]')){
+      try{ localStorage.setItem('dramify-admprompt-hide:' + String(authEmail()||'').toLowerCase(), '1'); }catch(_){}
+      showToast('Скрыто. Имя, должность и фото — по нажатию на аватарку вверху', 'success'); renderNow(); return;
+    }
+    if(!el.closest || !el.closest('#prfPanel')) return;
+    if(el.closest('[data-prfclose]')){ prfToggle(false); return; }
+    if(el.closest('#prfLogout')){ prfToggle(false); await authSignOut(); return; }
+    if(prfBusy) return;
+    if(el.closest('[data-prfphoto]')){ prfPickPhoto(); return; }
+    if(el.closest('[data-prfnophoto]')){ prfBusy = true; prfRender(); const ok = await prfSaveAvatar(null); prfBusy = false; prfRender(); showToast(ok ? 'Фото убрано' : 'Не сохранилось', ok ? 'success' : 'error'); return; }
+    if(el.closest('[data-prfsave]')){
+      const n = document.getElementById('prfName'), t = document.getElementById('prfTitle');
+      if(!n.value.trim()){ showToast('Впишите имя', 'error'); n.focus(); return; }
+      const ok = await saveAdminInfo(authEmail(), n.value, t.value);
+      showToast(ok ? 'Сохранено' : 'Не сохранилось — проверьте связь', ok ? 'success' : 'error');
+      if(ok){ const box = document.getElementById('topUser'); if(box) box._html = null; renderNow(); prfToggle(false); }
+    }
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && prfOpen) prfToggle(false);
+    if(e.key === 'Enter' && e.target.matches && e.target.matches('#prfName, #prfTitle')){ const b = document.querySelector('[data-prfsave]'); if(b) b.click(); }
+    if((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-prfopen]')){ e.preventDefault(); prfToggle(); }
+  });
+  setInterval(()=>{ if(authSession && document.visibilityState === 'visible') syncAvatars(false); }, 30000);
 }
 let trackerSyncing = {};  // { monthKey: bool }
 let trackerStatus = {};   // { monthKey: string }
@@ -5530,9 +5725,10 @@ function renderTopUser(){
     name = authIsAdmin() ? ((ai && ai.name) || 'Администратор') : (email.split('@')[0] || 'Профиль');
     sub = (ai && ai.title) || email;
   }
-  const ava = (String(name).trim()[0] || '?').toUpperCase();
-  const html = ntfBellHtml() + '<div class="tu-ava">' + escapeHtml(ava) + '</div>' +
-    '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div>' +
+  // аватарка и имя — кнопка профиля
+  const html = ntfBellHtml() + '<div class="tu-me" data-prfopen="1" role="button" tabindex="0" title="Профиль: фото' + (authIsAdmin() ? ', имя и должность' : '') + '">' +
+    avaHtml(myAvatarIds()[0], name, 'tu-ava') +
+    '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div></div>' +
     '<button type="button" class="tu-out" id="topLogoutBtn">Выйти</button>';
   // не перерисовываем без изменений: колокольчик успевает докачаться, счётчик не «прыгает» зря
   if(box._html === html) return;
@@ -6246,7 +6442,9 @@ async function tkSetStatus(id, st){
 function tkMeta(t){
   const over = tkOverdue(t), today = t.due && t.status!=='done' && tkDiff(t.due)===0;
   const name = tkName(t.who), dept = tkDeptOf(t.who);
-  return `<span class="tk-who"><span class="tk-ava">${escapeHtml(tkInitials(name))}</span>${escapeHtml(name)}${dept ? ' · ' + escapeHtml(deptLabel(dept)) : ''}</span>`
+  const by = t.by && t.by !== t.who ? t.by : '';
+  return `<span class="tk-who">${avaHtml(t.who, name, 'tk-ava')}${escapeHtml(name)}${dept ? ' · ' + escapeHtml(deptLabel(dept)) : ''}</span>`
+    + (by ? `<span class="tk-by" title="Поставил(а)">от ${avaHtml(by, tkName(by), 'tk-ava sm')}${escapeHtml(tkName(by))}${personTitle(by) ? ' · ' + escapeHtml(personTitle(by)) : ''}</span>` : '')
     + (t.due ? `<span class="tk-pill ${over?'over':today?'today':''}">${over?'просрочено · ':''}${tkDueLabel(t.due)}${t.time?' '+escapeHtml(t.time):''}</span>` : '')
     + (t.pri && t.pri!=='normal' ? `<span class="tk-pill ${t.pri}">${TK_PRI[t.pri]}</span>` : '')
     + (t.rep && t.rep!=='none' ? `<span class="tk-pill rep">↻ ${TK_REPEAT[t.rep].toLowerCase()}</span>` : '');
@@ -6364,6 +6562,7 @@ function tkRenderModal(){
   const fmtAt = ts => new Date(ts).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
   host.innerHTML = `<div class="tk-scrim" data-tkclose="1"><div class="tk-sheet" role="dialog" aria-modal="true" aria-label="Задача">
     <h2>${t._new ? 'Новая задача' : 'Задача'}</h2>
+    ${!t._new && t.by ? `<div class="tk-byline">Поставил(а): ${avaHtml(t.by, tkName(t.by), 'tk-ava')}<span><b>${escapeHtml(tkName(t.by))}</b>${personTitle(t.by) ? ' · ' + escapeHtml(personTitle(t.by)) : ''}${t.createdAt > 1 ? ' · ' + fmtAt(t.createdAt) : ''}</span></div>` : ''}
     <div class="tk-f"><input class="tk-title-in" type="text" id="tkTitle" value="${escapeHtml(t.title)}" placeholder="Что нужно сделать" ${dis}></div>
     ${t._new ? '' : `<div class="tk-f"><span>Статус</span><div class="tk-chips">${TK_STATUSES.map(s=>`<button class="tk-chip ${t.status===s.id?'on':''}" data-tkst="${s.id}">${s.name}</button>`).join('')}</div></div>`}
     <div class="tk-fgrid">
@@ -6546,11 +6745,11 @@ function ntfEvents(){
       else if(mine && txt==='изменил(а) задачу') what = 'изменил(а) задачу';
       else if(author && (txt==='→ Готово' || txt.indexOf('выполнено')===0)) { what = 'выполнил(а) задачу'; kind = 'done'; }
       else if(author && txt==='→ В работе') what = 'взял(а) в работу';
-      if(what) out.push({id:'h:'+t.id+':'+i+':'+h.at, at:h.at, task:t.id, kind, who:h.who, text:`${name(h.who)} ${what}`, title:t.title});
+      if(what) out.push({id:'h:'+t.id+':'+i+':'+h.at, at:h.at, task:t.id, kind, who:h.who, text:`${nameWithTitle(h.who)} ${what}`, title:t.title});
     });
     (t.cm||[]).forEach((c, i)=>{
       if(!c || c.who===me || !c.at || c.at < since) return;
-      out.push({id:'c:'+t.id+':'+i+':'+c.at, at:c.at, task:t.id, kind:'cm', who:c.who, text:`${name(c.who)}: «${String(c.text||'').slice(0,120)}»`, title:t.title});
+      out.push({id:'c:'+t.id+':'+i+':'+c.at, at:c.at, task:t.id, kind:'cm', who:c.who, text:`${nameWithTitle(c.who)}: «${String(c.text||'').slice(0,120)}»`, title:t.title});
     });
     // срок сегодня — одно напоминание в день, в начале рабочего дня
     if(mine && t.status!=='done' && t.due && tkDiff(t.due)===0){
@@ -9519,6 +9718,7 @@ let orderTimerHandle = null;
   attachNtfHandlers();
   attachUxHandlers();
   attachAdminHandlers();
+  attachProfileHandlers();
   attachAuthHandlers();
   const authOk = await authBoot();
   if(!authOk) return;                       // показан экран входа
@@ -9538,6 +9738,7 @@ let orderTimerHandle = null;
     await flushHeal(); // если что-то восстановили из локальной копии — вернём в базу
     ensureAdminEntry();
   }
+  syncAvatars(true);
 
   renderNow();
   // ИСПРАВЛЕНО: в снимке не хватало cashUrls/cashTotals — набор ключей не совпадал
