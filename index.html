@@ -621,6 +621,7 @@
   .qe-add{border:0;background:none;color:var(--kb-accent);font:600 12.5px var(--font);cursor:pointer;padding:2px 0 2px 32px;}
   .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
   @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
+  .sales-wrap-admin{max-width:900px;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2696,7 +2697,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.8';
+const APP_BUILD = '2026-10-05.9';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -8375,7 +8376,7 @@ const SALES_FIELDS = {
   sf_duration:'duration', sf_duration_custom:'durationCustom',
   sf_addon:'addon', sf_addon_custom:'addonCustom',
   sf_payMethod:'payMethod', sf_earnings:'earnings',
-  sf_deliveryDate:'deliveryDate', sf_sheetMonth:'sheetMonth',
+  sf_deliveryDate:'deliveryDate', sf_sheetMonth:'sheetMonth', sf_seller:'seller',
 };
 function syncSalesFormFromDom(){
   Object.keys(SALES_FIELDS).forEach(id=>{
@@ -8384,7 +8385,16 @@ function syncSalesFormFromDom(){
   });
 }
 
+// Форма продажи открыта: у сотрудника ОП — вкладка «Продажа», у руководителя — раздел админки
+function inSalesView(){ return mode==='sales' || (mode==='admin' && adminTab==='sales'); }
+// Кто продал. Руководитель продаёт сам (имя из профиля) или оформляет за менеджера ОП.
+function salesSellerId(){
+  if(authIsAdmin() && salesForm.seller) return salesForm.seller;
+  return myEmployeeId || '';
+}
 function salesEmpName(){
+  if(authIsAdmin() && salesForm.seller){ const e = employees.find(x=>x.id===salesForm.seller); return e ? e.name : ''; }
+  if(authIsAdmin()){ const n = adminName(authEmail()); if(n) return n; }
   if(!myEmployeeId) return '';
   const e = employees.find(e=>e.id===myEmployeeId);
   return e ? e.name : '';
@@ -8510,7 +8520,11 @@ function renderSalesView(){
       </div>
       <div style="margin-top:14px;padding:12px 14px;border-radius:var(--radius-md);background:var(--bg1);border:1px solid var(--bg2);font-size:13px;">
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
-          <span style="color:var(--ink3);">Кто продал:</span><b>${escapeHtml(empName||'—')}</b>
+          ${authIsAdmin() ? `<label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="color:var(--ink3);">Кто продал:</span>
+            <select id="sf_seller" style="width:auto;min-width:180px;">
+              <option value="" ${!salesForm.seller?'selected':''}>${escapeHtml(adminName(authEmail()) ? 'Я — ' + adminName(authEmail()) : 'Я (укажите имя в профиле)')}</option>
+              ${employees.filter(e=>normDept(e.department)==='op').map(e=>`<option value="${escapeHtml(e.id)}" ${salesForm.seller===e.id?'selected':''}>${escapeHtml(e.name)} · ОП</option>`).join('')}
+            </select></label>` : `<span style="color:var(--ink3);">Кто продал:</span><b>${escapeHtml(empName||'—')}</b>`}
           <span style="color:var(--ink3);margin-left:8px;">Статус:</span><b style="color:var(--green);">Взять в работу</b>
         </div>
       </div>
@@ -8587,7 +8601,7 @@ function recordSaleTime(payload){
   const id = ts.toString(36) + Math.random().toString(36).slice(2,7);
   const rec = {
     id, ts, mk: z.mk, hour: z.hour, time: z.hhmm,
-    empId: myEmployeeId || '', empName: payload.whoSold || '',
+    empId: salesSellerId(), empName: payload.whoSold || '',
     client: payload.clientName || '', total: Number(payload.total)||0,
     saleDate: payload.date || '',
   };
@@ -8783,6 +8797,7 @@ async function submitSalesForm(){
   const durationFull = addonFinal ? durationFinal + addonFinal : durationFinal;
 
   if(!salesForm.clientName){ showToast('Введите имя клиента','error'); return; }
+  if(!salesEmpName()){ showToast('Не понятно, кто продал: укажите своё имя в профиле (нажмите на аватарку) или выберите менеджера', 'error'); return; }
   if(!salesForm.total){ showToast('Введите сумму','error'); return; }
 
   const total  = parseFloat(salesForm.total)||0;
@@ -8856,7 +8871,7 @@ function saleSubmitted(payload, msg){
         duration: salesForm.duration, durationCustom:'',
         addon:'', addonCustom:'',
         payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
-        sheetMonth: salesForm.sheetMonth,
+        sheetMonth: salesForm.sheetMonth, seller: salesForm.seller || '',
       };
 }
 
@@ -9757,6 +9772,7 @@ function renderAdminView(){
     ['summary',  'Сводка'],
     ['analytics','Аналитика'],
     ['team',     'Команда'],
+    ['sales',    'Продажа'],
     ['tasks',    'Задачи'],
     ['kb',       'Знания'],
     ['data',     'Данные'],
@@ -9965,6 +9981,11 @@ function renderAdminView(){
     <div class="admin-pane${adminTab==='tasks'?' active':''}" data-pane="tasks">
     ${adminTab==='tasks' ? renderTasksView() : ''}
     </div><!-- /pane tasks -->
+
+    <!-- ══════════ ПРОДАЖА ══════════ -->
+    <div class="admin-pane${adminTab==='sales'?' active':''}" data-pane="sales">
+    ${adminTab==='sales' ? `<div class="sales-wrap-admin">${renderSalesView()}</div>` : ''}
+    </div><!-- /pane sales -->
 
     <!-- ══════════ БАЗА ЗНАНИЙ ══════════ -->
     <div class="admin-pane${adminTab==='kb'?' active':''}" data-pane="kb">
@@ -10544,8 +10565,9 @@ function attachDelegatedHandlers(){
   });
 
   document.addEventListener('change', async (ev)=>{
-    if(mode==='sales' && ev.target.id && SALES_FIELDS[ev.target.id]){
+    if(inSalesView() && ev.target.id && SALES_FIELDS[ev.target.id]){
       salesForm[SALES_FIELDS[ev.target.id]] = ev.target.value;
+      if(ev.target.id === 'sf_seller') renderNow();
     }
     if(ev.target.id === 'monthSelect'){ editingMonth = ev.target.value; renderNow(); }
     if(ev.target.id === 'teamSchedSelect'){ teamSchedEmpId = ev.target.value; renderNow(); }
@@ -10595,7 +10617,7 @@ function attachDelegatedHandlers(){
   const commentSaveTimers = {};
   document.addEventListener('input', (ev)=>{
     // Форма продажи: любое изменение сразу запоминаем, чтобы фоновый рендер его не стёр
-    if(mode==='sales' && ev.target.id && SALES_FIELDS[ev.target.id]){
+    if(inSalesView() && ev.target.id && SALES_FIELDS[ev.target.id]){
       salesForm[SALES_FIELDS[ev.target.id]] = ev.target.value;
       if(ev.target.id==='sf_total' || ev.target.id==='sf_prepayment'){
         const total = parseFloat(salesForm.total)||0;
