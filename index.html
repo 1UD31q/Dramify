@@ -622,12 +622,18 @@
   .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
   @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
   .sales-wrap-admin{max-width:900px;margin:0 auto;}
-  /* ── Разделы админки в шапке ── */
-  .admin-nav .more-tab{display:flex;align-items:center;gap:4px;cursor:pointer;}
-  .more-caret{font-size:10px;opacity:.7;}
-  .more-menu{position:fixed;z-index:80;min-width:170px;background:var(--bg0);border:1px solid var(--bg2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.25);padding:6px;display:flex;flex-direction:column;animation:ntfPop .16s ease-out;}
-  .more-item{border:0;background:none;text-align:left;padding:9px 12px;border-radius:8px;font:500 14px var(--font);color:var(--ink);cursor:pointer;}
-  .more-item:hover{background:var(--bg1);} .more-item.on{color:var(--p6);font-weight:600;}
+  /* ── Сворачиваемые карточки админки ── */
+  .card > h2.fold-h{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;-webkit-user-select:none;}
+  .fold-btn{margin-left:auto;flex:none;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:8px;background:var(--bg1);color:var(--ink3);cursor:pointer;transition:transform .2s, background .15s;}
+  .fold-btn:hover{background:var(--bg2);color:var(--ink);}
+  .card.folded .fold-btn{transform:rotate(-90deg);}
+  .card.folded > :not(h2){display:none !important;}
+  .card.folded{padding-bottom:14px;}
+  .card.folded > h2{margin-bottom:0;}
+  .card.folded > h2::after{display:none;}
+  .card > h2.fold-h{position:relative;padding-bottom:10px;}
+  .card > h2.fold-h::after{position:absolute;left:0;bottom:0;margin:0;}
+  .card.folded > h2.fold-h{padding-bottom:0;}
   /* ── Сотрудники в настройках: компактные строки ── */
   .emp-access-card.emp-acc{padding:0;}
   .emp-acc .emp-access-top .emp-access-dept,.emp-acc .emp-access-top .emp-access-role{display:none;}
@@ -5954,31 +5960,6 @@ function renderNow(){
   _doRender();
 }
 
-// ── Разделы админки в шапке: основные — вкладками, редкие — в меню «Ещё» ──
-const ADMIN_TABS = [['summary','Сводка'], ['analytics','Аналитика'], ['team','Команда'], ['sales','Продажа'], ['tasks','Задачи'], ['kb','Знания']];
-const ADMIN_MORE = [['data','Данные'], ['settings','Настройки']];
-const ADMIN_ORDER = ADMIN_TABS.concat(ADMIN_MORE).map(t=>t[0]);
-let adminMoreOpen = false;
-function renderAdminNav(){
-  const header = document.querySelector('header.cover'); if(!header) return;
-  let nav = document.getElementById('adminNav');
-  const show = authSession && authIsAdmin() && mode === 'admin' && adminUnlocked && !viewEmpId;
-  if(!show){ if(nav) nav.style.display = 'none'; return; }
-  if(!nav){ nav = document.createElement('div'); nav.id = 'adminNav'; nav.className = 'tabs admin-nav'; nav.style.position = 'relative';
-    const t = header.querySelector('.tabs'); header.insertBefore(nav, t ? t.nextSibling : null); }
-  nav.style.display = '';
-  const more = ADMIN_MORE.find(t=>t[0]===adminTab);
-  const html = ADMIN_TABS.map(([id,l])=>`<div class="tab${adminTab===id?' active':''}" data-admin-tab="${id}">${l}</div>`).join('') +
-    `<div class="tab more-tab${more?' active':''}" data-adminmore="1" aria-haspopup="true" aria-expanded="${adminMoreOpen}">${more ? more[1] : 'Ещё'} <span class="more-caret">▾</span></div>` +
-    (adminMoreOpen ? `<div class="more-menu" role="menu">${ADMIN_MORE.map(([id,l])=>`<button class="more-item${adminTab===id?' on':''}" data-admin-tab="${id}" role="menuitem">${l}</button>`).join('')}</div>` : '');
-  if(nav._html !== html){ nav._html = html; nav.innerHTML = html; }
-  // меню — fixed по кнопке, чтобы его не обрезала прокручиваемая полоса вкладок
-  const menu = nav.querySelector('.more-menu'), btn = nav.querySelector('[data-adminmore]');
-  if(menu && btn){ const r = btn.getBoundingClientRect();
-    menu.style.top = Math.round(r.bottom + 6) + 'px';
-    menu.style.left = Math.round(Math.max(8, Math.min(r.right - 170, innerWidth - 178))) + 'px'; }
-}
-
 // Блок «кто вошёл» в верхней панели (виден только на широком экране)
 function renderTopUser(){
   const box = document.getElementById('topUser');
@@ -6011,8 +5992,7 @@ function _doRender(){
   if(kbEditorLocked()) return; // открыт редактор базы знаний — не сбиваем курсор
   const main = mainEl || (mainEl = document.getElementById('main'));
   if(!main) return;
-  document.querySelectorAll('header .tabs:not(.admin-nav) .tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
-  renderAdminNav();
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
   main.classList.remove('anim-in'); // сначала снимаем класс — иначе только что вставленные карточки
                                      // унаследуют его и будут переигрывать анимацию на каждый рендер
   // Показываем вкладку «Продажа» только для сотрудников ОП
@@ -9808,8 +9788,21 @@ function renderAdminView(){
       </div>`),
   ].join('');
 
-  // разделы админки — в шапке (renderAdminNav), отдельной полосы на странице больше нет
-  const tabsHtml = '';
+  const tabs = [
+    ['summary',  'Сводка'],
+    ['analytics','Аналитика'],
+    ['team',     'Команда'],
+    ['sales',    'Продажа'],
+    ['tasks',    'Задачи'],
+    ['kb',       'Знания'],
+    ['data',     'Данные'],
+    ['settings', 'Настройки'],
+  ];
+  const tabsHtml = `<div class="admin-tabs">${
+    tabs.map(([id,label])=>
+      `<div class="admin-tab${adminTab===id?' active':''}" data-admin-tab="${id}">${label}</div>`
+    ).join('')
+  }</div>`;
 
   return `
     ${tabsHtml}
@@ -10258,9 +10251,7 @@ function attachDelegatedHandlers(){
   document.addEventListener('click', async (ev)=>{
     // ---- Вкладки админки ----
     const tabEl = ev.target.closest('[data-admin-tab]');
-    if(tabEl){ adminTab = tabEl.dataset.adminTab; adminMoreOpen = false; renderNow(); return; }
-    if(ev.target.closest('[data-adminmore]')){ adminMoreOpen = !adminMoreOpen; renderAdminNav(); return; }
-    if(adminMoreOpen && !ev.target.closest('.more-menu')){ adminMoreOpen = false; renderAdminNav(); }
+    if(tabEl){ adminTab = tabEl.dataset.adminTab; renderNow(); return; }
 
     const el = ev.target;
 
@@ -10688,8 +10679,7 @@ function uxAnim(el, frames, opts){
 // ── Полоска под активной вкладкой переезжает, а не прыгает ──
 let uxInkReady = false;
 function uxTabInk(){
-  const box = [...document.querySelectorAll('header .tabs')].find(t=>t.style.display!=='none' && t.offsetParent!==null) || document.querySelector('header .tabs'); if(!box) return;
-  document.querySelectorAll('header .tabs .tab-ink').forEach(i=>{ if(!box.contains(i)) i.style.opacity = '0'; });
+  const box = document.querySelector('header .tabs'); if(!box) return;
   const tab = box.querySelector('.tab.active');
   let ink = box.querySelector('.tab-ink');
   if(!tab || tab.style.display==='none' || box.style.display==='none'){ if(ink) ink.style.opacity = '0'; return; }
@@ -10799,11 +10789,51 @@ function uxCelebrate(){
 }
 
 // После каждой перерисовки
-function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(); }
+function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(); uxFoldCards(); }
+
+// ── Сворачиваемые карточки в админке ──
+// Стрелка в заголовке карточки сворачивает её до одной строки. Что свёрнуто,
+// помнит этот браузер; редкие блоки по умолчанию свёрнуты.
+const FOLD_DEFAULT = ['Время продаж ОП', 'Отметки за день', 'cmp', 'Ручная правка KPI', 'Календарь сдачи', 'Цикл заказа', 'Проверка таблиц', 'Добавить сотрудника'];
+let foldState = null;
+function foldGet(){
+  if(!foldState){ try{ foldState = JSON.parse(localStorage.getItem('dramify-fold') || '{}') || {}; }catch(e){ foldState = {}; } }
+  return foldState;
+}
+function foldIs(k){ const st = foldGet(); return k in st ? !!st[k] : FOLD_DEFAULT.includes(k); }
+function foldKey(h){
+  const t = h.textContent;
+  if(t.includes('→')) return 'cmp';                       // сравнение «прошлый месяц → этот»
+  return t.split('·')[0].replace(/\d+\s*из\s*\d+/, '').trim();
+}
+function uxFoldCards(){
+  if(mode !== 'admin') return;
+  document.querySelectorAll('#main .admin-pane.active .card').forEach(c=>{
+    const h = c.firstElementChild; if(!h || h.tagName !== 'H2') return;
+    if(h.id === 'toggleLogsBtn') return;   // журнал и так сворачивается своей кнопкой
+    const k = foldKey(h);
+    if(!h.querySelector('.fold-btn')){
+      h.classList.add('fold-h');
+      h.insertAdjacentHTML('beforeend', '<button type="button" class="fold-btn" aria-label="Свернуть или развернуть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>');
+    }
+    c.dataset.fold = k;
+    c.classList.toggle('folded', foldIs(k));
+  });
+}
+document.addEventListener('click', e=>{
+  const h = e.target.closest && e.target.closest('#main .admin-pane .card > h2.fold-h');
+  if(!h) return;
+  const onBtn = e.target.closest('.fold-btn');
+  if(!onBtn && e.target.closest('button, a, input, select, label, #saleTimesTitle')) return;
+  const c = h.parentElement, k = c.dataset.fold; if(!k) return;
+  const st = foldGet(); st[k] = !c.classList.contains('folded');
+  try{ localStorage.setItem('dramify-fold', JSON.stringify(st)); }catch(_){}
+  c.classList.toggle('folded', st[k]);
+});
 
 // ── Свайпы: телефон — пальцем, Mac — двумя пальцами по тачпаду ──
 function uxTabsList(){
-  if(mode==='admin' && adminUnlocked && !viewEmpId) return {kind:'admin', ids:ADMIN_ORDER, cur:adminTab};
+  if(mode==='admin' && adminUnlocked && !viewEmpId) return {kind:'admin', ids:[...document.querySelectorAll('#main .admin-tab')].map(t=>t.dataset.adminTab), cur:adminTab};
   const tabs = [...document.querySelectorAll('header .tabs .tab')].filter(t=>t.style.display!=='none');
   return {kind:'top', ids:tabs.map(t=>t.dataset.mode), cur:mode};
 }
