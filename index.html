@@ -577,6 +577,32 @@
   .wk-row span:last-child{color:var(--ink3);white-space:nowrap;font-variant-numeric:tabular-nums;}
   .up{color:var(--green);} .down{color:var(--red);}
   .wk-foot{font-size:11.5px;color:var(--ink3);padding:10px 22px 16px;}
+  /* ── Тест и «прочитал по-настоящему» ── */
+  .kb-who-read{width:100%;font-size:12.5px;color:var(--ink3);}
+  .kb-who-read summary{cursor:pointer;color:var(--kb-accent);font-weight:600;margin:4px 0;}
+  .kb-wr{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--bg2);}
+  .kb-wr span:first-child{color:var(--ink2);}
+  .kb-quiz{width:100%;background:var(--bg1);border-radius:14px;padding:16px;}
+  .kb-quiz-h{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin-bottom:4px;}
+  .kb-q{background:var(--bg0);border:1px solid var(--bg2);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
+  .kb-q.bad{border-color:var(--kb-red);}
+  .kb-q-t{font-weight:600;color:var(--ink);margin-bottom:8px;line-height:1.4;}
+  .kb-opt{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:14px;color:var(--ink2);line-height:1.4;}
+  .kb-opt:hover{background:var(--bg1);}
+  .kb-opt.on{background:var(--kb-tint);color:var(--ink);}
+  .kb-opt input{margin-top:3px;accent-color:var(--p6);flex:none;}
+  .kb-q-bad{font-size:12.5px;color:var(--kb-red);margin-top:6px;font-weight:600;}
+  .kb-quiz .btn{width:100%;}
+  .btn:disabled .kb-gate-txt{font-variant-numeric:tabular-nums;}
+  .nb-chk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink2);cursor:pointer;}
+  .nb-chk input{width:16px;height:16px;accent-color:var(--p6);}
+  .nb-card{border:1.5px solid var(--p3);}
+  .nb-h{font-weight:700;font-size:15px;color:var(--ink);margin-bottom:6px;}
+  .nb-t{font-size:13px;color:var(--ink3);line-height:1.5;margin-bottom:10px;}
+  .nb-list{display:flex;flex-direction:column;gap:6px;}
+  .nb-pg{text-align:left;border:1px solid var(--bg3);background:var(--bg1);color:var(--ink);border-radius:10px;padding:9px 12px;font:600 13.5px var(--font);cursor:pointer;}
+  .nb-pg:hover{border-color:var(--p3);}
+  .nb-more{font-size:12px;color:var(--ink3);}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2652,7 +2678,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.2';
+const APP_BUILD = '2026-10-05.3';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -4861,6 +4887,10 @@ function renderDayAttendance(empList, title){
 let punchInFlight = false;
 async function punch(empId){
   if(punchInFlight) return; // защита от повторного/двойного нажатия
+  if(!isCheckedIn(empId)){
+    const pend = newbieBlockPages(empId);
+    if(pend.length){ showToast('Сначала прочитайте обязательное: ' + pend[0].title + (pend.length > 1 ? ' и ещё ' + (pend.length - 1) : ''), 'error'); kbGo(pend[0].id); return; }
+  }
   punchInFlight = true;
   try{
     // подтягиваем самые свежие логи перед записью, чтобы снизить риск
@@ -6154,7 +6184,7 @@ function renderEmployeeDashboard(forId){
   return `${forId ? '<div class="ro-bar"><button class="btn small secondary" id="viewBackBtn">← Назад</button><span>Карточка сотрудника · только просмотр</span></div>' : ''}
     <div class="emp-dashboard-grid${forId ? ' ro-view' : ''}">
       <div class="emp-col-left">
-        ${forId ? '' : renderMyTasksStrip() + renderKbStrip()}
+        ${forId ? '' : renderNewbieCard() + renderMyTasksStrip() + (newbieBlockPages(myEmployeeId).length ? '' : renderKbStrip())}
         <div class="card">
           <div class="punch-wrap">
             <div class="status-pill"><span class="dot ${checkedIn?'in':'out'}"></span>${escapeHtml(emp.name)}${empRoleLabel(emp)?' · '+escapeHtml(empRoleLabel(emp)):''} · ${checkedIn?'на смене':'не на смене'}</div>
@@ -7290,6 +7320,9 @@ function kbBlocks(body){
       if(last && last.t==='table') last.rows.push(cells); else out.push({t:'table', rows:[cells]});
       return;
     }
+    // тест: «?? вопрос», дальше варианты «(+) верный» / «( ) неверный»
+    if((m = t.match(/^\?\?\s*(.+)/))) return out.push({t:'q', x:m[1]});
+    if((m = t.match(/^\((\+|\s?)\)\s*(.+)/))) return out.push({t:'opt', ok:m[1]==='+', x:m[2]});
     if((m = t.match(/^###\s+(.*)/))) return out.push({t:'h4', x:m[1]});
     if((m = t.match(/^##?\s+(.*)/)))  return out.push({t:'h3', x:m[1]});
     if((m = t.match(/^\[( |x|х)\]\s*(.*)/i))) return out.push({t:'chk', x:m[2]});
@@ -7327,6 +7360,7 @@ function kbRender(body, pageId){
       case 'key': h += `<div class="kb-key">${hl(kbInline(b.x))}</div>`; break;
       case 'quote': h += `<div class="kb-quote">${hl(kbInline(b.x))}</div>`; break;
       case 'note': h += `<p class="kb-note">${hl(kbInline(b.x))}</p>`; break;
+      case 'q': case 'opt': break;   // вопросы теста показываются отдельно, внизу страницы
       case 'table': {
         const [head, ...rows] = b.rows;
         h += `<div class="kb-tbl"><table><thead><tr>${head.map(c=>`<th>${hl(kbInline(c))}</th>`).join('')}</tr></thead><tbody>${
@@ -7344,8 +7378,24 @@ function kbHighlight(html){
   const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
   return html.split(/(<[^>]+>)/).map(part=> part.startsWith('<') ? part : part.replace(re, '<mark>$1</mark>')).join('');
 }
+// Вопросы теста страницы: [{q, opts:[{x, ok}]}]
+function kbQuiz(body){
+  const qs = [];
+  kbBlocks(body).forEach(b=>{
+    if(b.t==='q') qs.push({q:b.x, opts:[]});
+    else if(b.t==='opt' && qs.length) qs[qs.length-1].opts.push({x:b.x, ok:b.ok});
+  });
+  return qs.filter(q=>q.opts.length >= 2 && q.opts.some(o=>o.ok));
+}
+// Порядок вариантов перемешан (верный обычно пишут первым), но одинаково при каждой перерисовке
+function kbShuffle(arr, seed){
+  let h = 0; for(const ch of String(seed)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return arr.map((v, i)=>({v, k: ((h + i * 2654435761) >>> 0) % 1000})).sort((a,b)=>a.k-b.k).map(o=>o.v);
+}
+// Сколько нужно провести на странице: половина обычного времени чтения (≈250 слов в минуту), от 15 с до 4 мин
+function kbMinSec(p){ const w = kbPlain(p).split(/\s+/).filter(Boolean).length; return Math.max(15, Math.min(240, Math.round(w / 250 * 60 * 0.5))); }
 function kbPlain(p){
-  return String(p.body||'').replace(/\*\*/g,'').replace(/^\s*(##?#?|[-•]|\[[ xх]\]|!|\+|>>|>|~|\|)\s*/gim,'').replace(/\|/g,' ').replace(/\s+/g,' ');
+  return String(p.body||'').replace(/^\s*(\?\?|\((\+|\s?)\)).*$/gm, '').replace(/\*\*/g,'').replace(/^\s*(##?#?|[-•]|\[[ xх]\]|!|\+|>>|>|~|\|)\s*/gim,'').replace(/\|/g,' ').replace(/\s+/g,' ');
 }
 // Галочки чек-листа — личные и на один день (в этом браузере)
 function kbChkGet(page, day, k){ try{ return (JSON.parse(localStorage.getItem('dramify-kbchk:'+page+':'+day)||'[]')).indexOf(k) >= 0; }catch(e){ return false; } }
@@ -7419,10 +7469,11 @@ function renderKbPage(p, list){
     const done = aud.filter(e=>kbState(e.id,p)==='read');
     readers = `<div class="kb-readers">Прочитали <b>${done.length} из ${aud.length}</b>
       <span class="kb-avs">${aud.map(e=>{ const s = kbState(e.id,p); return `<span class="kb-av ${s==='read'?'':'no'}" title="${escapeHtml(e.name)} — ${s==='read'?'прочитал(а)':s==='upd'?'читал(а) старую версию':'не прочитал(а)'}">${escapeHtml(tkInitials(e.name))}</span>`; }).join('')}</span></div>
+      ${done.length ? `<details class="kb-who-read"><summary>Как читали</summary>${done.map(e=>{ const r = kbReadOf(e.id, p) || {};
+        return `<div class="kb-wr"><span>${escapeHtml(e.name)}</span><span>${r.sec ? kbFmtSec(r.sec) : '—'}${r.tries ? ' · тест ' + (r.tries===1 ? 'с 1-й попытки' : 'с ' + r.tries + '-й попытки') : ''}</span></div>`; }).join('')}</details>` : ''}
       ${aud.length > done.length && tkCanCreate() ? `<button class="btn secondary" data-kbremind="${escapeHtml(p.id)}" ${kbBusy?'disabled':''}>Напомнить непрочитавшим</button>` : ''}`;
   }
-  const mine = myEmployeeId ? `<div class="kb-readers">${st==='read' ? 'Вы отметили, что прочитали эту страницу' : st==='upd' ? 'Страницу обновили после вашего прочтения' : 'Дочитали? Отметьте — руководитель увидит'}</div>
-      <button class="btn ${st==='read'?'kb-done':''}" data-kbread="${escapeHtml(p.id)}" ${st==='read'||kbBusy?'disabled':''}>${st==='read'?'✓ Прочитано':'Прочитал(а)'}</button>` : '';
+  const mine = myEmployeeId ? kbMineHtml(p, st) : '';
   return `<div class="kb-crumbs">${escapeHtml(folder.name)} · ${idx+1} из ${inFolder.length}</div>
     <div class="kb-ph"><div class="kb-title" role="heading" aria-level="2">${escapeHtml(p.title)}</div>
       ${kbCanEditFolder(p.folder) ? `<button class="btn secondary small" data-kbedit="${escapeHtml(p.id)}">Редактировать</button>` : ''}</div>
@@ -7438,6 +7489,93 @@ function renderKbPage(p, list){
       ${idx > 0 ? `<button class="btn secondary" data-kbpage="${escapeHtml(inFolder[idx-1].id)}">← ${escapeHtml(inFolder[idx-1].title)}</button>` : '<span></span>'}
       ${idx < inFolder.length-1 ? `<button class="btn secondary" data-kbpage="${escapeHtml(inFolder[idx+1].id)}">${escapeHtml(inFolder[idx+1].title)} →</button>` : ''}
     </div>`;
+}
+
+// ── Прочитал по-настоящему: время на странице + прокрутка до конца + тест ──
+let kbGate = {page:null, sec:0, bottom:false};   // текущая открытая страница
+let kbAns = {};      // ответы теста: page -> {номер вопроса: номер варианта}
+let kbTries = {};    // page -> сколько раз проверяли ответы
+let kbWrong = {};    // page -> {номер вопроса: true} — где ошибся в последней попытке
+function kbFmtSec(sec){ sec = Math.round(sec); return sec < 60 ? sec + ' с' : Math.floor(sec/60) + ' мин' + (sec % 60 ? ' ' + (sec % 60) + ' с' : ''); }
+function kbGateFor(p){ if(kbGate.page !== p.id) kbGate = {page:p.id, sec:0, bottom:false}; return kbGate; }
+function kbGateOk(p){ const g = kbGateFor(p); return g.bottom && g.sec >= kbMinSec(p); }
+function kbGateText(p){
+  const g = kbGateFor(p), left = Math.max(0, kbMinSec(p) - Math.floor(g.sec));
+  if(!g.bottom && left) return 'Дочитайте до конца · ещё ' + kbFmtSec(left);
+  if(!g.bottom) return 'Дочитайте страницу до конца';
+  if(left) return 'Ещё ' + kbFmtSec(left) + ' на странице';
+  return '';
+}
+function kbMineHtml(p, st){
+  if(st === 'read') return `<div class="kb-readers">Вы прочитали эту страницу${(()=>{ const r = kbReadOf(myEmployeeId, p); return r && r.tries ? ' и прошли тест' : ''; })()}</div>
+      <button class="btn kb-done" disabled>✓ Прочитано</button>`;
+  const quiz = kbQuiz(p.body), ok = kbGateOk(p), gateTxt = kbGateText(p);
+  const head = st === 'upd' ? 'Страницу обновили после вашего прочтения — прочитайте ещё раз' : (quiz.length ? 'Дочитайте и ответьте на вопросы — руководитель увидит' : 'Дочитали? Отметьте — руководитель увидит');
+  if(!quiz.length) return `<div class="kb-readers">${head}</div>
+      <button class="btn" data-kbread="${escapeHtml(p.id)}" data-ok="${ok?1:0}" ${!ok||kbBusy?'disabled':''}><span class="kb-gate-txt">${ok ? 'Прочитал(а)' : escapeHtml(gateTxt)}</span></button>`;
+  const ans = kbAns[p.id] || {}, wrong = kbWrong[p.id] || {};
+  return `<div class="kb-quiz">
+      <div class="kb-quiz-h">Проверка · ${quiz.length} ${quiz.length===1?'вопрос':quiz.length<5?'вопроса':'вопросов'}</div>
+      <div class="kb-readers" style="margin-bottom:10px">${head}</div>
+      ${quiz.map((q, qi)=>`<div class="kb-q ${wrong[qi] ? 'bad' : ''}">
+        <div class="kb-q-t">${qi+1}. ${escapeHtml(q.q)}</div>
+        ${kbShuffle(q.opts.map((o, oi)=>({o, oi})), p.id + ':' + qi).map(({o, oi})=>`<label class="kb-opt ${ans[qi]===oi ? 'on' : ''}"><input type="radio" name="kbq-${escapeHtml(p.id)}-${qi}" data-kbans="${qi}:${oi}" ${ans[qi]===oi ? 'checked' : ''}><span>${escapeHtml(o.x)}</span></label>`).join('')}
+        ${wrong[qi] ? '<div class="kb-q-bad">Неверно — перечитайте этот раздел</div>' : ''}
+      </div>`).join('')}
+      <button class="btn" data-kbcheck="${escapeHtml(p.id)}" data-ok="${ok?1:0}" ${!ok||kbBusy?'disabled':''}><span class="kb-gate-txt">${ok ? 'Проверить и отметить «Прочитал(а)»' : escapeHtml(gateTxt)}</span></button>
+    </div>`;
+}
+// Раз в секунду: копим время, пока страница открыта и на виду; обновляем только надпись на кнопке
+function kbGateTick(){
+  const doc = document.querySelector('.kb-doc');
+  if(!doc || kbEdit || !myEmployeeId || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  const p = kbPages.find(x=>x.id===kbCur); if(!p || kbQ || kbState(myEmployeeId, p) === 'read') return;
+  const g = kbGateFor(p);
+  g.sec += 1; kbGateScroll();
+  const btn = document.querySelector('[data-kbread], [data-kbcheck]'); if(!btn) return;
+  // кнопка показывает не то, что есть на самом деле (время набралось) — перерисовываем
+  if(btn.dataset.ok !== (kbGateOk(p) ? '1' : '0')){ _lastHtml = null; renderNow(); return; }
+  const t = btn.querySelector('.kb-gate-txt'); if(t && !kbGateOk(p)) t.textContent = kbGateText(p);
+}
+function kbGateScroll(){
+  const p = kbPages.find(x=>x.id===kbCur), doc = document.querySelector('.kb-doc'); if(!p || !doc) return;
+  if(doc.getBoundingClientRect().bottom <= window.innerHeight + 40){
+    const g = kbGateFor(p);
+    if(!g.bottom){ g.bottom = true; const b = document.querySelector('[data-kbread], [data-kbcheck]'); if(b && kbGateOk(p) && b.dataset.ok !== '1'){ _lastHtml = null; renderNow(); } }
+  }
+}
+async function kbCheckQuiz(p){
+  if(!kbGateOk(p)) return;
+  const quiz = kbQuiz(p.body), ans = kbAns[p.id] || {};
+  if(quiz.some((q, qi)=> ans[qi] == null)){ showToast('Ответьте на все вопросы', 'error'); return; }
+  kbTries[p.id] = (kbTries[p.id] || 0) + 1;
+  const wrong = {}; quiz.forEach((q, qi)=>{ if(!q.opts[ans[qi]] || !q.opts[ans[qi]].ok) wrong[qi] = true; });
+  kbWrong[p.id] = wrong;
+  if(Object.keys(wrong).length){
+    showToast('Есть ошибки: ' + Object.keys(wrong).length + ' из ' + quiz.length + '. Перечитайте и попробуйте ещё раз', 'error');
+    kbAns[p.id] = {}; _lastHtml = null; renderNow(); return;
+  }
+  kbBusy = true;
+  try{ await kbMarkRead(p, false, {sec: Math.round(kbGateFor(p).sec), tries: kbTries[p.id]}); }
+  finally{ kbBusy = false; delete kbAns[p.id]; delete kbWrong[p.id]; delete kbTries[p.id]; _lastHtml = null; renderNow(); }
+}
+// Новичок: пока не прочитаны обязательные страницы своего отдела — смена не начинается.
+// Действует 30 дней с отметки «Новичок» (её ставит руководитель или она ставится сама при добавлении).
+const NEWBIE_DAYS = 30;
+function isNewbie(e){ return !!(e && e.newbieSince && Date.now() - Number(e.newbieSince) < NEWBIE_DAYS * 864e5); }
+function newbieBlockPages(empId){
+  const e = employees.find(x=>x.id===empId);
+  if(!isNewbie(e) || empId !== myEmployeeId) return [];
+  return kbMyPending();
+}
+function renderNewbieCard(){
+  const pend = newbieBlockPages(myEmployeeId); if(!pend.length || isCheckedIn(myEmployeeId)) return '';
+  const all = kbVisible().filter(p=>p.must);
+  return `<div class="card nb-card">
+    <div class="nb-h">👋 Добро пожаловать! Перед первой сменой</div>
+    <div class="nb-t">Прочитайте обязательные страницы базы знаний и ответьте на вопросы — после этого откроется кнопка START. Прочитано ${all.length - pend.length} из ${all.length}.</div>
+    <div class="nb-list">${pend.slice(0,5).map(p=>`<button class="nb-pg" data-kbgo="${escapeHtml(p.id)}">${escapeHtml(p.title)} →</button>`).join('')}${pend.length > 5 ? `<span class="nb-more">и ещё ${pend.length - 5}</span>` : ''}</div>
+  </div>`;
 }
 
 // Пока открыт редактор, фоновая синхронизация не перерисовывает экран:
@@ -7474,12 +7612,13 @@ function renderKbEditor(){
         <button data-kbwrap="**" title="Выделите слово и нажмите"><b>Жирный</b></button>
         ${KB_HELP.map(([pre,label])=>`<button data-kbpre="${escapeHtml(pre)}">${label}</button>`).join('')}
         <button data-kbtable="1">Таблица</button>
+        <button data-kbquiz="1" title="Вопрос в конце страницы: сотрудник отвечает, прежде чем отметить «Прочитал»">? Вопрос теста</button>
       </div>
       <div class="kb-ed-grid">
         <textarea id="kbBody" spellcheck="true" placeholder="Пишите текст. Кнопки сверху добавляют оформление в начало строки.">${escapeHtml(d.body)}</textarea>
         <div class="kb-preview"><div class="kb-doc" id="kbPreview">${kbRender(d.body, 'preview')}</div></div>
       </div>
-      <div class="kb-hint">Каждая строка — отдельный абзац. Ссылки вставляйте как есть, они станут кликабельными. Сохранили — у сотрудников страница пометится «Обновлено».</div>
+      <div class="kb-hint">Тест: строка «?? вопрос», под ней варианты — «(+) верный» и «( ) неверный». Вопросы показываются внизу страницы; пока сотрудник не ответит верно, «Прочитал» не отмечается. Каждая строка — отдельный абзац. Ссылки вставляйте как есть, они станут кликабельными. Сохранили — у сотрудников страница пометится «Обновлено».</div>
     </div>
   </div>`;
 }
@@ -7536,9 +7675,9 @@ async function kbMove(dir){
     showToast(dir < 0 ? 'Страница выше' : 'Страница ниже', 'success');
   } finally { kbBusy = false; renderNow(); }
 }
-async function kbMarkRead(p, quiet){
+async function kbMarkRead(p, quiet, extra){
   if(!myEmployeeId) return;
-  const v = {emp:myEmployeeId, page:p.id, ver:p.ver||0, at:Date.now()};
+  const v = Object.assign({emp:myEmployeeId, page:p.id, ver:p.ver||0, at:Date.now()}, extra || {});
   const ok = await storeSet('kbread:' + myEmployeeId + ':' + p.id, v, SHARED);
   if(!ok){ if(!quiet) showToast('Отметка не сохранилась. ' + storeErrText(), 'error'); return; }
   kbReads = kbReads.filter(r=>!(r.emp===v.emp && r.page===v.page)).concat([v]);
@@ -7760,7 +7899,9 @@ function attachKbHandlers(){
       return;
     }
     const rd = el.closest('[data-kbread]');
-    if(rd && !kbBusy){ const p = kbPages.find(x=>x.id===rd.dataset.kbread); if(p){ kbBusy = true; try{ await kbMarkRead(p); } finally { kbBusy = false; renderNow(); } } return; }
+    if(rd && !kbBusy){ const p = kbPages.find(x=>x.id===rd.dataset.kbread); if(p && kbGateOk(p)){ kbBusy = true; try{ await kbMarkRead(p, false, {sec: Math.round(kbGateFor(p).sec)}); } finally { kbBusy = false; renderNow(); } } return; }
+    const ck = el.closest('[data-kbcheck]');
+    if(ck && !kbBusy){ const p = kbPages.find(x=>x.id===ck.dataset.kbcheck); if(p) await kbCheckQuiz(p); return; }
     const rm = el.closest('[data-kbremind]');
     if(rm && !kbBusy){ const p = kbPages.find(x=>x.id===rm.dataset.kbremind); if(p) await kbRemind(p); return; }
     if(el.closest('[data-kbimport]')){ kbPickDocx(); return; }
@@ -7790,6 +7931,11 @@ function attachKbHandlers(){
       ta.setRangeText(w + (ta.value.slice(s, en) || 'текст') + w, s, en, 'select');
       ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
     }
+    if(el.closest('[data-kbquiz]') && ta){
+      const s0 = ta.value.length, nl = s0 > 0 && ta.value[s0-1] !== '\n' ? '\n' : '';
+      ta.setRangeText(nl + '?? Вопрос\n(+) Верный ответ\n( ) Неверный ответ\n( ) Неверный ответ\n', s0, s0, 'end');
+      ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
+    }
     if(el.closest('[data-kbtable]') && ta){
       const s = ta.selectionStart, nl = s > 0 && ta.value[s-1] !== '\n' ? '\n' : '';
       ta.setRangeText(nl + '| Колонка 1 | Колонка 2 |\n| текст | текст |\n', s, s, 'end');
@@ -7809,7 +7955,15 @@ function attachKbHandlers(){
       const pv = document.getElementById('kbPreview'); if(pv) pv.innerHTML = kbRender(kbEdit.body, 'preview');
     }
   });
-  document.addEventListener('change', e=>{ if(kbEdit && e.target.closest && e.target.closest('.kb-ed')) kbCollect(); });
+  document.addEventListener('change', e=>{
+    if(kbEdit && e.target.closest && e.target.closest('.kb-ed')) kbCollect();
+    const a = e.target.dataset && e.target.dataset.kbans;
+    if(a && kbCur){ const [qi, oi] = a.split(':').map(Number); kbAns[kbCur] = Object.assign({}, kbAns[kbCur], {[qi]: oi});
+      e.target.closest('.kb-q').querySelectorAll('.kb-opt').forEach(l=>l.classList.toggle('on', l.contains(e.target))); }
+  });
+  setInterval(kbGateTick, 1000);
+  window.addEventListener('scroll', kbGateScroll, {passive:true});
+  document.addEventListener('scroll', e=>{ if(e.target && e.target.closest && e.target.closest('#main')) kbGateScroll(); }, {passive:true, capture:true});
   document.addEventListener('keydown', e=>{
     if(e.key === 'Escape' && kbImport && !kbBusy){ kbImport = null; kbRenderImport(); }
     if((e.ctrlKey || e.metaKey) && e.key === 's' && kbEdit && document.getElementById('kbBody')){ e.preventDefault(); if(!kbBusy) kbSave(); }
@@ -7944,7 +8098,7 @@ async function teamAddEmployee(){
     if(list.some(e=>String(e.name||'').trim().toLowerCase() === name.toLowerCase())) return 'Сотрудник с таким именем уже есть';
     if(list.some(e=>String(e.email||'').toLowerCase() === email)) return 'Почта ' + email + ' уже используется';
     // отдел — всегда свой; роль и фикс-ставку задаёт только админ
-    list.push({ id:'e' + Date.now(), name, department: me.department, email });
+    list.push({ id:'e' + Date.now(), name, department: me.department, email, newbieSince: Date.now() });
     return null;
   });
   if(r.error){ showToast(r.error, 'error'); return; }
@@ -9832,6 +9986,7 @@ function renderAdminView(){
                 <option value="teamlead" ${e.role==='teamlead'?'selected':''}>Тимлид</option>
               </select>
             </div>
+            <div class="fld full"><label class="nb-chk"><input type="checkbox" data-newbieemp="${e.id}" ${isNewbie(e)?'checked':''}> Новичок — до начала смены нужно прочитать обязательное в базе знаний${isNewbie(e) ? ` <span class="emp-access-role">ещё ${Math.ceil((Number(e.newbieSince) + NEWBIE_DAYS*864e5 - Date.now())/864e5)} дн.</span>` : ''}</label></div>
             ${e.department==='os' ? '' : `<div class="fld">
               <label class="field-label">Фикс. ставка, %</label>
               <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="по плану">
@@ -10040,6 +10195,12 @@ function attachDelegatedHandlers(){
           const emp = employees.find(e=>e.id===i.dataset.roleemp);
           if(emp) emp.role = i.value;
         });
+        document.querySelectorAll('[data-newbieemp]').forEach(i=>{
+          const emp = employees.find(e=>e.id===i.dataset.newbieemp);
+          if(!emp) return;
+          if(i.checked && !isNewbie(emp)) emp.newbieSince = Date.now();
+          else if(!i.checked) delete emp.newbieSince;
+        });
         document.querySelectorAll('[data-fixedemp]').forEach(i=>{
           const emp = employees.find(e=>e.id===i.dataset.fixedemp);
           if(!emp) return;
@@ -10063,7 +10224,7 @@ function attachDelegatedHandlers(){
         if(!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Укажите имя и корректную почту', 'error'); return; }
         if(employees.some(e=>(e.email||'').toLowerCase()===email)){ showToast('Сотрудник с такой почтой уже есть', 'error'); return; }
         const id = 'e' + Date.now();
-        await saveEmployee({id, name, department:dept, email});
+        await saveEmployee({id, name, department:dept, email, newbieSince: Date.now()});
         renderNow();
       });
       return;
