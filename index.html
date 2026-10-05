@@ -539,6 +539,7 @@
   .kb-imp-row{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-top:1px solid var(--bg2);font-size:13.5px;}
   .kb-imp-row:first-child{border-top:0;}
   .kb-imp-row small{color:var(--ink3);white-space:nowrap;}
+  .kbq-row{align-items:center;flex-wrap:wrap;} .kbq-row select{max-width:100%;flex:1 1 220px;}
   @media (max-width:899px){
     .kb-layout{grid-template-columns:1fr;}
     .kb-side{position:static;max-height:none;}
@@ -603,6 +604,23 @@
   .nb-pg{text-align:left;border:1px solid var(--bg3);background:var(--bg1);color:var(--ink);border-radius:10px;padding:9px 12px;font:600 13.5px var(--font);cursor:pointer;}
   .nb-pg:hover{border-color:var(--p3);}
   .nb-more{font-size:12px;color:var(--ink3);}
+  /* ── Редактор теста ── */
+  .qe{margin-top:16px;border-top:1px solid var(--bg2);padding-top:14px;}
+  .qe-h{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;} .qe-h b{font-size:15px;color:var(--ink);} .qe-h span{font-size:12px;color:var(--ink3);}
+  .qe-q{background:var(--bg1);border-radius:12px;padding:10px 12px;margin-bottom:10px;}
+  .qe-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+  .qe-row textarea{flex:1;min-width:0;resize:vertical;font:600 14px/1.4 var(--font);color:var(--ink);background:var(--bg0);border:1.5px solid var(--bg3);border-radius:10px;padding:8px 10px;}
+  .qe-row input[type=text]{flex:1;min-width:0;}
+  .qe-n{width:24px;height:24px;border-radius:50%;background:var(--p6);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;}
+  .qe-o{padding-left:32px;}
+  .qe-ok{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--ink3);background:var(--bg0);border:1px solid var(--bg3);border-radius:20px;padding:4px 9px;cursor:pointer;white-space:nowrap;flex:none;width:96px;}
+  .qe-ok.on{color:var(--kb-green);border-color:var(--kb-green);background:var(--teal-tint);}
+  .qe-ok input{accent-color:var(--green);margin:0;}
+  .qe-x{border:0;background:none;color:var(--ink3);font-size:14px;cursor:pointer;padding:4px 6px;border-radius:6px;flex:none;}
+  .qe-x:hover{background:var(--bg2);color:var(--kb-red);}
+  .qe-add{border:0;background:none;color:var(--kb-accent);font:600 12.5px var(--font);cursor:pointer;padding:2px 0 2px 32px;}
+  .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
+  @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2678,7 +2696,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.5';
+const APP_BUILD = '2026-10-05.6';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -7387,6 +7405,13 @@ function kbQuiz(body){
   });
   return qs.filter(q=>q.opts.length >= 2 && q.opts.some(o=>o.ok));
 }
+// Тест страницы: отдельное поле page.quiz (редактор «Тест»), а для старых страниц — вопросы из текста
+function kbQuizOf(p){
+  const q = Array.isArray(p.quiz) ? p.quiz : kbQuiz(p.body);
+  return q.filter(x=>x && String(x.q||'').trim() && (x.opts||[]).filter(o=>String(o.x||'').trim()).length >= 2 && x.opts.some(o=>o.ok))
+          .map(x=>({q:x.q, opts:x.opts.filter(o=>String(o.x||'').trim())}));
+}
+function kbStripQuizLines(body){ return String(body||'').split('\n').filter(l=>!/^\s*(\?\?|\((\+|\s?)\))/.test(l)).join('\n').replace(/\n{3,}/g, '\n\n'); }
 // Порядок вариантов перемешан (верный обычно пишут первым), но одинаково при каждой перерисовке
 function kbShuffle(arr, seed){
   let h = 0; for(const ch of String(seed)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -7427,7 +7452,7 @@ function renderKbView(){
   return `<div class="kb-wrap">
     <div class="tk-top">
       <div><h2 class="tk-h1">База знаний</h2><div class="tk-sub">Скрипты, регламенты и инструкции команды</div></div>
-      ${authIsAdmin() ? `<div class="tk-top-r"><button class="btn secondary" data-kbimport="1">Загрузить из Word</button></div>` : ''}
+      ${authIsAdmin() ? `<div class="tk-top-r"><button class="btn secondary" data-kbqimport="1" title="Файл с вопросами: «# Название страницы», дальше «?? вопрос», «(+) верный», «( ) неверный»">Загрузить тесты</button><button class="btn secondary" data-kbimport="1">Загрузить из Word</button></div>` : ''}
     </div>
     <div class="kb-layout">
       <aside class="kb-side ${kbNavOpen?'open':''}">
@@ -7509,19 +7534,21 @@ function kbGateText(p){
 function kbMineHtml(p, st){
   if(st === 'read') return `<div class="kb-readers">Вы прочитали эту страницу${(()=>{ const r = kbReadOf(myEmployeeId, p); return r && r.tries ? ' и прошли тест' : ''; })()}</div>
       <button class="btn kb-done" disabled>✓ Прочитано</button>`;
-  const quiz = kbQuiz(p.body), ok = kbGateOk(p), gateTxt = kbGateText(p);
+  const quiz = kbQuizOf(p), ok = kbGateOk(p), gateTxt = kbGateText(p);
   const head = st === 'upd' ? 'Страницу обновили после вашего прочтения — прочитайте ещё раз' : (quiz.length ? 'Дочитайте и ответьте на вопросы — руководитель увидит' : 'Дочитали? Отметьте — руководитель увидит');
   if(!quiz.length) return `<div class="kb-readers">${head}</div>
       <button class="btn" data-kbread="${escapeHtml(p.id)}" data-ok="${ok?1:0}" ${!ok||kbBusy?'disabled':''}><span class="kb-gate-txt">${ok ? 'Прочитал(а)' : escapeHtml(gateTxt)}</span></button>`;
-  const ans = kbAns[p.id] || {}, wrong = kbWrong[p.id] || {};
+  const ans = kbAns[p.id] || {}, wrong = kbWrong[p.id] || {}, tries = kbTries[p.id] || 0;
   return `<div class="kb-quiz">
       <div class="kb-quiz-h">Проверка · ${quiz.length} ${quiz.length===1?'вопрос':quiz.length<5?'вопроса':'вопросов'}</div>
       <div class="kb-readers" style="margin-bottom:10px">${head}</div>
-      ${quiz.map((q, qi)=>`<div class="kb-q ${wrong[qi] ? 'bad' : ''}">
+      ${quiz.map((q, qi)=>{ const multi = q.opts.filter(o=>o.ok).length > 1, sel = ans[qi] || [];
+        return `<div class="kb-q ${wrong[qi] ? 'bad' : ''}">
         <div class="kb-q-t">${qi+1}. ${escapeHtml(q.q)}</div>
-        ${kbShuffle(q.opts.map((o, oi)=>({o, oi})), p.id + ':' + qi).map(({o, oi})=>`<label class="kb-opt ${ans[qi]===oi ? 'on' : ''}"><input type="radio" name="kbq-${escapeHtml(p.id)}-${qi}" data-kbans="${qi}:${oi}" ${ans[qi]===oi ? 'checked' : ''}><span>${escapeHtml(o.x)}</span></label>`).join('')}
+        ${multi ? '<div class="kb-q-multi">Отметьте все верные варианты</div>' : ''}
+        ${kbShuffle(q.opts.map((o, oi)=>({o, oi})), p.id + ':' + qi + ':' + tries).map(({o, oi})=>`<label class="kb-opt ${sel.includes(oi) ? 'on' : ''}"><input type="${multi?'checkbox':'radio'}" name="kbq-${escapeHtml(p.id)}-${qi}" data-kbans="${qi}:${oi}" data-multi="${multi?1:0}" ${sel.includes(oi) ? 'checked' : ''}><span>${escapeHtml(o.x)}</span></label>`).join('')}
         ${wrong[qi] ? '<div class="kb-q-bad">Неверно — перечитайте этот раздел</div>' : ''}
-      </div>`).join('')}
+      </div>`; }).join('')}
       <button class="btn" data-kbcheck="${escapeHtml(p.id)}" data-ok="${ok?1:0}" ${!ok||kbBusy?'disabled':''}><span class="kb-gate-txt">${ok ? 'Проверить и отметить «Прочитал(а)»' : escapeHtml(gateTxt)}</span></button>
     </div>`;
 }
@@ -7546,10 +7573,12 @@ function kbGateScroll(){
 }
 async function kbCheckQuiz(p){
   if(!kbGateOk(p)) return;
-  const quiz = kbQuiz(p.body), ans = kbAns[p.id] || {};
-  if(quiz.some((q, qi)=> ans[qi] == null)){ showToast('Ответьте на все вопросы', 'error'); return; }
+  const quiz = kbQuizOf(p), ans = kbAns[p.id] || {};
+  if(quiz.some((q, qi)=> !(ans[qi] || []).length)){ showToast('Ответьте на все вопросы', 'error'); return; }
   kbTries[p.id] = (kbTries[p.id] || 0) + 1;
-  const wrong = {}; quiz.forEach((q, qi)=>{ if(!q.opts[ans[qi]] || !q.opts[ans[qi]].ok) wrong[qi] = true; });
+  // верно — когда отмечены ровно все верные варианты (в вопросе с одним ответом — он один)
+  const wrong = {}; quiz.forEach((q, qi)=>{ const sel = ans[qi] || []; const right = q.opts.map((o,i)=>o.ok?i:-1).filter(i=>i>=0);
+    if(sel.length !== right.length || right.some(i=>!sel.includes(i))) wrong[qi] = true; });
   kbWrong[p.id] = wrong;
   if(Object.keys(wrong).length){
     showToast('Есть ошибки: ' + Object.keys(wrong).length + ' из ' + quiz.length + '. Перечитайте и попробуйте ещё раз', 'error');
@@ -7612,13 +7641,13 @@ function renderKbEditor(){
         <button data-kbwrap="**" title="Выделите слово и нажмите"><b>Жирный</b></button>
         ${KB_HELP.map(([pre,label])=>`<button data-kbpre="${escapeHtml(pre)}">${label}</button>`).join('')}
         <button data-kbtable="1">Таблица</button>
-        <button data-kbquiz="1" title="Вопрос в конце страницы: сотрудник отвечает, прежде чем отметить «Прочитал»">? Вопрос теста</button>
       </div>
       <div class="kb-ed-grid">
         <textarea id="kbBody" spellcheck="true" placeholder="Пишите текст. Кнопки сверху добавляют оформление в начало строки.">${escapeHtml(d.body)}</textarea>
         <div class="kb-preview"><div class="kb-doc" id="kbPreview">${kbRender(d.body, 'preview')}</div></div>
       </div>
-      <div class="kb-hint">Тест: строка «?? вопрос», под ней варианты — «(+) верный» и «( ) неверный». Вопросы показываются внизу страницы; пока сотрудник не ответит верно, «Прочитал» не отмечается. Каждая строка — отдельный абзац. Ссылки вставляйте как есть, они станут кликабельными. Сохранили — у сотрудников страница пометится «Обновлено».</div>
+      ${renderKbQuizEditor(d)}
+      <div class="kb-hint">Каждая строка — отдельный абзац. Ссылки вставляйте как есть, они станут кликабельными. Сохранили — у сотрудников страница пометится «Обновлено».</div>
     </div>
   </div>`;
 }
@@ -7626,10 +7655,34 @@ function kbCollect(){
   const g = id => document.getElementById(id);
   if(!kbEdit || !g('kbBody')) return;
   kbEdit.title = g('kbTitle').value.trim(); kbEdit.folder = g('kbFolder').value; kbEdit.must = g('kbMust').checked; kbEdit.body = g('kbBody').value;
+  // тест из полей редактора
+  document.querySelectorAll('[data-qe-q]').forEach(el=>{ const q = kbEdit.quiz[+el.dataset.qeQ]; if(q) q.q = el.value; });
+  document.querySelectorAll('[data-qe-o]').forEach(el=>{ const [qi, oi] = el.dataset.qeO.split(':').map(Number); const o = kbEdit.quiz[qi] && kbEdit.quiz[qi].opts[oi]; if(o) o.x = el.value; });
+  document.querySelectorAll('[data-qe-ok]').forEach(el=>{ const [qi, oi] = el.dataset.qeOk.split(':').map(Number); const o = kbEdit.quiz[qi] && kbEdit.quiz[qi].opts[oi]; if(o) o.ok = el.checked; });
+}
+// Редактор теста: отдельные поля — вопрос, варианты с галочкой «верный»
+function renderKbQuizEditor(d){
+  const qz = d.quiz || [];
+  return `<div class="qe">
+    <div class="qe-h"><b>Тест в конце страницы</b><span>${qz.length ? qz.length + ' ' + (qz.length===1?'вопрос':qz.length<5?'вопроса':'вопросов') : 'необязательно'}</span></div>
+    <div class="kb-hint" style="margin:0 0 10px">Пока сотрудник не ответит на все вопросы верно, «Прочитал» не отметится. Отметьте галочкой верные варианты — если верных несколько, сотрудник должен выбрать все. Варианты показываются вперемешку.</div>
+    ${qz.map((q, qi)=>`<div class="qe-q">
+      <div class="qe-row"><span class="qe-n">${qi+1}</span><textarea data-qe-q="${qi}" rows="2" placeholder="Вопрос, например: Клиент пишет «скажите только сумму». Что отвечаем?">${escapeHtml(q.q||'')}</textarea>
+        <button class="qe-x" data-qe-delq="${qi}" title="Удалить вопрос">✕</button></div>
+      ${(q.opts||[]).map((o, oi)=>`<div class="qe-row qe-o">
+        <label class="qe-ok ${o.ok?'on':''}" title="Верный ответ"><input type="checkbox" data-qe-ok="${qi}:${oi}" ${o.ok?'checked':''}><span>${o.ok?'верный':'неверный'}</span></label>
+        <input type="text" data-qe-o="${qi}:${oi}" value="${escapeHtml(o.x||'')}" placeholder="Вариант ответа">
+        <button class="qe-x" data-qe-delo="${qi}:${oi}" title="Удалить вариант">✕</button></div>`).join('')}
+      <button class="qe-add" data-qe-addo="${qi}">+ вариант</button>
+    </div>`).join('')}
+    <button class="btn secondary small" data-qe-addq="1">+ Вопрос</button>
+  </div>`;
 }
 function kbOpenEditor(id, folder){
-  if(id){ const p = kbPages.find(x=>x.id===id); if(!p) return; kbEdit = JSON.parse(JSON.stringify(p)); kbEdit._new = false; }
-  else kbEdit = {id:'', folder: folder || kbFolders().find(f=>kbCanEditFolder(f.id)).id, title:'', body:'', must:false, _new:true};
+  if(id){ const p = kbPages.find(x=>x.id===id); if(!p) return; kbEdit = JSON.parse(JSON.stringify(p)); kbEdit._new = false;
+    // вопросы, записанные прямо в тексте («?? …»), переносим в отдельный редактор теста
+    if(!Array.isArray(kbEdit.quiz)){ kbEdit.quiz = kbQuiz(kbEdit.body).map(q=>({q:q.q, opts:q.opts.map(o=>({x:o.x, ok:!!o.ok}))})); kbEdit.body = kbStripQuizLines(kbEdit.body); } }
+  else kbEdit = {id:'', folder: folder || kbFolders().find(f=>kbCanEditFolder(f.id)).id, title:'', body:'', must:false, quiz:[], _new:true};
   renderNow();
   setTimeout(()=>{ const el = document.getElementById(kbEdit && kbEdit._new ? 'kbTitle' : 'kbBody'); if(el) el.focus(); }, 30);
 }
@@ -7647,7 +7700,10 @@ async function kbSave(){
   kbBusy = true;
   const sb = document.getElementById('kbSaveBtn'); if(sb){ sb.disabled = true; sb.textContent = 'Сохраняю…'; }
   try{
-    const p = {id: d._new ? kbNewId() : d.id, folder:d.folder, title:d.title, body:d.body, must:!!d.must,
+    const quiz = (d.quiz||[]).map(q=>({q:String(q.q||'').trim(), opts:(q.opts||[]).map(o=>({x:String(o.x||'').trim(), ok:!!o.ok})).filter(o=>o.x)})).filter(q=>q.q || q.opts.length);
+    const bad = quiz.findIndex(q=>!q.q || q.opts.length < 2 || !q.opts.some(o=>o.ok));
+    if(bad >= 0){ showToast(`Вопрос ${bad+1}: нужен текст вопроса, минимум 2 варианта и хотя бы один верный`, 'error'); kbBusy = false; if(sb){ sb.disabled = false; sb.textContent = 'Сохранить'; } return; }
+    const p = {id: d._new ? kbNewId() : d.id, folder:d.folder, title:d.title, body:d.body, must:!!d.must, quiz,
       order: d._new || d.folder !== (kbPages.find(x=>x.id===d.id)||{}).folder ? kbNextOrder(d.folder) : d.order,
       ver: Math.max(Date.now(), (Number(d.ver)||0) + 1), by: tkMe(), createdAt: d.createdAt || Date.now()};
     const r = await kbWrite(p, d._new);
@@ -7799,6 +7855,74 @@ function kbDocxToPages(xml){
     return {title:p.title, body};
   });
 }
+// ── Загрузка тестов из текстового файла ──
+// Формат: «# Название страницы», ниже вопросы «?? …» и варианты «(+) верный» / «( ) неверный».
+let kbqImport = null;
+function kbqParse(text){
+  const out = []; let cur = null;
+  String(text||'').replace(/\r/g,'').split('\n').forEach(l=>{
+    const t = l.trim(); let m;
+    if((m = t.match(/^#\s+(.+)/))){ cur = {title:m[1].trim(), body:''}; out.push(cur); return; }
+    if(cur) cur.body += t + '\n';
+  });
+  return out.map(sec=>({title:sec.title, quiz:kbQuiz(sec.body)})).filter(sec=>sec.quiz.length);
+}
+function kbqMatch(title){
+  const n = s => normName(s).replace(/[«»"'.:]/g,'');
+  const t = n(title), list = kbPages.filter(p=>kbCanEditFolder(p.folder));
+  return (list.find(p=>n(p.title)===t) || list.find(p=>n(p.title).includes(t) || t.includes(n(p.title))) || {}).id || '';
+}
+function kbqPick(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.txt,.md,text/plain'; inp.style.display = 'none'; document.body.appendChild(inp);
+  inp.onchange = async ()=>{
+    const f = inp.files && inp.files[0]; inp.remove(); if(!f) return;
+    const secs = kbqParse(await f.text());
+    if(!secs.length){ showToast('В файле не нашёл вопросов. Нужны строки «# Страница», «?? вопрос», «(+) верный», «( ) неверный»', 'error'); return; }
+    kbqImport = {file:f.name, again:true, secs: secs.map(sec=>Object.assign(sec, {page: kbqMatch(sec.title)}))};
+    kbqRender();
+  };
+  inp.click();
+}
+function kbqRender(){
+  let host = document.getElementById('kbqModal');
+  if(!host){ host = document.createElement('div'); host.id = 'kbqModal'; document.body.appendChild(host); }
+  if(!kbqImport){ host.innerHTML = ''; return; }
+  const d = kbqImport, pages = kbFolders().filter(f=>kbCanEditFolder(f.id)).flatMap(f=>kbSorted(f.id).map(p=>({p, f})));
+  host.innerHTML = `<div class="tk-scrim" data-kbqclose="1"><div class="tk-sheet" role="dialog" aria-modal="true" aria-label="Загрузка тестов">
+    <h2>Загрузка тестов</h2>
+    <div class="tk-ro" style="font-size:13px">${escapeHtml(d.file)} — разделов с вопросами: <b>${d.secs.length}</b>. Проверьте, к какой странице относится каждый. Тест на странице заменится целиком.</div>
+    <div class="kb-imp-list">${d.secs.map((sec, i)=>`<div class="kb-imp-row kbq-row"><span>${escapeHtml(sec.title)}<small> · ${sec.quiz.length} вопр.</small></span>
+      <select data-kbqpage="${i}"><option value="">— не загружать —</option>${pages.map(({p, f})=>`<option value="${escapeHtml(p.id)}" ${sec.page===p.id?'selected':''}>${escapeHtml(f.name)} · ${escapeHtml(p.title)}</option>`).join('')}</select></div>`).join('')}</div>
+    <label class="kb-must" style="margin:6px 0 4px"><input type="checkbox" id="kbqAgain" ${d.again?'checked':''}> Попросить всех пройти тест заново (страницы пометятся «Обновлено»)</label>
+    <div class="tk-actions"><div></div><div class="tk-actions-r">
+      <button class="btn secondary" data-kbqclose="1">Отмена</button>
+      <button class="btn" id="kbqGo" ${kbBusy?'disabled':''}>${kbBusy ? 'Сохраняю…' : 'Загрузить тесты'}</button>
+    </div></div>
+  </div></div>`;
+}
+async function kbqSave(){
+  const d = kbqImport; if(!d) return;
+  document.querySelectorAll('[data-kbqpage]').forEach(s=>{ d.secs[+s.dataset.kbqpage].page = s.value; });
+  d.again = document.getElementById('kbqAgain').checked;
+  const todo = d.secs.filter(sec=>sec.page);
+  if(!todo.length){ showToast('Не выбрано ни одной страницы', 'error'); return; }
+  kbBusy = true; kbqRender();
+  let n = 0, fail = 0;
+  try{
+    for(const sec of todo){
+      const old = kbPages.find(p=>p.id===sec.page); if(!old) continue;
+      const p = Object.assign({}, old, {quiz: sec.quiz.map(q=>({q:q.q, opts:q.opts.map(o=>({x:o.x, ok:!!o.ok}))})), body: kbStripQuizLines(old.body), by: tkMe()},
+        d.again ? {ver: Math.max(Date.now(), (Number(old.ver)||0) + 1)} : {});
+      const r = await kbWrite(p, false);
+      if(r.error){ fail++; continue; }
+      kbPages = kbPages.filter(x=>x.id!==p.id).concat([p]); n++;
+    }
+  } finally { kbBusy = false; }
+  kbqImport = null; kbqRender();
+  showToast(fail ? `Тесты загружены: ${n}, не получилось: ${fail}` : `Тесты загружены на страниц: ${n}`, fail ? 'error' : 'success');
+  _lastHtml = null; renderNow();
+}
 async function kbPickDocx(){
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -7875,6 +7999,11 @@ function kbGo(id){
 function attachKbHandlers(){
   document.addEventListener('click', async e=>{
     const el = e.target;
+    if(el.closest('#kbqModal')){
+      if(el.dataset.kbqclose){ if(!kbBusy){ kbqImport = null; kbqRender(); } return; }
+      if(el.id === 'kbqGo' && !kbBusy) await kbqSave();
+      return;
+    }
     if(el.closest('#kbModal')){
       if(el.dataset.kbimpclose){ if(!kbBusy){ kbImport = null; kbRenderImport(); } return; }
       if(el.id==='kbImpGo'){ kbImport.folder = document.getElementById('kbImpFolder').value; kbImport.must = document.getElementById('kbImpMust').checked; await kbDoImport(); }
@@ -7905,6 +8034,7 @@ function attachKbHandlers(){
     const rm = el.closest('[data-kbremind]');
     if(rm && !kbBusy){ const p = kbPages.find(x=>x.id===rm.dataset.kbremind); if(p) await kbRemind(p); return; }
     if(el.closest('[data-kbimport]')){ kbPickDocx(); return; }
+    if(el.closest('[data-kbqimport]')){ kbqPick(); return; }
     const nw = el.closest('[data-kbnew]'); if(nw){ kbOpenEditor(null, nw.dataset.kbnew); return; }
     const ed = el.closest('[data-kbedit]'); if(ed){ kbOpenEditor(ed.dataset.kbedit); return; }
     if(el.closest('[data-kbcancel]')){ kbEdit = null; renderNow(); return; }
@@ -7914,6 +8044,18 @@ function attachKbHandlers(){
       if(!el.dataset.sure){ el.dataset.sure = '1'; el.textContent = 'Точно удалить?'; return; }
       if(await storeDelete('kb:page:' + kbEdit.id)){ kbPages = kbPages.filter(p=>p.id!==kbEdit.id); kbEdit = null; kbCur = null; showToast('Страница удалена', 'success'); renderNow(); }
       else showToast('Не удалось удалить', 'error');
+      return;
+    }
+    // редактор теста
+    const qe = el.closest('[data-qe-addq], [data-qe-delq], [data-qe-addo], [data-qe-delo]');
+    if(qe && kbEdit){
+      kbCollect(); kbEdit.quiz = kbEdit.quiz || [];
+      if(qe.dataset.qeAddq) kbEdit.quiz.push({q:'', opts:[{x:'', ok:true}, {x:'', ok:false}, {x:'', ok:false}]});
+      else if(qe.dataset.qeDelq != null) kbEdit.quiz.splice(+qe.dataset.qeDelq, 1);
+      else if(qe.dataset.qeAddo != null) kbEdit.quiz[+qe.dataset.qeAddo].opts.push({x:'', ok:false});
+      else { const [qi, oi] = qe.dataset.qeDelo.split(':').map(Number); kbEdit.quiz[qi].opts.splice(oi, 1); }
+      kbEditorForce = true; renderNow();
+      if(qe.dataset.qeAddq){ const all = document.querySelectorAll('[data-qe-q]'); if(all.length) all[all.length-1].focus(); }
       return;
     }
     const ta = document.getElementById('kbBody');
@@ -7929,11 +8071,6 @@ function attachKbHandlers(){
     if(wr && ta){
       const s = ta.selectionStart, en = ta.selectionEnd, w = wr.dataset.kbwrap;
       ta.setRangeText(w + (ta.value.slice(s, en) || 'текст') + w, s, en, 'select');
-      ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
-    }
-    if(el.closest('[data-kbquiz]') && ta){
-      const s0 = ta.value.length, nl = s0 > 0 && ta.value[s0-1] !== '\n' ? '\n' : '';
-      ta.setRangeText(nl + '?? Вопрос\n(+) Верный ответ\n( ) Неверный ответ\n( ) Неверный ответ\n', s0, s0, 'end');
       ta.focus(); ta.dispatchEvent(new Event('input', {bubbles:true})); return;
     }
     if(el.closest('[data-kbtable]') && ta){
@@ -7957,9 +8094,13 @@ function attachKbHandlers(){
   });
   document.addEventListener('change', e=>{
     if(kbEdit && e.target.closest && e.target.closest('.kb-ed')) kbCollect();
+    if(e.target.dataset && e.target.dataset.qeOk){ const l = e.target.closest('.qe-ok'); l.classList.toggle('on', e.target.checked); l.querySelector('span').textContent = e.target.checked ? 'верный' : 'неверный'; }
     const a = e.target.dataset && e.target.dataset.kbans;
-    if(a && kbCur){ const [qi, oi] = a.split(':').map(Number); kbAns[kbCur] = Object.assign({}, kbAns[kbCur], {[qi]: oi});
-      e.target.closest('.kb-q').querySelectorAll('.kb-opt').forEach(l=>l.classList.toggle('on', l.contains(e.target))); }
+    if(a && kbCur){ const [qi, oi] = a.split(':').map(Number), A = Object.assign({}, kbAns[kbCur]);
+      if(e.target.dataset.multi === '1'){ const cur = (A[qi] || []).filter(x=>x!==oi); if(e.target.checked) cur.push(oi); A[qi] = cur; }
+      else A[qi] = [oi];
+      kbAns[kbCur] = A;
+      e.target.closest('.kb-q').querySelectorAll('.kb-opt').forEach(l=>{ const inp = l.querySelector('input'); l.classList.toggle('on', inp.checked); }); }
   });
   setInterval(kbGateTick, 1000);
   window.addEventListener('scroll', kbGateScroll, {passive:true});
