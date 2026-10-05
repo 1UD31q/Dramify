@@ -621,7 +621,25 @@
   .qe-add{border:0;background:none;color:var(--kb-accent);font:600 12.5px var(--font);cursor:pointer;padding:2px 0 2px 32px;}
   .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
   @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
-  .sales-wrap-admin{max-width:900px;}
+  .sales-wrap-admin{max-width:900px;margin:0 auto;}
+  /* ── Разделы админки в шапке ── */
+  .admin-nav .more-tab{display:flex;align-items:center;gap:4px;cursor:pointer;}
+  .more-caret{font-size:10px;opacity:.7;}
+  .more-menu{position:fixed;z-index:80;min-width:170px;background:var(--bg0);border:1px solid var(--bg2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.25);padding:6px;display:flex;flex-direction:column;animation:ntfPop .16s ease-out;}
+  .more-item{border:0;background:none;text-align:left;padding:9px 12px;border-radius:8px;font:500 14px var(--font);color:var(--ink);cursor:pointer;}
+  .more-item:hover{background:var(--bg1);} .more-item.on{color:var(--p6);font-weight:600;}
+  /* ── Сотрудники в настройках: компактные строки ── */
+  .emp-access-card.emp-acc{padding:0;}
+  .emp-acc .emp-access-top .emp-access-dept,.emp-acc .emp-access-top .emp-access-role{display:none;}
+  .emp-acc-sum{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:12px 14px;}
+  .emp-acc-sum::-webkit-details-marker{display:none;}
+  .emp-acc-name{font-weight:600;color:var(--ink);font-size:14px;}
+  .emp-acc-mail{font-size:12px;color:var(--ink3);margin-left:auto;overflow-wrap:anywhere;}
+  .emp-acc-caret{font-size:11px;color:var(--ink3);transition:transform .2s;}
+  .emp-acc[open] .emp-acc-caret{transform:rotate(180deg);}
+  .emp-acc[open] > :not(summary){padding-left:14px;padding-right:14px;}
+  .emp-acc[open] > :last-child{padding-bottom:14px;}
+  .emp-acc[open] .emp-acc-sum{border-bottom:1px solid var(--bg2);margin-bottom:10px;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2697,7 +2715,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.9';
+const APP_BUILD = '2026-10-05.10';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5936,6 +5954,31 @@ function renderNow(){
   _doRender();
 }
 
+// ── Разделы админки в шапке: основные — вкладками, редкие — в меню «Ещё» ──
+const ADMIN_TABS = [['summary','Сводка'], ['analytics','Аналитика'], ['team','Команда'], ['sales','Продажа'], ['tasks','Задачи'], ['kb','Знания']];
+const ADMIN_MORE = [['data','Данные'], ['settings','Настройки']];
+const ADMIN_ORDER = ADMIN_TABS.concat(ADMIN_MORE).map(t=>t[0]);
+let adminMoreOpen = false;
+function renderAdminNav(){
+  const header = document.querySelector('header.cover'); if(!header) return;
+  let nav = document.getElementById('adminNav');
+  const show = authSession && authIsAdmin() && mode === 'admin' && adminUnlocked && !viewEmpId;
+  if(!show){ if(nav) nav.style.display = 'none'; return; }
+  if(!nav){ nav = document.createElement('div'); nav.id = 'adminNav'; nav.className = 'tabs admin-nav'; nav.style.position = 'relative';
+    const t = header.querySelector('.tabs'); header.insertBefore(nav, t ? t.nextSibling : null); }
+  nav.style.display = '';
+  const more = ADMIN_MORE.find(t=>t[0]===adminTab);
+  const html = ADMIN_TABS.map(([id,l])=>`<div class="tab${adminTab===id?' active':''}" data-admin-tab="${id}">${l}</div>`).join('') +
+    `<div class="tab more-tab${more?' active':''}" data-adminmore="1" aria-haspopup="true" aria-expanded="${adminMoreOpen}">${more ? more[1] : 'Ещё'} <span class="more-caret">▾</span></div>` +
+    (adminMoreOpen ? `<div class="more-menu" role="menu">${ADMIN_MORE.map(([id,l])=>`<button class="more-item${adminTab===id?' on':''}" data-admin-tab="${id}" role="menuitem">${l}</button>`).join('')}</div>` : '');
+  if(nav._html !== html){ nav._html = html; nav.innerHTML = html; }
+  // меню — fixed по кнопке, чтобы его не обрезала прокручиваемая полоса вкладок
+  const menu = nav.querySelector('.more-menu'), btn = nav.querySelector('[data-adminmore]');
+  if(menu && btn){ const r = btn.getBoundingClientRect();
+    menu.style.top = Math.round(r.bottom + 6) + 'px';
+    menu.style.left = Math.round(Math.max(8, Math.min(r.right - 170, innerWidth - 178))) + 'px'; }
+}
+
 // Блок «кто вошёл» в верхней панели (виден только на широком экране)
 function renderTopUser(){
   const box = document.getElementById('topUser');
@@ -5968,7 +6011,8 @@ function _doRender(){
   if(kbEditorLocked()) return; // открыт редактор базы знаний — не сбиваем курсор
   const main = mainEl || (mainEl = document.getElementById('main'));
   if(!main) return;
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
+  document.querySelectorAll('header .tabs:not(.admin-nav) .tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===mode));
+  renderAdminNav();
   main.classList.remove('anim-in'); // сначала снимаем класс — иначе только что вставленные карточки
                                      // унаследуют его и будут переигрывать анимацию на каждый рендер
   // Показываем вкладку «Продажа» только для сотрудников ОП
@@ -8510,10 +8554,6 @@ function renderSalesView(){
           <input type="text" id="sf_deliveryDate" value="${escapeHtml(salesForm.deliveryDate)}" placeholder="дд.мм.гггг">
         </div>
         <div class="field-item">
-          <label class="field-label">Заработок (₸)</label>
-          <input type="number" id="sf_earnings" value="${escapeHtml(salesForm.earnings)}" placeholder="0">
-        </div>
-        <div class="field-item">
           <label class="field-label">Месяц отчёта (лист таблицы) *</label>
           <select id="sf_sheetMonth" style="border:2px solid var(--p5);">${monthOpts}</select>
         </div>
@@ -9768,21 +9808,8 @@ function renderAdminView(){
       </div>`),
   ].join('');
 
-  const tabs = [
-    ['summary',  'Сводка'],
-    ['analytics','Аналитика'],
-    ['team',     'Команда'],
-    ['sales',    'Продажа'],
-    ['tasks',    'Задачи'],
-    ['kb',       'Знания'],
-    ['data',     'Данные'],
-    ['settings', 'Настройки'],
-  ];
-  const tabsHtml = `<div class="admin-tabs">${
-    tabs.map(([id,label])=>
-      `<div class="admin-tab${adminTab===id?' active':''}" data-admin-tab="${id}">${label}</div>`
-    ).join('')
-  }</div>`;
+  // разделы админки — в шапке (renderAdminNav), отдельной полосы на странице больше нет
+  const tabsHtml = '';
 
   return `
     ${tabsHtml}
@@ -10132,7 +10159,10 @@ function renderAdminView(){
     <div class="card">
       <h2>Сотрудники и доступ</h2>
       ${employees.map(e=>`
-        <div class="emp-access-card">
+        <details class="emp-access-card emp-acc">
+          <summary class="emp-acc-sum"><span class="emp-acc-name">${escapeHtml(e.name)}</span>
+            <span class="emp-access-dept">${escapeHtml(deptLabel(e.department))}</span>${e.role==='teamlead' ? '<span class="emp-access-role">Тимлид</span>' : ''}${isNewbie(e) ? '<span class="emp-access-role">Новичок</span>' : ''}
+            <span class="emp-acc-mail">${escapeHtml(e.email || 'почта не указана')}</span><span class="emp-acc-caret">▾</span></summary>
           <div class="emp-access-top">
             <div class="emp-access-badges">
               <span class="emp-access-dept">${escapeHtml(deptLabel(e.department))}</span>
@@ -10162,7 +10192,7 @@ function renderAdminView(){
               <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="по плану">
             </div>`}
           </div>
-        </div>`).join('')}
+        </details>`).join('')}
       <div class="emp-save-row"><button class="btn small" id="savePinsBtn">Сохранить</button></div>
       <div class="hint" style="margin-top:10px;">Чтобы дать доступ: сначала пригласите человека в Supabase (Authentication → Users → Invite user), затем впишите здесь ту же почту и нажмите «Сохранить».</div>
     </div>
@@ -10228,7 +10258,9 @@ function attachDelegatedHandlers(){
   document.addEventListener('click', async (ev)=>{
     // ---- Вкладки админки ----
     const tabEl = ev.target.closest('[data-admin-tab]');
-    if(tabEl){ adminTab = tabEl.dataset.adminTab; renderNow(); return; }
+    if(tabEl){ adminTab = tabEl.dataset.adminTab; adminMoreOpen = false; renderNow(); return; }
+    if(ev.target.closest('[data-adminmore]')){ adminMoreOpen = !adminMoreOpen; renderAdminNav(); return; }
+    if(adminMoreOpen && !ev.target.closest('.more-menu')){ adminMoreOpen = false; renderAdminNav(); }
 
     const el = ev.target;
 
@@ -10656,7 +10688,8 @@ function uxAnim(el, frames, opts){
 // ── Полоска под активной вкладкой переезжает, а не прыгает ──
 let uxInkReady = false;
 function uxTabInk(){
-  const box = document.querySelector('header .tabs'); if(!box) return;
+  const box = [...document.querySelectorAll('header .tabs')].find(t=>t.style.display!=='none' && t.offsetParent!==null) || document.querySelector('header .tabs'); if(!box) return;
+  document.querySelectorAll('header .tabs .tab-ink').forEach(i=>{ if(!box.contains(i)) i.style.opacity = '0'; });
   const tab = box.querySelector('.tab.active');
   let ink = box.querySelector('.tab-ink');
   if(!tab || tab.style.display==='none' || box.style.display==='none'){ if(ink) ink.style.opacity = '0'; return; }
@@ -10770,7 +10803,7 @@ function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(
 
 // ── Свайпы: телефон — пальцем, Mac — двумя пальцами по тачпаду ──
 function uxTabsList(){
-  if(mode==='admin' && adminUnlocked && !viewEmpId) return {kind:'admin', ids:[...document.querySelectorAll('#main .admin-tab')].map(t=>t.dataset.adminTab), cur:adminTab};
+  if(mode==='admin' && adminUnlocked && !viewEmpId) return {kind:'admin', ids:ADMIN_ORDER, cur:adminTab};
   const tabs = [...document.querySelectorAll('header .tabs .tab')].filter(t=>t.style.display!=='none');
   return {kind:'top', ids:tabs.map(t=>t.dataset.mode), cur:mode};
 }
