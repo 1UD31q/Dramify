@@ -2696,7 +2696,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.7';
+const APP_BUILD = '2026-10-05.8';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5784,6 +5784,7 @@ async function syncFromGoogleSheet(dept, targetMonth, silent){
 
     // Пишем только этот месяц этого отдела — чужие месяцы и ссылки не трогаем
     { const m = await saveMerged('app:kpiData', kpiData, deptEmployees.map(e=>[targetMonth, e.id])); if(m) kpiData = m; }
+    if(dept === 'to' && targetMonth === currentMonthKey()) weekSnapTake();   // снимок успешных заказов ТО на сегодня
     if(ledgerTotals[targetMonth] && ledgerTotals[targetMonth][dept]){
       const m = await saveMerged('app:ledgerTotals', ledgerTotals, [[targetMonth, dept]]); if(m) ledgerTotals = m;
     }
@@ -9403,6 +9404,7 @@ async function syncOsData(mk, silent){
   } finally {
     osParts[mk] = P;
     osSyncing[mk] = false;
+    if(mk === currentMonthKey()) weekSnapTake();   // снимок апсейлов и видеореакций на сегодня
     render();
   }
 }
@@ -10894,9 +10896,64 @@ function wkTasks(r){
   const who = {}; over.forEach(t=>{ who[t.who] = (who[t.who]||0) + 1; });
   return {made, done, over: over.length, overWho: Object.entries(who).sort((x,y)=>y[1]-x[1]).map(([id,c])=>tkName(id) + (c>1 ? ' ×' + c : ''))};
 }
+// ── Снимки итогов месяца (для недель ТО и ОС) ──
+// В таблицах нет даты «стал успешным» / «сдали апсейл», поэтому сайт сам запоминает:
+// после синхронизации таблиц у руководителя в app:weekSnaps[месяц][день] пишется,
+// сколько на этот момент успешных заказов ТО и апсейлов / видеореакций ОС у каждого.
+// Итог недели = снимок на конец недели − снимок до её начала (для 1-й недели — от нуля).
+let weekSnaps = {};
+let weekSnapsAt = 0;
+async function ensureWeekSnaps(){
+  if(Date.now() - weekSnapsAt < 60000) return;
+  weekSnapsAt = Date.now();
+  const v = await storeGet('app:weekSnaps', SHARED);
+  if(v && typeof v === 'object'){ const was = JSON.stringify(weekSnaps); weekSnaps = v; if(was !== JSON.stringify(v)) renderNow(); }
+}
+function weekSnapNow(){
+  const mk = currentMonthKey(), day = localDayStr(new Date()), cur = ((weekSnaps[mk]||{})[day]) || {};
+  const snap = Object.assign({}, cur);
+  const toEmps = employees.filter(e=>normDept(e.department)==='to');
+  // пустые или обнулённые данные (таблица ещё не подтянулась) не затирают уже записанные за сегодня цифры
+  const sum = o => Object.values(o||{}).reduce((t,v)=>t + (Number(v)||0), 0);
+  const lastOf = field => { const ds = Object.keys(weekSnaps[mk]||{}).filter(d=>d <= day && weekSnaps[mk][d][field]).sort(); return ds.length ? weekSnaps[mk][ds[ds.length-1]][field] : null; };
+  const put = (field, val) => { if(!Object.keys(val).length) return; if(sum(val) === 0 && sum(lastOf(field)) > 0) return; snap[field] = val; };
+  if(toEmps.length && kpiData[mk]){ const to = {}; toEmps.forEach(e=>{ const k = kpiData[mk][e.id]; if(k) to[e.id] = Number(k.completed)||0; }); put('to', to); }
+  const P = osParts[mk];
+  if(P && P.ups && P.ups.per){ const u = {}; Object.keys(P.ups.per).forEach(id=>{ u[id] = Number(P.ups.per[id].done)||0; }); put('ups', u); }
+  if(P && P.react && P.react.per){ const r = {}; Object.keys(P.react.per).forEach(id=>{ r[id] = Number(P.react.per[id])||0; }); put('react', r); }
+  return {mk, day, snap, changed: JSON.stringify(snap) !== JSON.stringify(cur)};
+}
+async function weekSnapTake(){
+  if(!authIsAdmin() || !stateLoaded || appOutdated) return;
+  const {mk, day, snap, changed} = weekSnapNow();
+  if(!changed) return;
+  weekSnaps = Object.assign({}, weekSnaps, {[mk]: Object.assign({}, weekSnaps[mk]||{}, {[day]: snap})});
+  const m = await saveMerged('app:weekSnaps', weekSnaps, [[mk, day]]); if(m) weekSnaps = m;
+}
+// Значения на момент «до дня d» (последний снимок раньше d) в месяце mk
+function weekSnapBefore(mk, dayStr, field){
+  const days = Object.keys(weekSnaps[mk]||{}).filter(d=>d < dayStr && weekSnaps[mk][d][field]).sort();
+  return days.length ? {day: days[days.length-1], v: weekSnaps[mk][days[days.length-1]][field]} : null;
+}
+// Сколько прибавилось за неделю r по полю: {total, by:{id:n}, from} или null (нет снимков)
+function weekDelta(r, field){
+  const mk = localDayStr(r.start).slice(0,7), a = localDayStr(r.start), b = localDayStr(r.end);
+  const end = weekSnapBefore(mk, b <= mk + '-31' ? b : mk + '-32', field);
+  if(!end || end.day < a) return null;                     // за эту неделю снимков нет
+  let base = r.start.getDate() === 1 ? {day:null, v:{}} : weekSnapBefore(mk, a, field), from = null;
+  if(!base){ const first = Object.keys(weekSnaps[mk]).filter(d=>d >= a && weekSnaps[mk][d][field]).sort()[0]; base = {day:first, v:weekSnaps[mk][first][field]}; from = first; }
+  const by = {}; let total = 0;
+  Object.keys(end.v).forEach(id=>{ const d = (Number(end.v[id])||0) - (Number(base.v[id])||0); if(d){ by[id] = d; total += d; } });
+  return {total, by, from};
+}
 function renderWeekCard(){
   if(!authIsAdmin()) return '';
+  ensureWeekSnaps();
   const r = wkRange(wkOffset), prev = wkRange(wkOffset - 1);
+  const toD = weekDelta(r, 'to'), upD = weekDelta(r, 'ups'), reD = weekDelta(r, 'react');
+  const fromTxt = d => d ? `<div class="wk-sub">считается с ${new Date(d + 'T00:00').toLocaleDateString('ru-RU', {day:'numeric', month:'short'})} — раньше сайт ещё не запоминал</div>` : '';
+  const byRows = (d, unit) => Object.entries(d.by).sort((x,y)=>y[1]-x[1]).slice(0,4).map(([id,n])=>`<div class="wk-row"><span>${escapeHtml(tkName(id))}</span><span>${n > 0 ? '+' : ''}${n}${unit ? ' ' + unit : ''}</span></div>`).join('');
+  const noSnap = '<div class="wk-sub">Пока нет данных: сайт запоминает итоги раз в день, когда руководитель открывает сайт и таблицы обновляются.</div>';
   const sales = wkSales(r), salesPrev = wkSales(prev), att = wkAttendance(r), tk = wkTasks(r);
   let delta = salesPrev.sum > 0 && !salesPrev.missing ? Math.round((sales.sum - salesPrev.sum) / salesPrev.sum * 100) : null;
   if(delta != null && Math.abs(delta) > 500) delta = null;   // прошлая неделя почти пустая — процент ничего не говорит
@@ -10919,6 +10976,17 @@ function renderWeekCard(){
         ${sales.top.slice(0,3).map((x,i)=>`<div class="wk-row"><span>${i+1}. ${escapeHtml(x.name)}</span><span>${fmtMoney(x.sum)}</span></div>`).join('') || `<div class="wk-sub">${sales.missing ? 'Нет данных по дням — нажмите «Обновить» у таблицы продаж в «Данных»' : 'Продаж за эти дни в отчёте нет'}</div>`}
       </div>
       <div class="wk-box">
+        <div class="wk-h">ТО · успешные заказы</div>
+        ${toD ? `<div class="wk-big">${toD.total > 0 ? '+' : ''}${toD.total} <small>${wkPl(Math.abs(toD.total), 'заказ', 'заказа', 'заказов').split(' ')[1]}</small></div>${fromTxt(toD.from)}${byRows(toD, '')}` : noSnap}
+      </div>
+      <div class="wk-box">
+        <div class="wk-h">ОС · апсейлы и видеореакции</div>
+        ${upD || reD ? `<div class="wk-big">${upD ? (upD.total > 0 ? '+' : '') + upD.total : '—'} <small>апсейлов сдали</small></div>
+          <div class="wk-sub">видеореакций: <b>${reD ? (reD.total > 0 ? '+' : '') + reD.total : '—'}</b></div>${fromTxt((upD && upD.from) || (reD && reD.from))}
+          ${(()=>{ const ids = new Set([...Object.keys((upD||{}).by||{}), ...Object.keys((reD||{}).by||{})]);
+            return [...ids].slice(0,4).map(id=>`<div class="wk-row"><span>${escapeHtml(tkName(id))}</span><span>апс. ${(upD&&upD.by[id])||0} · реакц. ${(reD&&reD.by[id])||0}</span></div>`).join(''); })()}` : noSnap}
+      </div>
+      <div class="wk-box">
         <div class="wk-h">Дисциплина</div>
         <div class="wk-big">${lateTotal} <small>${wkPl(lateTotal, 'опоздание', 'опоздания', 'опозданий').split(' ')[1]}</small></div>
         ${lateList.slice(0,5).map(x=>`<div class="wk-row"><span>${escapeHtml(x.e.name)}</span><span>${x.late}× · ${fmtLate(x.lateMin)}</span></div>`).join('') || '<div class="wk-sub">Все приходили вовремя 👍</div>'}
@@ -10936,7 +11004,7 @@ function renderWeekCard(){
         <div class="wk-sub">тенденция: <b class="${fin.trendPct>=100?'up':fin.trendPct<70?'down':''}">${isFinite(fin.trendPct) ? fin.trendPct + '%' : '—'}</b> · осталось ${fmtMoney(fin.pendingCash)}</div>
       </div>
     </div>
-    <div class="wk-foot">Продажи — по отчёту по продажам: «Сумма общая» по дате оформления, без отменённых. Опоздание — больше ${LATE_GRACE_MIN} мин после начала смены.</div>
+    <div class="wk-foot">Продажи — по отчёту по продажам: «Сумма общая» по дате оформления, без отменённых. ТО и ОС — сколько прибавилось за неделю по снимкам, которые сайт делает раз в день (в таблицах нет дат). Опоздание — больше ${LATE_GRACE_MIN} мин после начала смены.</div>
   </details>`;
 }
 function attachWeekHandlers(){
