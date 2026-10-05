@@ -2678,7 +2678,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.3';
+const APP_BUILD = '2026-10-05.5';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -8684,8 +8684,24 @@ async function submitSalesForm(){
     let ok = resp.ok;
     try{ const j = JSON.parse(text); if(j && j.status) ok = j.status==='ok'; } catch(e){}
     if(ok){
+      saleSubmitted(payload, 'Запись добавлена в отчёт!');
+    } else {
+      salesResult = 'err';
+      salesResultMsg = 'Ошибка скрипта отчёта: ' + (text||resp.statusText||'неизвестная ошибка').slice(0, 200);
+    }
+  } catch(e){
+    // Ответ скрипта не прочитался («Load failed» в Safari / «Failed to fetch»), но сама
+    // строка в финотчёт при этом записывается — показываем чек для Telegram как обычно
+    // и просим глянуть отчёт, вместо ошибки (раньше из-за неё не выходила плашка с чеком).
+    console.warn('скрипт отчёта: ответ не прочитан', e);
+    saleSubmitted(payload, 'Продажа отправлена в отчёт. Ответ от скрипта не пришёл — если строки в финотчёте нет, отправьте ещё раз.');
+  }
+  salesSubmitting = false;
+  renderNow();
+}
+function saleSubmitted(payload, msg){
       salesResult = 'ok';
-      salesResultMsg = 'Запись добавлена в отчёт!';
+      salesResultMsg = msg;
       // Фиксируем время продажи для статистики в админке
       try{ recordSaleTime(payload); }catch(e){ console.error('recordSaleTime', e); }
       // Показываем TG-уведомление
@@ -8700,16 +8716,6 @@ async function submitSalesForm(){
         payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
         sheetMonth: salesForm.sheetMonth,
       };
-    } else {
-      salesResult = 'err';
-      salesResultMsg = 'Ошибка: ' + (text||resp.statusText||'неизвестная ошибка');
-    }
-  } catch(e){
-    salesResult = 'err';
-    salesResultMsg = 'Не удалось отправить: ' + e.message;
-  }
-  salesSubmitting = false;
-  renderNow();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
