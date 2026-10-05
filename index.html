@@ -489,7 +489,12 @@
   @media (hover:none){ .kb-copy{opacity:1;} }
   .kb-tbl{overflow-x:auto;margin:12px 0 16px;border:1px solid var(--bg2);border-radius:12px;}
   .kb-tbl table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.45;}
-  .kb-tbl th{background:var(--bg1);text-align:left;font-weight:600;color:var(--ink3);font-size:12px;padding:9px 12px;}
+  .kb-tbl th{background:var(--bg1);text-align:left;font-weight:600;color:var(--ink3);font-size:12px;padding:9px 12px;white-space:nowrap;}
+  /* в ячейках слова не режем посередине (иначе в узкой колонке «CEO» становится «CE / O»); не влезает — таблица листается вбок */
+  .kb-tbl th,.kb-tbl td{overflow-wrap:normal;word-break:normal;}
+  .kb-tbl td.nw{white-space:nowrap;}
+  .kb-tbl td.wide{min-width:220px;}
+  @media (max-width:600px){ .kb-tbl td.wide{min-width:150px;} .kb-tbl th,.kb-tbl td{padding:8px 10px;} }
   .kb-tbl td{padding:9px 12px;border-top:1px solid var(--bg2);vertical-align:top;font-variant-numeric:tabular-nums;}
   .kb-tbl td:first-child{font-weight:600;color:var(--ink);}
   .kb-check{list-style:none;padding:0 !important;}
@@ -2635,7 +2640,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-03.26';
+const APP_BUILD = '2026-10-05.1';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -7313,7 +7318,8 @@ function kbRender(body, pageId){
       case 'table': {
         const [head, ...rows] = b.rows;
         h += `<div class="kb-tbl"><table><thead><tr>${head.map(c=>`<th>${hl(kbInline(c))}</th>`).join('')}</tr></thead><tbody>${
-          rows.map(r=>`<tr>${r.map(c=>`<td>${hl(kbInline(c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+          rows.map(r=>`<tr>${r.map(c=>{ const t = String(c).replace(/\*\*/g,'').trim(); const cls = (!/\s/.test(t) && t.length <= 16) || /^[\d\s.,:%₸$€~≤≥<>+\-–—/xх×]+$/i.test(t) ? 'nw' : t.length > 60 ? 'wide' : '';   // одно слово или число — целиком в строку; длинному тексту — место
+            return `<td${cls ? ` class="${cls}"` : ''}>${hl(kbInline(c))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
       }
     }
     i++;
