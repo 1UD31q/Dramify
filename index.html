@@ -2678,7 +2678,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.4';
+const APP_BUILD = '2026-10-05.5';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -8617,33 +8617,6 @@ function renderSaleTimesCard(mk){
     </div>`;
 }
 
-// Ответ скрипта отчёта не прочитался («Load failed» / «Failed to fetch»). Чаще всего
-// скрипт при этом строку ВСЁ-ТАКИ записал, браузеру просто не отдали ответ (доступ
-// к скрипту, ошибка в скрипте, обрыв связи). Повторное нажатие дало бы дубль, поэтому
-// сначала смотрим в саму таблицу продаж: есть ли там эта продажа.
-function saleSheetMonthKey(name){
-  const now = new Date(), i = MONTHS_RU.indexOf(name);
-  if(i < 0) return currentMonthKey();
-  const y = i > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();   // декабрь, выбранный в январе, — прошлый год
-  return y + '-' + String(i + 1).padStart(2, '0');
-}
-async function saleInSheet(payload){
-  const mk = saleSheetMonthKey(payload.sheetMonth);
-  const url = ((sheetUrls[mk] || {}).op) || ((sheetUrls[currentMonthKey()] || {}).op);
-  if(!url) return null;   // таблица продаж не подключена — проверить не можем
-  let rows;
-  try{ rows = await fetchLedgerRows(url); }catch(e){ return null; }
-  if(!rows || rows.length < 2) return null;
-  const h = rows[0].map(c=>String(c||'').toLowerCase().trim());
-  const col = keys => h.findIndex(c=>keys.some(k=>c.includes(k)));
-  const cName = col(['имя', 'клиент']), cSeller = col(['кто продал']), cTotal = col(['сумма общая', 'сумма']), cPhone = col(['телефон', 'номер']);
-  if(cName < 0 || cTotal < 0) return null;
-  const want = normName(payload.clientName), seller = normName(payload.whoSold);
-  return rows.slice(1).slice(-400).some(r=>
-    normName(r[cName]) === want && Math.abs(parseNum(r[cTotal]) - payload.total) < 1 &&
-    (cSeller < 0 || !seller || normName(r[cSeller]) === seller) &&
-    (cPhone < 0 || !payload.phone || String(r[cPhone]||'').replace(/\D/g,'').slice(-7) === String(payload.phone).replace(/\D/g,'').slice(-7)));
-}
 async function submitSalesForm(){
   if(salesSubmitting) return;
   const url = salesScriptUrl.trim();
@@ -8717,23 +8690,11 @@ async function submitSalesForm(){
       salesResultMsg = 'Ошибка скрипта отчёта: ' + (text||resp.statusText||'неизвестная ошибка').slice(0, 200);
     }
   } catch(e){
-    // ответ не прочитался — проверяем по таблице, не записалась ли продажа
-    salesResultMsg = 'Связь со скриптом оборвалась. Проверяю по таблице продаж, записалась ли продажа…';
-    renderNow();
-    let found = null;
-    for(const wait of [2500, 6000]){
-      await new Promise(r=>setTimeout(r, wait));
-      found = await saleInSheet(payload);
-      if(found) break;
-    }
-    if(found){
-      saleSubmitted(payload, 'Запись добавлена в отчёт! (ответ скрипта не пришёл, но продажа уже есть в таблице — повторно не отправляйте)');
-    } else {
-      salesResult = 'err';
-      salesResultMsg = found === null
-        ? 'Не удалось отправить (' + e.message + '). Проверить таблицу не получилось — прежде чем отправлять снова, посмотрите, нет ли уже этой продажи в отчёте, чтобы не было дубля.'
-        : 'Продажа не дошла до отчёта (' + e.message + '). Проверьте интернет и нажмите «Отправить» ещё раз. Если повторяется — сообщите руководителю: скрипт отчёта недоступен.';
-    }
+    // Ответ скрипта не прочитался («Load failed» в Safari / «Failed to fetch»), но сама
+    // строка в финотчёт при этом записывается — показываем чек для Telegram как обычно
+    // и просим глянуть отчёт, вместо ошибки (раньше из-за неё не выходила плашка с чеком).
+    console.warn('скрипт отчёта: ответ не прочитан', e);
+    saleSubmitted(payload, 'Продажа отправлена в отчёт. Ответ от скрипта не пришёл — если строки в финотчёте нет, отправьте ещё раз.');
   }
   salesSubmitting = false;
   renderNow();
