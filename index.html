@@ -621,7 +621,31 @@
   .qe-add{border:0;background:none;color:var(--kb-accent);font:600 12.5px var(--font);cursor:pointer;padding:2px 0 2px 32px;}
   .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
   @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
-  .sales-wrap-admin{max-width:900px;}
+  .sales-wrap-admin{max-width:900px;margin:0 auto;}
+  /* ── Сворачиваемые карточки админки ── */
+  .card > h2.fold-h{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;-webkit-user-select:none;}
+  .fold-btn{margin-left:auto;flex:none;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:8px;background:var(--bg1);color:var(--ink3);cursor:pointer;transition:transform .2s, background .15s;}
+  .fold-btn:hover{background:var(--bg2);color:var(--ink);}
+  .card.folded .fold-btn{transform:rotate(-90deg);}
+  .card.folded > :not(h2){display:none !important;}
+  .card.folded{padding-bottom:14px;}
+  .card.folded > h2{margin-bottom:0;}
+  .card.folded > h2::after{display:none;}
+  .card > h2.fold-h{position:relative;padding-bottom:10px;}
+  .card > h2.fold-h::after{position:absolute;left:0;bottom:0;margin:0;}
+  .card.folded > h2.fold-h{padding-bottom:0;}
+  /* ── Сотрудники в настройках: компактные строки ── */
+  .emp-access-card.emp-acc{padding:0;}
+  .emp-acc .emp-access-top .emp-access-dept,.emp-acc .emp-access-top .emp-access-role{display:none;}
+  .emp-acc-sum{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:12px 14px;}
+  .emp-acc-sum::-webkit-details-marker{display:none;}
+  .emp-acc-name{font-weight:600;color:var(--ink);font-size:14px;}
+  .emp-acc-mail{font-size:12px;color:var(--ink3);margin-left:auto;overflow-wrap:anywhere;}
+  .emp-acc-caret{font-size:11px;color:var(--ink3);transition:transform .2s;}
+  .emp-acc[open] .emp-acc-caret{transform:rotate(180deg);}
+  .emp-acc[open] > :not(summary){padding-left:14px;padding-right:14px;}
+  .emp-acc[open] > :last-child{padding-bottom:14px;}
+  .emp-acc[open] .emp-acc-sum{border-bottom:1px solid var(--bg2);margin-bottom:10px;}
   .ov-dept-os{grid-column:1 / -1;}
   .kpi-tag{font-size:11px;font-weight:600;color:var(--ink3);background:var(--bg2);border-radius:20px;padding:2px 7px;vertical-align:middle;letter-spacing:0;}
   .kpi-refresh{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
@@ -2697,7 +2721,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.9';
+const APP_BUILD = '2026-10-05.10';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -8510,10 +8534,6 @@ function renderSalesView(){
           <input type="text" id="sf_deliveryDate" value="${escapeHtml(salesForm.deliveryDate)}" placeholder="дд.мм.гггг">
         </div>
         <div class="field-item">
-          <label class="field-label">Заработок (₸)</label>
-          <input type="number" id="sf_earnings" value="${escapeHtml(salesForm.earnings)}" placeholder="0">
-        </div>
-        <div class="field-item">
           <label class="field-label">Месяц отчёта (лист таблицы) *</label>
           <select id="sf_sheetMonth" style="border:2px solid var(--p5);">${monthOpts}</select>
         </div>
@@ -10132,7 +10152,10 @@ function renderAdminView(){
     <div class="card">
       <h2>Сотрудники и доступ</h2>
       ${employees.map(e=>`
-        <div class="emp-access-card">
+        <details class="emp-access-card emp-acc">
+          <summary class="emp-acc-sum"><span class="emp-acc-name">${escapeHtml(e.name)}</span>
+            <span class="emp-access-dept">${escapeHtml(deptLabel(e.department))}</span>${e.role==='teamlead' ? '<span class="emp-access-role">Тимлид</span>' : ''}${isNewbie(e) ? '<span class="emp-access-role">Новичок</span>' : ''}
+            <span class="emp-acc-mail">${escapeHtml(e.email || 'почта не указана')}</span><span class="emp-acc-caret">▾</span></summary>
           <div class="emp-access-top">
             <div class="emp-access-badges">
               <span class="emp-access-dept">${escapeHtml(deptLabel(e.department))}</span>
@@ -10162,7 +10185,7 @@ function renderAdminView(){
               <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-fixedemp="${e.id}" value="${empFixedRate(e)!=null?empFixedRate(e):''}" placeholder="по плану">
             </div>`}
           </div>
-        </div>`).join('')}
+        </details>`).join('')}
       <div class="emp-save-row"><button class="btn small" id="savePinsBtn">Сохранить</button></div>
       <div class="hint" style="margin-top:10px;">Чтобы дать доступ: сначала пригласите человека в Supabase (Authentication → Users → Invite user), затем впишите здесь ту же почту и нажмите «Сохранить».</div>
     </div>
@@ -10766,7 +10789,47 @@ function uxCelebrate(){
 }
 
 // После каждой перерисовки
-function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(); }
+function uxAfterRender(){ uxTabInk(); uxAdminPill(); uxPunchRing(); uxCelebrate(); uxFoldCards(); }
+
+// ── Сворачиваемые карточки в админке ──
+// Стрелка в заголовке карточки сворачивает её до одной строки. Что свёрнуто,
+// помнит этот браузер; редкие блоки по умолчанию свёрнуты.
+const FOLD_DEFAULT = ['Время продаж ОП', 'Отметки за день', 'cmp', 'Ручная правка KPI', 'Календарь сдачи', 'Цикл заказа', 'Проверка таблиц', 'Добавить сотрудника'];
+let foldState = null;
+function foldGet(){
+  if(!foldState){ try{ foldState = JSON.parse(localStorage.getItem('dramify-fold') || '{}') || {}; }catch(e){ foldState = {}; } }
+  return foldState;
+}
+function foldIs(k){ const st = foldGet(); return k in st ? !!st[k] : FOLD_DEFAULT.includes(k); }
+function foldKey(h){
+  const t = h.textContent;
+  if(t.includes('→')) return 'cmp';                       // сравнение «прошлый месяц → этот»
+  return t.split('·')[0].replace(/\d+\s*из\s*\d+/, '').trim();
+}
+function uxFoldCards(){
+  if(mode !== 'admin') return;
+  document.querySelectorAll('#main .admin-pane.active .card').forEach(c=>{
+    const h = c.firstElementChild; if(!h || h.tagName !== 'H2') return;
+    if(h.id === 'toggleLogsBtn') return;   // журнал и так сворачивается своей кнопкой
+    const k = foldKey(h);
+    if(!h.querySelector('.fold-btn')){
+      h.classList.add('fold-h');
+      h.insertAdjacentHTML('beforeend', '<button type="button" class="fold-btn" aria-label="Свернуть или развернуть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>');
+    }
+    c.dataset.fold = k;
+    c.classList.toggle('folded', foldIs(k));
+  });
+}
+document.addEventListener('click', e=>{
+  const h = e.target.closest && e.target.closest('#main .admin-pane .card > h2.fold-h');
+  if(!h) return;
+  const onBtn = e.target.closest('.fold-btn');
+  if(!onBtn && e.target.closest('button, a, input, select, label, #saleTimesTitle')) return;
+  const c = h.parentElement, k = c.dataset.fold; if(!k) return;
+  const st = foldGet(); st[k] = !c.classList.contains('folded');
+  try{ localStorage.setItem('dramify-fold', JSON.stringify(st)); }catch(_){}
+  c.classList.toggle('folded', st[k]);
+});
 
 // ── Свайпы: телефон — пальцем, Mac — двумя пальцами по тачпаду ──
 function uxTabsList(){
