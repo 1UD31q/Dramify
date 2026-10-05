@@ -2548,9 +2548,19 @@ function canWriteKey(key){
   return !!(me && me.role==='teamlead' && TEAMLEAD_WRITE_KEYS.indexOf(key) >= 0);
 }
 
+// Почему последняя запись не прошла — чтобы показать человеку настоящую причину,
+// а не общее «проверьте связь»: 'outdated' | 'denied' (правила базы) | 'network'
+let storeLastError = null;
+function storeErrText(){
+  if(storeLastError === 'outdated') return 'Вышло обновление сайта — обновите страницу и нажмите ещё раз';
+  if(storeLastError === 'denied') return 'База не приняла запись. Руководителю: запустите обновлённый security.sql в Supabase';
+  return 'Нет связи с базой — попробуйте ещё раз';
+}
 async function storeSet(key, value, shared){
   if(shared){
-    if(!canWriteKey(key) || appOutdated) return false;
+    storeLastError = null;
+    if(appOutdated){ storeLastError = 'outdated'; return false; }
+    if(!canWriteKey(key)){ storeLastError = 'denied'; return false; }
     // Пока состояние не прочитано успешно — не трогаем важные ключи,
     // иначе можно затереть живые данные пустышкой.
     if(!stateLoaded && GUARDED_KEYS.indexOf(key) >= 0){
@@ -2586,7 +2596,9 @@ async function storeSet(key, value, shared){
         if(res.ok) return true;
         if(res.status === 401) authOnUnauthorized();
         console.error('storeSet статус', res.status, 'для', key);
-      }catch(e){ console.error('storeSet failed', key, e); }
+        if(res.status === 401 || res.status === 403){ storeLastError = 'denied'; return false; }   // правила базы — повтор не поможет
+        storeLastError = 'network';
+      }catch(e){ console.error('storeSet failed', key, e); storeLastError = 'network'; }
       if(attempt===0) await new Promise(r=>setTimeout(r, 600));
     }
     return false;
@@ -2640,7 +2652,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.1';
+const APP_BUILD = '2026-10-05.2';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -4314,7 +4326,7 @@ function prfPickPhoto(){
     try{
       const data = await prfImageToData(f);
       const ok = await prfSaveAvatar(data);
-      showToast(ok ? 'Фото обновлено' : 'Не сохранилось — проверьте связь', ok ? 'success' : 'error');
+      showToast(ok ? 'Фото обновлено' : 'Фото не сохранилось. ' + storeErrText(), ok ? 'success' : 'error');
     }catch(e){ showToast('Не получилось: ' + e.message, 'error'); }
     finally{ prfBusy = false; prfRender(); }
   };
@@ -7486,7 +7498,7 @@ function kbNewId(){ return 'k' + Date.now().toString(36) + Math.random().toStrin
 function kbNextOrder(folder){ return kbPages.filter(p=>p.folder===folder).reduce((m,p)=>Math.max(m, Number(p.order)||0), 0) + 1; }
 // Новая страница — вставкой, существующая — обновлением строки
 async function kbWrite(p, isNew){
-  if(isNew) return await storeSet('kb:page:' + p.id, p, SHARED) ? {ok:true} : {error:'не сохранилось — проверьте связь или права'};
+  if(isNew) return await storeSet('kb:page:' + p.id, p, SHARED) ? {ok:true} : {error:storeErrText()};
   return storePatch('kb:page:' + p.id, p);
 }
 async function kbSave(){
@@ -7528,7 +7540,7 @@ async function kbMarkRead(p, quiet){
   if(!myEmployeeId) return;
   const v = {emp:myEmployeeId, page:p.id, ver:p.ver||0, at:Date.now()};
   const ok = await storeSet('kbread:' + myEmployeeId + ':' + p.id, v, SHARED);
-  if(!ok){ if(!quiet) showToast('Не сохранилось — проверьте связь', 'error'); return; }
+  if(!ok){ if(!quiet) showToast('Отметка не сохранилась. ' + storeErrText(), 'error'); return; }
   kbReads = kbReads.filter(r=>!(r.emp===v.emp && r.page===v.page)).concat([v]);
   if(quiet) return;
   // задача «Прочитать: …» закрывается сама
