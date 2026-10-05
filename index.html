@@ -622,6 +622,15 @@
   .kb-q-multi{font-size:12px;color:var(--kb-accent);font-weight:600;margin:-4px 0 6px;}
   @media (max-width:600px){ .qe-o{padding-left:0;flex-wrap:wrap;} .qe-ok{width:auto;} .qe-add{padding-left:0;} }
   .sales-wrap-admin{max-width:900px;margin:0 auto;}
+  .tu-sale{display:flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font:600 13px var(--font);cursor:pointer;white-space:nowrap;transition:background .15s, color .15s, transform .15s;}
+  .tu-sale:hover{background:rgba(255,255,255,.16);}
+  .tu-sale:active{transform:scale(.96);}
+  .tu-sale.on{background:#fff;color:#14121a;border-color:#fff;}
+  .tu-sale-plus{font-size:17px;line-height:1;font-weight:500;}
+  .sale-lock{max-width:460px;margin:24px auto;text-align:center;padding:30px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+  .sale-lock-ico{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--p1);color:var(--p6);}
+  .sale-lock-title{font-size:17px;font-weight:700;color:var(--ink);}
+  .sale-lock-text{font-size:13.5px;color:var(--ink3);line-height:1.5;margin-bottom:6px;}
   /* ── Сворачиваемые карточки админки ── */
   .card > h2.fold-h{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;-webkit-user-select:none;}
   .fold-btn{margin-left:auto;flex:none;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:8px;background:var(--bg1);color:var(--ink3);cursor:pointer;transition:transform .2s, background .15s;}
@@ -2721,7 +2730,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.10';
+const APP_BUILD = '2026-10-05.11';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -5978,7 +5987,9 @@ function renderTopUser(){
     sub = (ai && ai.title) || email;
   }
   // аватарка и имя — кнопка профиля
-  const html = ntfBellHtml() + '<div class="tu-me" data-prfopen="1" role="button" tabindex="0" title="Профиль: фото' + (authIsAdmin() ? ', имя и должность' : '') + '">' +
+  // «Продажа» у руководителей — кнопкой в шапке, не вкладкой
+  const saleBtn = authIsAdmin() ? '<button type="button" class="tu-sale' + (mode==='admin' && adminTab==='sales' ? ' on' : '') + '" data-admin-tab="sales" title="Оформить продажу"><span class="tu-sale-plus">+</span><span class="tu-sale-txt">Продажа</span></button>' : '';
+  const html = saleBtn + ntfBellHtml() + '<div class="tu-me" data-prfopen="1" role="button" tabindex="0" title="Профиль: фото' + (authIsAdmin() ? ', имя и должность' : '') + '">' +
     avaHtml(myAvatarIds()[0], name, 'tu-ava') +
     '<div class="tu-meta"><div class="tu-name">' + escapeHtml(name) + '</div><div class="tu-sub">' + escapeHtml(sub) + '</div></div></div>';   // «Выйти» — в профиле
   // не перерисовываем без изменений: колокольчик успевает докачаться, счётчик не «прыгает» зря
@@ -8424,7 +8435,15 @@ function salesEmpName(){
   return e ? e.name : '';
 }
 
+// Сотрудник оформляет продажу только на смене. Руководителей это не касается.
+function salesShiftLocked(){ return !authIsAdmin() && !!myEmployeeId && !isCheckedIn(myEmployeeId); }
 function renderSalesView(){
+  if(salesShiftLocked()) return `<div class="card sale-lock">
+      <div class="sale-lock-ico">${icon('clock',22)}</div>
+      <div class="sale-lock-title">Сначала начните смену</div>
+      <div class="sale-lock-text">Оформить продажу можно только на смене — так время продажи попадёт в отчёт и в ваш рабочий день.</div>
+      <button class="btn" data-gotoshift="1">Перейти к началу смены</button>
+    </div>`;
   const empName = salesEmpName();
   // Автовычисление остатка
   const total = parseFloat(salesForm.total)||0;
@@ -8795,6 +8814,7 @@ function renderSaleTimesCard(mk){
 
 async function submitSalesForm(){
   if(salesSubmitting) return;
+  if(salesShiftLocked()){ showToast('Сначала начните смену', 'error'); renderNow(); return; }
   const url = salesScriptUrl.trim();
   if(!url){ showToast('Не указан URL скрипта отчёта (Админ → Отчёт продаж)','error'); return; }
 
@@ -9792,11 +9812,10 @@ function renderAdminView(){
     ['summary',  'Сводка'],
     ['analytics','Аналитика'],
     ['team',     'Команда'],
-    ['sales',    'Продажа'],
     ['tasks',    'Задачи'],
     ['kb',       'Знания'],
-    ['data',     'Данные'],
     ['settings', 'Настройки'],
+    ['data',     'Данные'],
   ];
   const tabsHtml = `<div class="admin-tabs">${
     tabs.map(([id,label])=>
@@ -10251,7 +10270,8 @@ function attachDelegatedHandlers(){
   document.addEventListener('click', async (ev)=>{
     // ---- Вкладки админки ----
     const tabEl = ev.target.closest('[data-admin-tab]');
-    if(tabEl){ adminTab = tabEl.dataset.adminTab; renderNow(); return; }
+    if(tabEl){ adminTab = tabEl.dataset.adminTab; if(authIsAdmin()){ mode = 'admin'; viewEmpId = null; } renderNow(); return; }
+    if(ev.target.closest('[data-gotoshift]')){ mode = 'employee'; viewEmpId = null; renderNow(); window.scrollTo({top:0, behavior:'smooth'}); return; }
 
     const el = ev.target;
 
@@ -10809,6 +10829,7 @@ function foldKey(h){
 function uxFoldCards(){
   if(mode !== 'admin') return;
   document.querySelectorAll('#main .admin-pane.active .card').forEach(c=>{
+    if(c.closest('[data-pane="sales"]')) return;   // форму продажи не сворачиваем
     const h = c.firstElementChild; if(!h || h.tagName !== 'H2') return;
     if(h.id === 'toggleLogsBtn') return;   // журнал и так сворачивается своей кнопкой
     const k = foldKey(h);
