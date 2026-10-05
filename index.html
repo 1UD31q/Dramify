@@ -2696,7 +2696,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.6';
+const APP_BUILD = '2026-10-05.7';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -10826,15 +10826,25 @@ function attachUxHandlers(){
 // =========================================================================
 // ИТОГИ НЕДЕЛИ (сводка руководителям)
 // Карточка в «Сводке»: продажи ОП по вкладке «Продажа», приходы и опоздания,
-// задачи, план месяца. По умолчанию — прошлая неделя (пн–вс); стрелками можно
-// листать. В понедельник и вторник карточка раскрыта, в другие дни свёрнута.
+// задачи, план месяца. Недели — внутри месяца: 1–7, 8–14, 15–21 и 22–конец
+// месяца (30/31). По умолчанию — последняя закончившаяся неделя; стрелками можно
+// листать, в том числе в прошлые месяцы. Первые два дня после конца недели карточка раскрыта.
 // =========================================================================
-let wkOffset = -1;   // 0 — эта неделя (по сегодня), -1 — прошлая и т.д.
+let wkOffset = -1;   // 0 — текущая неделя месяца (по сегодня), -1 — прошлая и т.д.
+const WK_STARTS = [1, 8, 15, 22];
+function wkBlock(y, m, k){   // k-я неделя месяца (0..3)
+  const start = new Date(y, m, WK_STARTS[k]);
+  const end = k < 3 ? new Date(y, m, WK_STARTS[k+1]) : new Date(y, m + 1, 1);
+  return {start, end, num: k + 1};
+}
 function wkRange(off){
-  const now = new Date(), dow = (now.getDay() + 6) % 7;   // пн = 0
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + off * 7);
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
-  return {start, end};
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth(), k = now.getDate() >= 22 ? 3 : now.getDate() >= 15 ? 2 : now.getDate() >= 8 ? 1 : 0;
+  for(let i = 0; i < Math.abs(off); i++){
+    if(off < 0){ if(k > 0) k--; else { k = 3; m--; if(m < 0){ m = 11; y--; } } }
+    else { if(k < 3) k++; else { k = 0; m++; if(m > 11){ m = 0; y++; } } }
+  }
+  return wkBlock(y, m, k);
 }
 function wkPl(n, one, few, many){ const a = Math.abs(n) % 100, b = a % 10; return n + ' ' + (a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many); }
 function wkLabel(r){
@@ -10890,21 +10900,22 @@ function renderWeekCard(){
   const sales = wkSales(r), salesPrev = wkSales(prev), att = wkAttendance(r), tk = wkTasks(r);
   let delta = salesPrev.sum > 0 && !salesPrev.missing ? Math.round((sales.sum - salesPrev.sum) / salesPrev.sum * 100) : null;
   if(delta != null && Math.abs(delta) > 500) delta = null;   // прошлая неделя почти пустая — процент ничего не говорит
+  const prevLbl = r.num === 1 ? 'к последней неделе прошлого месяца' : 'к неделе ' + (r.num - 1);
   const lateList = att.filter(x=>x.late > 0).sort((a,b)=>b.late-a.late || b.lateMin-a.lateMin);
   const oddList = att.filter(x=>x.odd > 0);
   const lateTotal = att.reduce((s,x)=>s + x.late, 0);
   const mk = currentMonthKey(), fin = companyFinance(mk);
-  const dow = new Date().getDay(), open = (dow === 1 || dow === 2) && wkOffset === -1;
+  const sinceEnd = Math.floor((new Date() - r.end) / 864e5), open = wkOffset === -1 && sinceEnd >= 0 && sinceEnd < 2;   // первые 2 дня после конца недели
   const chip = (txt, cls) => `<span class="wk-chip ${cls||''}">${txt}</span>`;
   return `<details class="card wk-card" ${open ? 'open' : ''}>
-    <summary class="wk-sum"><span class="wk-title">Итоги недели <span class="wk-range">${wkLabel(r)}${wkOffset===0 ? ' · по сегодня' : ''}</span></span>
+    <summary class="wk-sum"><span class="wk-title">Итоги недели ${r.num} <span class="wk-range">${wkLabel(r)}${wkOffset===0 ? ' · по сегодня' : ''}</span></span>
       <span class="wk-chips">${chip('продажи ' + fmtMoney(sales.sum))}${chip(wkPl(lateTotal, 'опоздание', 'опоздания', 'опозданий'), lateTotal ? 'warn' : '')}${chip('просрочено: ' + tk.over, tk.over ? 'bad' : '')}</span></summary>
     <div class="wk-nav"><button class="btn small secondary" data-wkgo="-1">‹ Раньше</button>${wkOffset < 0 ? `<button class="btn small secondary" data-wkgo="1">Позже ›</button>` : ''}</div>
     <div class="wk-grid">
       <div class="wk-box">
         <div class="wk-h">Продажи ОП</div>
         <div class="wk-big">${fmtMoney(sales.sum)}</div>
-        <div class="wk-sub">${wkPl(sales.n, 'продажа', 'продажи', 'продаж')}${delta!=null ? ` · <b class="${delta>=0?'up':'down'}">${delta>=0?'+':''}${delta}%</b> к неделе раньше` : ''}</div>
+        <div class="wk-sub">${wkPl(sales.n, 'продажа', 'продажи', 'продаж')}${delta!=null ? ` · <b class="${delta>=0?'up':'down'}">${delta>=0?'+':''}${delta}%</b> ${prevLbl}` : ''}</div>
         ${sales.top.slice(0,3).map((x,i)=>`<div class="wk-row"><span>${i+1}. ${escapeHtml(x.name)}</span><span>${fmtMoney(x.sum)}</span></div>`).join('') || `<div class="wk-sub">${sales.missing ? 'Нет данных по дням — нажмите «Обновить» у таблицы продаж в «Данных»' : 'Продаж за эти дни в отчёте нет'}</div>`}
       </div>
       <div class="wk-box">
