@@ -2678,7 +2678,7 @@ function saveMerged(key, local, paths){
 // Вкладка, открытая до обновления сайта, работает на старом коде. Раз в 10 минут
 // сверяем версию с сайтом; если она устарела — запись в базу выключается,
 // в фоне вкладка перезагружается сама, на экране просим обновить страницу.
-const APP_BUILD = '2026-10-05.3';
+const APP_BUILD = '2026-10-05.4';
 let appOutdated = false;
 async function checkAppVersion(){
   if(appOutdated || location.protocol === 'file:') return;
@@ -8617,6 +8617,33 @@ function renderSaleTimesCard(mk){
     </div>`;
 }
 
+// Ответ скрипта отчёта не прочитался («Load failed» / «Failed to fetch»). Чаще всего
+// скрипт при этом строку ВСЁ-ТАКИ записал, браузеру просто не отдали ответ (доступ
+// к скрипту, ошибка в скрипте, обрыв связи). Повторное нажатие дало бы дубль, поэтому
+// сначала смотрим в саму таблицу продаж: есть ли там эта продажа.
+function saleSheetMonthKey(name){
+  const now = new Date(), i = MONTHS_RU.indexOf(name);
+  if(i < 0) return currentMonthKey();
+  const y = i > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();   // декабрь, выбранный в январе, — прошлый год
+  return y + '-' + String(i + 1).padStart(2, '0');
+}
+async function saleInSheet(payload){
+  const mk = saleSheetMonthKey(payload.sheetMonth);
+  const url = ((sheetUrls[mk] || {}).op) || ((sheetUrls[currentMonthKey()] || {}).op);
+  if(!url) return null;   // таблица продаж не подключена — проверить не можем
+  let rows;
+  try{ rows = await fetchLedgerRows(url); }catch(e){ return null; }
+  if(!rows || rows.length < 2) return null;
+  const h = rows[0].map(c=>String(c||'').toLowerCase().trim());
+  const col = keys => h.findIndex(c=>keys.some(k=>c.includes(k)));
+  const cName = col(['имя', 'клиент']), cSeller = col(['кто продал']), cTotal = col(['сумма общая', 'сумма']), cPhone = col(['телефон', 'номер']);
+  if(cName < 0 || cTotal < 0) return null;
+  const want = normName(payload.clientName), seller = normName(payload.whoSold);
+  return rows.slice(1).slice(-400).some(r=>
+    normName(r[cName]) === want && Math.abs(parseNum(r[cTotal]) - payload.total) < 1 &&
+    (cSeller < 0 || !seller || normName(r[cSeller]) === seller) &&
+    (cPhone < 0 || !payload.phone || String(r[cPhone]||'').replace(/\D/g,'').slice(-7) === String(payload.phone).replace(/\D/g,'').slice(-7)));
+}
 async function submitSalesForm(){
   if(salesSubmitting) return;
   const url = salesScriptUrl.trim();
@@ -8684,8 +8711,36 @@ async function submitSalesForm(){
     let ok = resp.ok;
     try{ const j = JSON.parse(text); if(j && j.status) ok = j.status==='ok'; } catch(e){}
     if(ok){
+      saleSubmitted(payload, 'Запись добавлена в отчёт!');
+    } else {
+      salesResult = 'err';
+      salesResultMsg = 'Ошибка скрипта отчёта: ' + (text||resp.statusText||'неизвестная ошибка').slice(0, 200);
+    }
+  } catch(e){
+    // ответ не прочитался — проверяем по таблице, не записалась ли продажа
+    salesResultMsg = 'Связь со скриптом оборвалась. Проверяю по таблице продаж, записалась ли продажа…';
+    renderNow();
+    let found = null;
+    for(const wait of [2500, 6000]){
+      await new Promise(r=>setTimeout(r, wait));
+      found = await saleInSheet(payload);
+      if(found) break;
+    }
+    if(found){
+      saleSubmitted(payload, 'Запись добавлена в отчёт! (ответ скрипта не пришёл, но продажа уже есть в таблице — повторно не отправляйте)');
+    } else {
+      salesResult = 'err';
+      salesResultMsg = found === null
+        ? 'Не удалось отправить (' + e.message + '). Проверить таблицу не получилось — прежде чем отправлять снова, посмотрите, нет ли уже этой продажи в отчёте, чтобы не было дубля.'
+        : 'Продажа не дошла до отчёта (' + e.message + '). Проверьте интернет и нажмите «Отправить» ещё раз. Если повторяется — сообщите руководителю: скрипт отчёта недоступен.';
+    }
+  }
+  salesSubmitting = false;
+  renderNow();
+}
+function saleSubmitted(payload, msg){
       salesResult = 'ok';
-      salesResultMsg = 'Запись добавлена в отчёт!';
+      salesResultMsg = msg;
       // Фиксируем время продажи для статистики в админке
       try{ recordSaleTime(payload); }catch(e){ console.error('recordSaleTime', e); }
       // Показываем TG-уведомление
@@ -8700,16 +8755,6 @@ async function submitSalesForm(){
         payMethod: salesForm.payMethod, earnings:'', deliveryDate:'',
         sheetMonth: salesForm.sheetMonth,
       };
-    } else {
-      salesResult = 'err';
-      salesResultMsg = 'Ошибка: ' + (text||resp.statusText||'неизвестная ошибка');
-    }
-  } catch(e){
-    salesResult = 'err';
-    salesResultMsg = 'Не удалось отправить: ' + e.message;
-  }
-  salesSubmitting = false;
-  renderNow();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
